@@ -1,0 +1,6 @@
+node_id	parent_id	label
+root		
+outgroup	root	Dyak
+mel_sim	root	
+Dsim	mel_sim	Dsim
+mel	root	Dmel

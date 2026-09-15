@@ -1,0 +1,4 @@
+evidence_id	family_id	species	gene_copy_id	homology_id	contig	start	end	strand	sequence_score	left_synteny_score	right_synteny_score	splice_motif_score	phase_compatibility	annotation_status	inferred_role	evidence_status
+jgw_seqsyn_1	jingwei	Dyak	jgw_copy	H_yande_Y	chr3R	985	1000	+	0.82	0.70	0.75	0.58	compatible	missing_annotation	CDS	supports_hidden_segment
+jgw_seqsyn_2	jingwei	Dtei	jgw_copy	H_yande_Y	chr3R	2000	2140	+	0.91	0.65	0.82	0.80	compatible	annotated	CDS	supports_annotation
+jgw_seqsyn_3	jingwei	Dmel	yande_source_copy	H_yande_Y	chrX	500	640	+	0.90	0.55	0.55	0.20	not_coding	annotated	intron	supports_annotation

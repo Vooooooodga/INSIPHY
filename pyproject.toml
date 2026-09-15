@@ -1,0 +1,16 @@
+[project]
+name = "insiphy"
+version = "0.1.0"
+description = "Intragenic synteny phylogenetics from genome sequence and annotation"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+insiphy = "insiphy.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

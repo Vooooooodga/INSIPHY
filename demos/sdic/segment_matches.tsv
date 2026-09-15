@@ -1,0 +1,6 @@
+match_id	query_occurrence_id	subject_occurrence_id	alignment_score	left_context_score	right_context_score	left_boundary_score	right_boundary_score	size_ratio	total_score	match_status	splice_site_status
+sm1	Dmel_sdic_A1	Dmel_AnxB10_A	0.91	0.72	0.62	0.70	0.70	1.00	NA	mapped	conserved
+sm2	Dmel_sdic_S1	Dmel_sw_S	0.90	0.64	0.73	0.70	0.71	1.00	NA	mapped	conserved
+sm3	Dmel_sdic_I1	Dsim_hidden_I	0.78	0.80	0.78	0.65	0.72	1.00	NA	mapped	novel_splice
+sm4	Dmel_sdic_A2	Dmel_AnxB10_A	0.82	0.40	0.42	0.60	0.60	1.00	NA	mapped	conserved
+sm5	Dmel_sdic_S2	Dmel_sw_S	0.80	0.40	0.42	0.60	0.60	1.00	NA	mapped	conserved

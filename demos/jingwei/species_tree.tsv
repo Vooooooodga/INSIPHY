@@ -1,0 +1,10 @@
+node_id	parent_id	label
+root		
+mel_group	root	
+Dmel	mel_group	Dmel
+Dsim	mel_group	Dsim
+yak_tei	root	
+Dere	yak_tei	Dere
+jgw_clade	yak_tei	
+Dyak	jgw_clade	Dyak
+Dtei	jgw_clade	Dtei

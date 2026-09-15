@@ -1,0 +1,6 @@
+match_id	query_occurrence_id	subject_occurrence_id	total_score	match_status	correspondence_call
+jm1	Dyak_jgw_A	Dmel_Adh_A	0.757	mapped	best_unique
+jm2	Dtei_jgw_A	Dmel_Adh_A	0.746	mapped	best_unique
+jm3	Dyak_jgw_Y	Dmel_yande_Y	0.702	mapped	best_unique
+jm4	Dtei_jgw_Y	Dmel_yande_Y	0.715	mapped	best_unique
+jm5	Dyak_hidden_Y2	Dmel_yande_Y	0.6525	mapped	best_unique

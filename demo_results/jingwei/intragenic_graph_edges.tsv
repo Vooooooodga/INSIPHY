@@ -1,0 +1,6 @@
+family_id	species	gene_copy_id	edge_id	left_hsg	right_hsg	left_occurrence_id	right_occurrence_id	adjacency_status	left_source_labels	right_source_labels
+jingwei	Dyak	jgw_copy	Dyak_jgw_Y_A	H_yande_Y	H_Adh_A	Dyak_jgw_Y	Dyak_jgw_A	present	yande_source	Adh_source
+jingwei	Dtei	jgw_copy	Dtei_jgw_Y_A	H_yande_Y	H_Adh_A	Dtei_jgw_Y	Dtei_jgw_A	present	yande_source	Adh_source
+jingwei	Dmel	source_loci	Dmel_unjoined_Y_A	H_yande_Y	H_Adh_A	Dmel_yande_Y	Dmel_Adh_A	absent	yande_source	Adh_source
+jingwei	Dsim	source_loci	Dsim_unjoined_Y_A	H_yande_Y	H_Adh_A	Dsim_yande_Y	Dsim_Adh_A	absent	yande_source	Adh_source
+jingwei	Dere	source_loci	Dere_unjoined_Y_A	H_yande_Y	H_Adh_A	Dere_yande_Y	Dere_Adh_A	absent	yande_source	Adh_source

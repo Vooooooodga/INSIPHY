@@ -1,0 +1,6 @@
+match_id	query_occurrence_id	subject_occurrence_id	total_score	match_status	correspondence_call
+sm1	Dmel_sdic_A1	Dmel_AnxB10_A	0.7585	mapped	best_unique
+sm2	Dmel_sdic_S1	Dmel_sw_S	0.7625	mapped	best_unique
+sm3	Dmel_sdic_I1	Dsim_hidden_I	0.756	mapped	best_unique
+sm4	Dmel_sdic_A2	Dmel_AnxB10_A	0.618	mapped	best_unique
+sm5	Dmel_sdic_S2	Dmel_sw_S	0.613	mapped	best_unique

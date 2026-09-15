@@ -1,0 +1,4 @@
+evidence_id	family_id	species	gene_copy_id	homology_id	contig	start	end	strand	sequence_score	left_synteny_score	right_synteny_score	splice_motif_score	phase_compatibility	annotation_status	inferred_role	evidence_status
+sdic_seqsyn_1	sdic	Dsim	sw_source	H_sdic_I	chr2	760	800	+	0.76	0.68	0.71	0.45	compatible	missing_annotation	intron	supports_hidden_segment
+sdic_seqsyn_2	sdic	Dmel	Sdic_copy1	H_sdic_I	chr2	2120	2180	+	0.78	0.80	0.80	0.82	compatible	annotated	CDS	supports_annotation
+sdic_seqsyn_3	sdic	Dmel	Sdic_copy2	H_Anx_A	chr2	2400	2520	+	0.82	0.40	0.40	0.70	compatible	conflicting_annotation	CDS	conflicts_annotation
