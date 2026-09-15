@@ -81,6 +81,12 @@ PYTHONPATH=src python -m insiphy.cli run \
   --output-dir results/family_a
 ```
 
+Run local tests:
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests
+```
+
 ## Main Outputs
 
 - `annotation_completion_candidates.tsv`
