@@ -8,12 +8,13 @@ adjacencies changed on a fixed species tree.
 ## Evidence Layers
 
 1. **Annotation extraction**: genome annotation supplies observed exons, CDS
-   intervals and introns for each target copy.
+   intervals, UTRs, transcript paths and introns for each target copy.
 2. **Sequence-supported completion**: local sequence evidence can mark a
    missing annotated segment as a hidden-segment candidate or an annotation
    conflict.
 3. **Homologous segment grouping**: pairwise segment similarity, boundary
-   compatibility and local order are combined into HSG assignments.
+   compatibility, intron phase, splice motif, strand, flanking context and
+   local order are combined into graph-based HSG assignments.
 4. **Intragenic synteny graph**: ordered HSG adjacencies describe the internal
    synteny of each gene copy.
 5. **Phylogenetic reconstruction**: segment presence, role state, adjacency,
@@ -37,8 +38,8 @@ Candidate events are reported with both low-level state changes and a biological
 `copy_duplication_or_expansion`.
 
 The current implementation uses a Sankoff-style discrete character model for
-state reconstruction, a likelihood-like pruning score for each structural
-character and a lightweight competing-model score. This gives a transparent
-first-pass event history. The planned publication version will expand the
-simulation benchmark and calibrate event support under broader missing
-annotation scenarios.
+state reconstruction and a branch-length-aware CTMC/Mk likelihood fit for each
+structural character. INSIPHY reports fitted event-rate parameters, AIC/BIC,
+candidate branch events and lightweight competing-model scores. The publication
+version should expand real accession-level case studies and simulation-based
+calibration.

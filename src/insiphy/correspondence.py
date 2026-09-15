@@ -2,15 +2,12 @@
 
 from collections import Counter, defaultdict
 
+from .alignment import global_alignment_stats
 from .io import parse_fasta, read_tsv, to_float, uniq, write_tsv
 
 
 def simple_identity(seq_a, seq_b):
-    if not seq_a or not seq_b:
-        return 0.0
-    n = min(len(seq_a), len(seq_b))
-    matches = sum(1 for a, b in zip(seq_a[:n], seq_b[:n]) if a == b and a not in "-N" and b not in "-N")
-    return matches / max(1, n)
+    return global_alignment_stats(seq_a, seq_b).identity
 
 
 def match_total(row):
@@ -42,7 +39,43 @@ def normalized_components(row):
         "boundary_score": boundary,
         "phase_score": to_float(row.get("phase_score"), 0.5),
         "order_score": to_float(row.get("order_score"), 0.5),
+        "strand_score": to_float(row.get("strand_score"), 0.5),
+        "splice_score": to_float(row.get("splice_score"), 0.5),
     }
+
+
+def reciprocal_status(scored):
+    best_subject_by_query = defaultdict(list)
+    best_query_by_subject = defaultdict(list)
+    for row in scored:
+        score = to_float(row["total_score"])
+        q = row["query_occurrence_id"]
+        s = row["subject_occurrence_id"]
+        best_subject_by_query[q].append((score, s, row["match_id"]))
+        best_query_by_subject[s].append((score, q, row["match_id"]))
+        best_subject_by_query[s].append((score, q, row["match_id"]))
+        best_query_by_subject[q].append((score, s, row["match_id"]))
+
+    query_best = {}
+    for query, vals in best_subject_by_query.items():
+        best = max(score for score, _node, _mid in vals)
+        query_best[query] = {_node for score, _node, _mid in vals if abs(score - best) < 1e-12}
+    subject_best = {}
+    for subject, vals in best_query_by_subject.items():
+        best = max(score for score, _node, _mid in vals)
+        subject_best[subject] = {_node for score, _node, _mid in vals if abs(score - best) < 1e-12}
+
+    out = {}
+    for row in scored:
+        q = row["query_occurrence_id"]
+        s = row["subject_occurrence_id"]
+        if s in query_best.get(q, set()) and q in subject_best.get(s, set()):
+            out[row["match_id"]] = "reciprocal_best"
+        elif s in query_best.get(q, set()):
+            out[row["match_id"]] = "query_best_only"
+        else:
+            out[row["match_id"]] = "not_reciprocal_best"
+    return out
 
 
 def infer_correspondence(input_dir, output_dir):
@@ -67,6 +100,8 @@ def infer_correspondence(input_dir, output_dir):
                 "source_label": row.get("source_label", "NA"),
                 "support_type": row.get("support_type", "NA"),
                 "confidence": row.get("confidence", "NA"),
+                "membership_score": row.get("confidence", "NA"),
+                "membership_call": "core_member" if to_float(row.get("confidence"), 0.0) >= 0.7 else "ambiguous_member",
             }
         )
 
@@ -108,8 +143,14 @@ def infer_correspondence(input_dir, output_dir):
                 "boundary_score": f"{components['boundary_score']:.6g}",
                 "phase_score": f"{components['phase_score']:.6g}",
                 "order_score": f"{components['order_score']:.6g}",
+                "strand_score": f"{components['strand_score']:.6g}",
+                "splice_score": f"{components['splice_score']:.6g}",
                 "total_score": f"{score:.6g}",
                 "match_status": row.get("match_status", "ambiguous"),
+                "distance_class": row.get("distance_class", "NA"),
+                "threshold": row.get("threshold", "NA"),
+                "alignment_cigar": row.get("alignment_cigar", "NA"),
+                "reciprocal_status": "unclassified",
                 "correspondence_call": "unclassified",
             }
         )
@@ -119,10 +160,64 @@ def infer_correspondence(input_dir, output_dir):
         best_ids = [match_id for score, match_id in vals if abs(score - best) < 1e-12]
         for match_id in best_ids:
             best_status[match_id] = "best_tie" if len(best_ids) > 1 else "best_unique"
+    reciprocal = reciprocal_status(scored)
+    graph_edges = []
+    degree = Counter()
     for row in scored:
-        row["correspondence_call"] = row["match_status"] if row["match_status"] != "mapped" else best_status.get(row["match_id"], "not_best")
+        row["reciprocal_status"] = reciprocal.get(row["match_id"], "not_reciprocal_best")
+        if row["match_status"] == "mapped":
+            degree[row["query_occurrence_id"]] += 1
+            degree[row["subject_occurrence_id"]] += 1
+            graph_edges.append(
+                {
+                    "edge_id": row["match_id"],
+                    "query_occurrence_id": row["query_occurrence_id"],
+                    "subject_occurrence_id": row["subject_occurrence_id"],
+                    "total_score": row["total_score"],
+                    "reciprocal_status": row["reciprocal_status"],
+                    "edge_call": "high_confidence_correspondence" if row["reciprocal_status"] == "reciprocal_best" and to_float(row["total_score"]) >= 0.7 else "supporting_correspondence",
+                }
+            )
+        if row["match_status"] != "mapped":
+            row["correspondence_call"] = row["match_status"]
+        elif row["reciprocal_status"] == "reciprocal_best":
+            row["correspondence_call"] = "reciprocal_best"
+        else:
+            row["correspondence_call"] = best_status.get(row["match_id"], "not_best")
 
-    write_tsv(f"{output_dir}/hsg_assignments.tsv", hsg_rows, ["homology_id", "occurrence_id", "family_id", "species", "gene_copy_id", "source_label", "support_type", "confidence"])
+    for row in hsg_rows:
+        deg = degree.get(row["occurrence_id"], 0)
+        base = to_float(row.get("membership_score"), 0.5)
+        adjusted = min(1.0, 0.75 * base + 0.25 * min(1.0, deg / 2))
+        row["membership_score"] = f"{adjusted:.6g}"
+        row["membership_call"] = "core_member" if adjusted >= 0.7 else "ambiguous_member"
+
+    write_tsv(f"{output_dir}/hsg_assignments.tsv", hsg_rows, ["homology_id", "occurrence_id", "family_id", "species", "gene_copy_id", "source_label", "support_type", "confidence", "membership_score", "membership_call"])
     write_tsv(f"{output_dir}/segment_conservation.tsv", conservation, ["homology_id", "occurrence_count", "species_count", "mean_pairwise_identity", "role_spectrum", "conservation_call"])
-    write_tsv(f"{output_dir}/segment_correspondence.tsv", scored, ["match_id", "query_occurrence_id", "subject_occurrence_id", "alignment_score", "coverage_score", "left_context_score", "right_context_score", "boundary_score", "phase_score", "order_score", "total_score", "match_status", "correspondence_call"])
+    write_tsv(
+        f"{output_dir}/segment_correspondence.tsv",
+        scored,
+        [
+            "match_id",
+            "query_occurrence_id",
+            "subject_occurrence_id",
+            "alignment_score",
+            "coverage_score",
+            "left_context_score",
+            "right_context_score",
+            "boundary_score",
+            "phase_score",
+            "order_score",
+            "strand_score",
+            "splice_score",
+            "total_score",
+            "distance_class",
+            "threshold",
+            "alignment_cigar",
+            "match_status",
+            "reciprocal_status",
+            "correspondence_call",
+        ],
+    )
+    write_tsv(f"{output_dir}/hsg_graph_edges.tsv", graph_edges, ["edge_id", "query_occurrence_id", "subject_occurrence_id", "total_score", "reciprocal_status", "edge_call"])
     return hsg_rows, conservation, scored

@@ -5,8 +5,11 @@ from pathlib import Path
 from .io import read_tsv, write_tsv
 
 
-def event_key(row):
-    return (row.get("family_id", ""), row.get("event_class", ""))
+def event_key(row, include_branch=False):
+    base = (row.get("family_id", ""), row.get("event_class", ""))
+    if include_branch:
+        return base + (row.get("branch_scope", ""),)
+    return base
 
 
 def benchmark_events(input_dir, output_dir):
@@ -16,12 +19,16 @@ def benchmark_events(input_dir, output_dir):
     calls = read_tsv(output_dir / "candidate_structural_events.tsv", ["family_id", "event_class"], optional=True)
     truth_set = {event_key(row) for row in truth}
     call_set = {event_key(row) for row in calls}
+    truth_branch_set = {event_key(row, include_branch=True) for row in truth if row.get("branch_scope")}
+    call_branch_set = {event_key(row, include_branch=True) for row in calls if row.get("branch_scope")}
     tp = len(truth_set & call_set)
     fp = len(call_set - truth_set)
     fn = len(truth_set - call_set)
     precision = tp / max(1, tp + fp)
     recall = tp / max(1, tp + fn)
     f1 = 2 * precision * recall / max(1e-12, precision + recall)
+    branch_tp = len(truth_branch_set & call_branch_set)
+    branch_accuracy = branch_tp / max(1, len(truth_branch_set))
     rows = [
         {
             "truth_events": len(truth_set),
@@ -32,7 +39,21 @@ def benchmark_events(input_dir, output_dir):
             "precision": f"{precision:.6g}",
             "recall": f"{recall:.6g}",
             "f1": f"{f1:.6g}",
+            "branch_true_positive": branch_tp,
+            "branch_accuracy": f"{branch_accuracy:.6g}",
         }
     ]
-    write_tsv(output_dir / "benchmark_summary.tsv", rows, ["truth_events", "called_events", "true_positive", "false_positive", "false_negative", "precision", "recall", "f1"])
+    details = []
+    for key in sorted(truth_set | call_set):
+        details.append(
+            {
+                "family_id": key[0],
+                "event_class": key[1],
+                "truth_status": "truth_present" if key in truth_set else "truth_absent",
+                "call_status": "called" if key in call_set else "not_called",
+                "benchmark_call": "true_positive" if key in truth_set and key in call_set else "false_positive" if key in call_set else "false_negative",
+            }
+        )
+    write_tsv(output_dir / "benchmark_summary.tsv", rows, ["truth_events", "called_events", "true_positive", "false_positive", "false_negative", "precision", "recall", "f1", "branch_true_positive", "branch_accuracy"])
+    write_tsv(output_dir / "benchmark_detailed.tsv", details, ["family_id", "event_class", "truth_status", "call_status", "benchmark_call"])
     return rows

@@ -8,9 +8,9 @@ completion, gene-structure evolution and phylogenetic synteny reconstruction.
 ExOrthist infers exon orthology groups and uses three evidence classes:
 upstream/downstream intron position and phase, exon sequence, and flanking exon
 context. INSIPHY adapts this idea inside a single gene or gene family by scoring
-segment sequence, coverage, local order, phase compatibility and adjacent
-segment context. INSIPHY then places the resulting internal structures on a
-species tree.
+segment sequence, coverage, local order, phase compatibility, splice motif,
+strand and adjacent segment context. INSIPHY then places the resulting internal
+structures on a species tree.
 
 Reference: https://pmc.ncbi.nlm.nih.gov/articles/PMC8379844/
 
@@ -19,8 +19,9 @@ Reference: https://pmc.ncbi.nlm.nih.gov/articles/PMC8379844/
 TOGA integrates structural annotation with orthology inference at genome scale.
 CESAR uses coding-exon-aware realignment with reading-frame information. INSIPHY
 borrows the principle that annotation should be checked against genome sequence
-rather than treated as fixed truth. The current package therefore separates
-observed annotation from sequence-supported hidden-segment candidates.
+with explicit uncertainty. The current package separates observed annotation
+from sequence-supported hidden-segment, shifted-splice-site and joined-exon
+candidates.
 
 References:
 
@@ -31,9 +32,9 @@ References:
 
 GenePainter maps intron positions and intron phases onto alignments to study
 gene-structure conservation and intron gain/loss. INSIPHY uses the same
-biological signal at a smaller structural unit: intron/exon/CDS phase and
-position inform whether internal segments are homologous and whether role shifts
-suggest exonization or loss of coding/exonic role.
+biological signal at a smaller structural unit: intron/exon/CDS phase, splice
+motif and position inform whether internal segments are homologous and whether
+role shifts suggest exonization or loss of coding/exonic role.
 
 Reference: https://genepainter.motorprotein.de/
 

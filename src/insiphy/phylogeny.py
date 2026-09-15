@@ -3,7 +3,7 @@
 from collections import defaultdict
 
 from .io import norm_state, read_tsv, to_float, write_tsv
-from .tree import SpeciesTree, discrete_log_likelihood, sankoff
+from .tree import SpeciesTree, discrete_log_likelihood, fit_discrete_ctmc, sankoff
 
 
 EXONIC = {"CDS", "UTR", "noncoding_exon", "exon"}
@@ -32,9 +32,10 @@ def role_from_occurrences(rows):
     return "unknown"
 
 
-def add_character(tree, layer, object_id, tips, states, state_rows, branch_rows, model_score_rows):
+def add_character(tree, layer, object_id, tips, states, state_rows, branch_rows, model_score_rows, model_fit_rows):
     score, probs, edges = sankoff(tree, tips, states, layer)
     log_likelihood = discrete_log_likelihood(tree, tips, states, layer)
+    fit = fit_discrete_ctmc(tree, tips, states, layer)
     model_score_rows.append(
         {
             "layer": layer,
@@ -44,6 +45,21 @@ def add_character(tree, layer, object_id, tips, states, state_rows, branch_rows,
             "log_likelihood": f"{log_likelihood:.6g}",
             "state_count": len(states),
             "observed_tip_count": sum(1 for value in tips.values() if norm_state(value) != "unknown"),
+            "fitted_rate": f"{fit['rate']:.6g}",
+            "aic": f"{fit['aic']:.6g}",
+            "bic": f"{fit['bic']:.6g}",
+        }
+    )
+    model_fit_rows.append(
+        {
+            "layer": layer,
+            "object_id": object_id,
+            "model": fit["model"],
+            "fitted_rate": f"{fit['rate']:.6g}",
+            "log_likelihood": f"{fit['log_likelihood']:.6g}",
+            "aic": f"{fit['aic']:.6g}",
+            "bic": f"{fit['bic']:.6g}",
+            "observed_tip_count": fit["observed_tip_count"],
         }
     )
     for row in probs:
@@ -82,6 +98,8 @@ def classify_branch_event(layer, change):
     if layer == "copy_multiplicity":
         if dst == "tandem_multi_copy":
             return "copy_duplication_or_expansion"
+        if dst in {"same_contig_multi_copy", "dispersed_multi_copy"}:
+            return "copy_duplication_or_relocation"
         if src == "tandem_multi_copy" and dst == "single_copy":
             return "copy_loss_or_collapse"
         return "copy_multiplicity_shift"
@@ -94,6 +112,7 @@ def infer_phylogeny(input_dir, output_dir):
     adjacencies = read_tsv(f"{input_dir}/physical_adjacencies.tsv", ["adjacency_id", "family_id", "species", "gene_copy_id", "left_occurrence_id", "right_occurrence_id", "adjacency_status"])
     tree = SpeciesTree(read_tsv(f"{input_dir}/species_tree.tsv", ["node_id", "parent_id", "label"]))
     copy_context = read_tsv(f"{input_dir}/copy_context.tsv", ["family_id", "species", "gene_copy_id", "copy_class"], optional=True)
+    copy_relationships = read_tsv(f"{input_dir}/copy_relationships.tsv", ["family_id", "species", "query_copy_id", "subject_copy_id", "relationship_class"], optional=True)
     annotation_candidates = read_tsv(f"{output_dir}/annotation_completion_candidates.tsv", ["evidence_id", "completion_call"], optional=True)
 
     occ_by_id = {row["occurrence_id"]: row for row in occurrences}
@@ -109,6 +128,7 @@ def infer_phylogeny(input_dir, output_dir):
     state_rows = []
     branch_rows = []
     model_score_rows = []
+    model_fit_rows = []
     object_family = {}
     for hsg, occ_ids in sorted(occ_by_hsg.items()):
         by_species = defaultdict(list)
@@ -119,8 +139,8 @@ def infer_phylogeny(input_dir, output_dir):
                 by_species[occ["species"]].append(occ)
                 families.add(occ["family_id"])
         object_family[hsg] = ";".join(sorted(families)) if families else hsg
-        add_character(tree, "segment_presence", hsg, {sp: state_from_occurrences(rows) for sp, rows in by_species.items()}, {"present", "absent"}, state_rows, branch_rows, model_score_rows)
-        add_character(tree, "role_state", hsg, {sp: role_from_occurrences(rows) for sp, rows in by_species.items()}, {"absent", "CDS", "exon_or_UTR", "intron_or_noncoding", "unknown"}, state_rows, branch_rows, model_score_rows)
+        add_character(tree, "segment_presence", hsg, {sp: state_from_occurrences(rows) for sp, rows in by_species.items()}, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows)
+        add_character(tree, "role_state", hsg, {sp: role_from_occurrences(rows) for sp, rows in by_species.items()}, {"absent", "CDS", "exon_or_UTR", "intron_or_noncoding", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows)
 
     graph_edges = []
     adj_by_pair = defaultdict(lambda: defaultdict(list))
@@ -154,7 +174,7 @@ def infer_phylogeny(input_dir, output_dir):
         for species, vals in by_species.items():
             vals = [norm_state(value) for value in vals]
             tips[species] = "present" if "present" in vals else "absent" if vals and all(value == "absent" for value in vals) else "unknown"
-        add_character(tree, "adjacency_state", pair_id, tips, {"present", "absent"}, state_rows, branch_rows, model_score_rows)
+        add_character(tree, "adjacency_state", pair_id, tips, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows)
 
     source_states_by_family_species = defaultdict(list)
     for key in sorted({(row["family_id"], row["species"], row["gene_copy_id"]) for row in occurrences}):
@@ -167,7 +187,7 @@ def infer_phylogeny(input_dir, output_dir):
         source_tips[family][species] = "multi_source" if "multi_source" in states else "single_source" if "single_source" in states else "unknown"
     for family, tips in sorted(source_tips.items()):
         object_family[family] = family
-        add_character(tree, "source_mixture", family, tips, {"single_source", "multi_source", "unknown"}, state_rows, branch_rows, model_score_rows)
+        add_character(tree, "source_mixture", family, tips, {"single_source", "multi_source", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows)
 
     copy_states_by_family_species = defaultdict(list)
     for row in copy_context:
@@ -176,6 +196,10 @@ def infer_phylogeny(input_dir, output_dir):
     for (family, species), states in copy_states_by_family_species.items():
         if "tandem_multi_copy" in states:
             copy_tips[family][species] = "tandem_multi_copy"
+        elif "same_contig_multi_copy" in states:
+            copy_tips[family][species] = "same_contig_multi_copy"
+        elif "dispersed_multi_copy" in states:
+            copy_tips[family][species] = "dispersed_multi_copy"
         elif "unresolved" in states:
             copy_tips[family][species] = "unresolved"
         elif "single_copy" in states:
@@ -184,10 +208,11 @@ def infer_phylogeny(input_dir, output_dir):
             copy_tips[family][species] = "unknown"
     for family, tips in sorted(copy_tips.items()):
         object_family[family] = family
-        add_character(tree, "copy_multiplicity", family, tips, {"single_copy", "tandem_multi_copy", "unresolved", "unknown"}, state_rows, branch_rows, model_score_rows)
+        add_character(tree, "copy_multiplicity", family, tips, {"single_copy", "tandem_multi_copy", "same_contig_multi_copy", "dispersed_multi_copy", "unresolved", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows)
 
-    hidden_support = sum(to_float(row.get("support_score")) for row in annotation_candidates if row.get("completion_call") == "hidden_segment_candidate")
-    hidden_count = sum(1 for row in annotation_candidates if row.get("completion_call") == "hidden_segment_candidate")
+    hidden_calls = {"hidden_segment_candidate", "shifted_splice_site_candidate", "joined_exon_candidate", "hidden_segment_with_frame_disruption"}
+    hidden_support = sum(to_float(row.get("support_score")) for row in annotation_candidates if row.get("completion_call") in hidden_calls)
+    hidden_count = sum(1 for row in annotation_candidates if row.get("completion_call") in hidden_calls)
     multi_source_count = sum(1 for tips in source_tips.values() for state in tips.values() if state == "multi_source")
     source_join_count = sum(1 for edge in graph_edges if edge["adjacency_status"] == "present" and edge["left_source_labels"] != "NA" and edge["right_source_labels"] != "NA" and edge["left_source_labels"] != edge["right_source_labels"])
 
@@ -234,6 +259,23 @@ def infer_phylogeny(input_dir, output_dir):
                     "alternative_explanation": "paralogy_or_homology_assignment_error_if_low_support",
                 }
             )
+    for row in copy_relationships:
+        rel = row.get("relationship_class", "")
+        if rel in {"tandem_duplication_candidate", "same_contig_duplication_candidate", "dispersed_or_retrocopy_candidate"}:
+            event_class = "retrocopy_or_dispersed_duplication_candidate" if rel == "dispersed_or_retrocopy_candidate" else "copy_duplication_or_expansion"
+            event_rows.append(
+                {
+                    "family_id": row["family_id"],
+                    "event_type": rel,
+                    "event_class": event_class,
+                    "evidence_layer": "copy_relationship_graph",
+                    "object_id": f"{row['species']}:{row['query_copy_id']}--{row['subject_copy_id']}",
+                    "branch_scope": "tip_copy_relationship_requires_phylogenetic_placement",
+                    "event_probability": row.get("synteny_score", "NA"),
+                    "change": rel,
+                    "alternative_explanation": "assembly_fragmentation_or_unresolved_paralogy_if_low_support",
+                }
+            )
 
     demo_summary = []
     for family in sorted({row["family_id"] for row in occurrences}):
@@ -250,8 +292,9 @@ def infer_phylogeny(input_dir, output_dir):
         )
 
     write_tsv(f"{output_dir}/ancestral_state_probabilities.tsv", state_rows, ["layer", "object_id", "score", "node_id", "node_label", "state", "probability", "is_parsimony_best"])
-    write_tsv(f"{output_dir}/branch_event_probabilities.tsv", branch_rows, ["layer", "object_id", "event_type", "parent_node", "child_node", "parent_label", "child_label", "status", "change", "event_probability"])
-    write_tsv(f"{output_dir}/character_model_scores.tsv", model_score_rows, ["layer", "object_id", "model", "parsimony_score", "log_likelihood", "state_count", "observed_tip_count"])
+    write_tsv(f"{output_dir}/branch_event_probabilities.tsv", branch_rows, ["layer", "object_id", "event_type", "parent_node", "child_node", "parent_label", "child_label", "branch_length", "status", "change", "event_probability"])
+    write_tsv(f"{output_dir}/character_model_scores.tsv", model_score_rows, ["layer", "object_id", "model", "parsimony_score", "log_likelihood", "state_count", "observed_tip_count", "fitted_rate", "aic", "bic"])
+    write_tsv(f"{output_dir}/model_fit.tsv", model_fit_rows, ["layer", "object_id", "model", "fitted_rate", "log_likelihood", "aic", "bic", "observed_tip_count"])
     write_tsv(f"{output_dir}/candidate_structural_events.tsv", event_rows, ["family_id", "event_type", "event_class", "evidence_layer", "object_id", "branch_scope", "event_probability", "change", "alternative_explanation"])
     write_tsv(f"{output_dir}/model_comparison.tsv", model_rows, ["comparison_id", "model", "score", "delta_vs_best", "interpretation"])
     write_tsv(f"{output_dir}/intragenic_graph_edges.tsv", graph_edges, ["family_id", "species", "gene_copy_id", "edge_id", "left_hsg", "right_hsg", "left_occurrence_id", "right_occurrence_id", "adjacency_status", "left_source_labels", "right_source_labels"])

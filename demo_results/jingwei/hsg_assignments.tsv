@@ -1,12 +1,12 @@
-homology_id	occurrence_id	family_id	species	gene_copy_id	source_label	support_type	confidence
-H_Adh_A	Dmel_Adh_A	jingwei	Dmel	Adh_source_copy	Adh_source	curated_alignment	high
-H_Adh_A	Dsim_Adh_A	jingwei	Dsim	Adh_source_copy	Adh_source	curated_alignment	high
-H_Adh_A	Dere_Adh_A	jingwei	Dere	Adh_source_copy	Adh_source	curated_alignment	high
-H_yande_Y	Dmel_yande_Y	jingwei	Dmel	yande_source_copy	yande_source	curated_alignment	high
-H_yande_Y	Dsim_yande_Y	jingwei	Dsim	yande_source_copy	yande_source	curated_alignment	high
-H_yande_Y	Dere_yande_Y	jingwei	Dere	yande_source_copy	yande_source	curated_alignment	high
-H_yande_Y	Dyak_jgw_Y	jingwei	Dyak	jgw_copy	yande_source	curated_alignment	high
-H_Adh_A	Dyak_jgw_A	jingwei	Dyak	jgw_copy	Adh_source	curated_alignment	high
-H_yande_Y	Dtei_jgw_Y	jingwei	Dtei	jgw_copy	yande_source	curated_alignment	high
-H_Adh_A	Dtei_jgw_A	jingwei	Dtei	jgw_copy	Adh_source	curated_alignment	high
-H_yande_Y	Dyak_hidden_Y2	jingwei	Dyak	jgw_copy	yande_source	sequence_synteny_hidden	medium
+homology_id	occurrence_id	family_id	species	gene_copy_id	source_label	support_type	confidence	membership_score	membership_call
+H_Adh_A	Dmel_Adh_A	jingwei	Dmel	Adh_source_copy	Adh_source	curated_alignment	high	0.625	ambiguous_member
+H_Adh_A	Dsim_Adh_A	jingwei	Dsim	Adh_source_copy	Adh_source	curated_alignment	high	0.375	ambiguous_member
+H_Adh_A	Dere_Adh_A	jingwei	Dere	Adh_source_copy	Adh_source	curated_alignment	high	0.375	ambiguous_member
+H_yande_Y	Dmel_yande_Y	jingwei	Dmel	yande_source_copy	yande_source	curated_alignment	high	0.625	ambiguous_member
+H_yande_Y	Dsim_yande_Y	jingwei	Dsim	yande_source_copy	yande_source	curated_alignment	high	0.375	ambiguous_member
+H_yande_Y	Dere_yande_Y	jingwei	Dere	yande_source_copy	yande_source	curated_alignment	high	0.375	ambiguous_member
+H_yande_Y	Dyak_jgw_Y	jingwei	Dyak	jgw_copy	yande_source	curated_alignment	high	0.5	ambiguous_member
+H_Adh_A	Dyak_jgw_A	jingwei	Dyak	jgw_copy	Adh_source	curated_alignment	high	0.5	ambiguous_member
+H_yande_Y	Dtei_jgw_Y	jingwei	Dtei	jgw_copy	yande_source	curated_alignment	high	0.5	ambiguous_member
+H_Adh_A	Dtei_jgw_A	jingwei	Dtei	jgw_copy	Adh_source	curated_alignment	high	0.5	ambiguous_member
+H_yande_Y	Dyak_hidden_Y2	jingwei	Dyak	jgw_copy	yande_source	sequence_synteny_hidden	medium	0.5	ambiguous_member

@@ -1,13 +1,13 @@
-homology_id	occurrence_id	family_id	species	gene_copy_id	source_label	support_type	confidence
-H_Anx_A	Dyak_AnxB10_A	sdic	Dyak	AnxB10_source	AnxB10_source	curated_alignment	high
-H_Anx_A	Dsim_AnxB10_A	sdic	Dsim	AnxB10_source	AnxB10_source	curated_alignment	high
-H_Anx_A	Dmel_AnxB10_A	sdic	Dmel	AnxB10_source	AnxB10_source	curated_alignment	high
-H_sw_S	Dyak_sw_S	sdic	Dyak	sw_source	sw_source	curated_alignment	high
-H_sw_S	Dsim_sw_S	sdic	Dsim	sw_source	sw_source	curated_alignment	high
-H_sw_S	Dmel_sw_S	sdic	Dmel	sw_source	sw_source	curated_alignment	high
-H_Anx_A	Dmel_sdic_A1	sdic	Dmel	Sdic_copy1	AnxB10_source	curated_alignment	high
-H_sdic_I	Dmel_sdic_I1	sdic	Dmel	Sdic_copy1	sw_intronic_source	sequence_synteny_hidden	medium
-H_sw_S	Dmel_sdic_S1	sdic	Dmel	Sdic_copy1	sw_source	curated_alignment	high
-H_Anx_A	Dmel_sdic_A2	sdic	Dmel	Sdic_copy2	AnxB10_source	curated_alignment	medium
-H_sw_S	Dmel_sdic_S2	sdic	Dmel	Sdic_copy2	sw_source	curated_alignment	medium
-H_sdic_I	Dsim_hidden_I	sdic	Dsim	sw_source	sw_intronic_source	sequence_synteny_hidden	medium
+homology_id	occurrence_id	family_id	species	gene_copy_id	source_label	support_type	confidence	membership_score	membership_call
+H_Anx_A	Dyak_AnxB10_A	sdic	Dyak	AnxB10_source	AnxB10_source	curated_alignment	high	0.375	ambiguous_member
+H_Anx_A	Dsim_AnxB10_A	sdic	Dsim	AnxB10_source	AnxB10_source	curated_alignment	high	0.375	ambiguous_member
+H_Anx_A	Dmel_AnxB10_A	sdic	Dmel	AnxB10_source	AnxB10_source	curated_alignment	high	0.625	ambiguous_member
+H_sw_S	Dyak_sw_S	sdic	Dyak	sw_source	sw_source	curated_alignment	high	0.375	ambiguous_member
+H_sw_S	Dsim_sw_S	sdic	Dsim	sw_source	sw_source	curated_alignment	high	0.375	ambiguous_member
+H_sw_S	Dmel_sw_S	sdic	Dmel	sw_source	sw_source	curated_alignment	high	0.625	ambiguous_member
+H_Anx_A	Dmel_sdic_A1	sdic	Dmel	Sdic_copy1	AnxB10_source	curated_alignment	high	0.5	ambiguous_member
+H_sdic_I	Dmel_sdic_I1	sdic	Dmel	Sdic_copy1	sw_intronic_source	sequence_synteny_hidden	medium	0.5	ambiguous_member
+H_sw_S	Dmel_sdic_S1	sdic	Dmel	Sdic_copy1	sw_source	curated_alignment	high	0.5	ambiguous_member
+H_Anx_A	Dmel_sdic_A2	sdic	Dmel	Sdic_copy2	AnxB10_source	curated_alignment	medium	0.5	ambiguous_member
+H_sw_S	Dmel_sdic_S2	sdic	Dmel	Sdic_copy2	sw_source	curated_alignment	medium	0.5	ambiguous_member
+H_sdic_I	Dsim_hidden_I	sdic	Dsim	sw_source	sw_intronic_source	sequence_synteny_hidden	medium	0.5	ambiguous_member

@@ -11,7 +11,29 @@ def support_score(row):
     right = to_float(row.get("right_synteny_score"))
     motif = to_float(row.get("splice_motif_score"))
     phase_bonus = 0.05 if row.get("phase_compatibility") == "compatible" else 0.0
-    return min(1.0, 0.40 * seq + 0.20 * left + 0.20 * right + 0.15 * motif + phase_bonus)
+    frame_bonus = 0.05 if row.get("frame_status") in {"coding_frame_preserved", "coding_frame_annotated"} else 0.0
+    return min(1.0, 0.36 * seq + 0.18 * left + 0.18 * right + 0.18 * motif + phase_bonus + frame_bonus)
+
+
+def completion_call(row, score, threshold):
+    status = row.get("evidence_status", "ambiguous")
+    event = row.get("inferred_event", "")
+    frame = row.get("frame_status", "")
+    if status == "supports_hidden_segment" and score >= threshold:
+        if event == "shifted_splice_site":
+            return "shifted_splice_site_candidate"
+        if event == "intron_deletion_joined_exon":
+            return "joined_exon_candidate"
+        if frame == "frameshift_or_stop_risk":
+            return "hidden_segment_with_frame_disruption"
+        return "hidden_segment_candidate"
+    if status == "conflicts_annotation" and score >= threshold:
+        return "annotation_conflict_candidate"
+    if status == "supports_annotation":
+        return "supports_annotation"
+    if status == "supports_absence" and score >= threshold:
+        return "supports_true_absence"
+    return "ambiguous_evidence"
 
 
 def complete_annotation(input_dir, output_dir, threshold=0.55):
@@ -25,14 +47,7 @@ def complete_annotation(input_dir, output_dir, threshold=0.55):
     for row in evidence:
         score = support_score(row)
         status = row.get("evidence_status", "ambiguous")
-        if status == "supports_hidden_segment" and score >= threshold:
-            call = "hidden_segment_candidate"
-        elif status == "conflicts_annotation" and score >= threshold:
-            call = "annotation_conflict_candidate"
-        elif status == "supports_annotation":
-            call = "supports_annotation"
-        else:
-            call = "ambiguous_evidence"
+        call = completion_call(row, score, threshold)
         summary[call] += 1
         rows.append(
             {
@@ -47,12 +62,14 @@ def complete_annotation(input_dir, output_dir, threshold=0.55):
                 "support_score": f"{score:.6g}",
                 "completion_call": call,
                 "evidence_status": status,
+                "inferred_event": row.get("inferred_event", "NA"),
+                "frame_status": row.get("frame_status", "NA"),
             }
         )
     write_tsv(
         f"{output_dir}/annotation_completion_candidates.tsv",
         rows,
-        ["evidence_id", "family_id", "species", "gene_copy_id", "homology_id", "interval", "annotation_status", "inferred_role", "support_score", "completion_call", "evidence_status"],
+        ["evidence_id", "family_id", "species", "gene_copy_id", "homology_id", "interval", "annotation_status", "inferred_role", "support_score", "completion_call", "evidence_status", "inferred_event", "frame_status"],
     )
     write_tsv(
         f"{output_dir}/annotation_completion_summary.tsv",

@@ -34,15 +34,19 @@ def main(argv=None):
     extract.add_argument("--gene-copy-id", required=True)
     extract.add_argument("--output-dir", required=True)
     extract.add_argument("--append", action="store_true")
+    extract.add_argument("--transcript-policy", choices=["canonical", "all"], default="canonical")
+    extract.add_argument("--canonical-rule", choices=["longest_cds", "longest_span"], default="longest_cds")
 
     derive = sub.add_parser("derive-tables")
     derive.add_argument("--input-dir", required=True)
     derive.add_argument("--output-dir")
     derive.add_argument("--identity-threshold", type=float, default=0.7)
+    derive.add_argument("--distance-table")
 
     sim = sub.add_parser("simulate")
     sim.add_argument("--output-dir", required=True)
     sim.add_argument("--seed", type=int, default=7)
+    sim.add_argument("--scenario", choices=["compound", "negative_control", "annotation_dropout"], default="compound")
 
     bench = sub.add_parser("benchmark")
     bench.add_argument("--input-dir", required=True)
@@ -61,6 +65,8 @@ def main(argv=None):
     case.add_argument("--output-dir", required=True)
     case.add_argument("--identity-threshold", type=float, default=0.7)
     case.add_argument("--species-tree")
+    case.add_argument("--transcript-policy", choices=["canonical", "all"], default="canonical")
+    case.add_argument("--canonical-rule", choices=["longest_cds", "longest_span"], default="longest_cds")
 
     hidden = sub.add_parser("scan-hidden-segments")
     hidden.add_argument("--source-fasta", required=True)
@@ -79,17 +85,17 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
     if args.command == "extract-gene":
-        extract_gene(args.genome, args.annotation, args.gene_id, args.family_id, args.species, args.gene_copy_id, args.output_dir, args.append)
+        extract_gene(args.genome, args.annotation, args.gene_id, args.family_id, args.species, args.gene_copy_id, args.output_dir, args.append, args.transcript_policy, args.canonical_rule)
     elif args.command == "derive-tables":
-        derive_tables(args.input_dir, args.output_dir, args.identity_threshold)
+        derive_tables(args.input_dir, args.output_dir, args.identity_threshold, args.distance_table)
     elif args.command == "simulate":
-        simulate_dataset(args.output_dir, args.seed)
+        simulate_dataset(args.output_dir, args.seed, args.scenario)
     elif args.command == "benchmark":
         benchmark_events(args.input_dir, args.output_dir)
     elif args.command == "inspect-annotation":
         inspect_annotation(args.annotation, args.output_dir, args.query, args.alias_file, args.species, args.case_id)
     elif args.command == "build-case":
-        build_case(args.manifest, args.output_dir, args.identity_threshold, args.species_tree)
+        build_case(args.manifest, args.output_dir, args.identity_threshold, args.species_tree, args.transcript_policy, args.canonical_rule)
     elif args.command == "scan-hidden-segments":
         scan_hidden_segments(args.source_fasta, args.target_fasta, args.output_dir, args.family_id, args.species, args.gene_copy_id, args.min_identity, args.min_coverage)
     elif args.command == "complete-annotation":

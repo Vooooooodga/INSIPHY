@@ -11,11 +11,13 @@ class SpeciesTree:
         self.parent = {}
         self.children = defaultdict(list)
         self.label = {}
+        self.length = {}
         for row in rows:
             node = row["node_id"]
             parent = row.get("parent_id", "")
             self.parent[node] = parent
             self.label[node] = row.get("label", node) or node
+            self.length[node] = float(row.get("branch_length") or row.get("length") or row.get("distance") or 1.0)
             if parent:
                 self.children[parent].append(node)
         roots = [node for node, parent in self.parent.items() if not parent]
@@ -52,6 +54,9 @@ class SpeciesTree:
             if parent:
                 yield parent, child
 
+    def branch_length(self, child):
+        return max(1e-9, float(self.length.get(child, 1.0)))
+
 
 def transition_cost(layer, src, dst):
     if src == dst:
@@ -73,15 +78,43 @@ def transition_cost(layer, src, dst):
     return 1.0
 
 
-def transition_probability(layer, src, dst, states, rate=0.15):
+def _transition_probability_approx(layer, src, dst, states, rate=0.15, branch_length=1.0):
+    effective_rate = min(0.95, max(0.0, rate * branch_length))
     if src == dst:
-        return max(1e-12, 1.0 - rate)
+        return max(1e-12, 1.0 - effective_rate)
     weights = []
     for state in states:
         if state != src:
             weights.append(math.exp(-transition_cost(layer, src, state)))
     denom = sum(weights) or 1.0
-    return max(1e-12, rate * math.exp(-transition_cost(layer, src, dst)) / denom)
+    return max(1e-12, effective_rate * math.exp(-transition_cost(layer, src, dst)) / denom)
+
+
+def transition_matrix(layer, states, rate=0.15, branch_length=1.0):
+    states = tuple(sorted(states))
+    try:
+        import numpy as np  # type: ignore
+        from scipy.linalg import expm  # type: ignore
+
+        q = np.zeros((len(states), len(states)))
+        for i, src in enumerate(states):
+            weights = []
+            for dst in states:
+                weights.append(0.0 if dst == src else math.exp(-transition_cost(layer, src, dst)))
+            denom = sum(weights) or 1.0
+            for j, dst in enumerate(states):
+                if src == dst:
+                    continue
+                q[i, j] = rate * weights[j] / denom
+            q[i, i] = -sum(q[i, j] for j in range(len(states)) if j != i)
+        p = expm(q * branch_length)
+        return {(src, dst): max(1e-12, float(p[i, j])) for i, src in enumerate(states) for j, dst in enumerate(states)}
+    except Exception:
+        return {(src, dst): _transition_probability_approx(layer, src, dst, states, rate, branch_length) for src in states for dst in states}
+
+
+def transition_probability(layer, src, dst, states, rate=0.15, branch_length=1.0):
+    return transition_matrix(layer, states, rate, branch_length)[(src, dst)]
 
 
 def discrete_log_likelihood(tree, tips_by_label, states, layer, rate=0.15):
@@ -105,14 +138,34 @@ def discrete_log_likelihood(tree, tips_by_label, states, layer, rate=0.15):
         for state in states:
             prob = 1.0
             for child in tree.children[node]:
+                branch_length = tree.branch_length(child)
                 child_sum = 0.0
+                matrix = transition_matrix(layer, states, rate, branch_length)
                 for child_state in states:
-                    child_sum += transition_probability(layer, state, child_state, states, rate) * likelihoods[child][child_state]
+                    child_sum += matrix[(state, child_state)] * likelihoods[child][child_state]
                 prob *= max(child_sum, 1e-300)
             likelihoods[node][state] = prob
     root_prior = 1.0 / max(1, len(states))
     total = sum(root_prior * likelihoods[tree.root][state] for state in states)
     return math.log(max(total, 1e-300))
+
+
+def fit_discrete_ctmc(tree, tips_by_label, states, layer):
+    rates = [0.005, 0.01, 0.03, 0.05, 0.08, 0.12, 0.18, 0.25, 0.4, 0.65, 1.0, 1.5]
+    scored = [(discrete_log_likelihood(tree, tips_by_label, states, layer, rate), rate) for rate in rates]
+    log_likelihood, rate = max(scored, key=lambda item: item[0])
+    observed = sum(1 for value in tips_by_label.values() if norm_state(value) != "unknown")
+    k = 1
+    aic = 2 * k - 2 * log_likelihood
+    bic = math.log(max(1, observed)) * k - 2 * log_likelihood
+    return {
+        "model": "ctmc_mk_branch_length",
+        "rate": rate,
+        "log_likelihood": log_likelihood,
+        "aic": aic,
+        "bic": bic,
+        "observed_tip_count": observed,
+    }
 
 
 def sankoff(tree, tips_by_label, states, layer):
@@ -135,7 +188,7 @@ def sankoff(tree, tips_by_label, states, layer):
             continue
         for state in states:
             scores[node][state] = sum(
-                min(scores[child][child_state] + transition_cost(layer, state, child_state) for child_state in states)
+                min(scores[child][child_state] + tree.branch_length(child) * transition_cost(layer, state, child_state) for child_state in states)
                 for child in tree.children[node]
             )
 
@@ -183,6 +236,7 @@ def sankoff(tree, tips_by_label, states, layer):
                 "child_node": child,
                 "parent_label": tree.label[parent],
                 "child_label": tree.label[child],
+                "branch_length": f"{tree.branch_length(child):.6g}",
                 "status": status,
                 "change": change,
                 "event_probability": f"{probability:.6g}",

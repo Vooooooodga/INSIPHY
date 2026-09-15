@@ -14,7 +14,8 @@ def evaluate_baselines(input_dir, output_dir):
     annotation = read_tsv(output_dir / "annotation_completion_candidates.tsv", ["completion_call"], optional=True)
     events = read_tsv(output_dir / "candidate_structural_events.tsv", ["event_class"], optional=True)
 
-    hidden = sum(1 for row in annotation if row.get("completion_call") == "hidden_segment_candidate")
+    hidden_calls = {"hidden_segment_candidate", "shifted_splice_site_candidate", "joined_exon_candidate", "hidden_segment_with_frame_disruption"}
+    hidden = sum(1 for row in annotation if row.get("completion_call") in hidden_calls)
     conflicts = sum(1 for row in annotation if row.get("completion_call") == "annotation_conflict_candidate")
     mean_match = sum(to_float(row.get("total_score")) for row in matches) / max(1, len(matches))
     low_match = sum(1 for row in matches if to_float(row.get("total_score")) < 0.55)

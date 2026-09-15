@@ -3,6 +3,7 @@
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from .alignment import local_alignment_stats, revcomp as reverse_complement, splice_motif_score
 from .io import parse_fasta, read_tsv, write_tsv
 from .preprocess import extract_gene, derive_tables, read_annotation
 
@@ -130,7 +131,7 @@ def write_provenance(manifest_rows, output_dir):
     write_tsv(Path(output_dir) / "case_provenance.tsv", rows, fields)
 
 
-def build_case(manifest, output_dir, identity_threshold=0.7, species_tree=None):
+def build_case(manifest, output_dir, identity_threshold=0.7, species_tree=None, transcript_policy="canonical", canonical_rule="longest_cds"):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     rows = read_tsv(manifest, ["case_id", "species", "family_id", "gene_id", "gene_copy_id", "genome_fasta", "annotation_file"])
@@ -164,6 +165,8 @@ def build_case(manifest, output_dir, identity_threshold=0.7, species_tree=None):
                 row["gene_copy_id"],
                 output_dir,
                 append=appended,
+                transcript_policy=transcript_policy,
+                canonical_rule=canonical_rule,
             )
             appended = True
             after = len(read_tsv(output_dir / "segment_occurrences.tsv", optional=True))
@@ -201,8 +204,7 @@ def build_case(manifest, output_dir, identity_threshold=0.7, species_tree=None):
 
 
 def revcomp(seq):
-    table = str.maketrans("ACGTNacgtn", "TGCANtgcan")
-    return seq.translate(table)[::-1].upper()
+    return reverse_complement(seq)
 
 
 def best_ungapped_hit(query, target):
@@ -235,18 +237,27 @@ def scan_hidden_segments(source_fasta, target_fasta, output_dir, family_id="NA",
         best = None
         for target_id, target_seq in sorted(targets.items()):
             for strand, qseq in [("+", query_seq), ("-", revcomp(query_seq))]:
-                hit = best_ungapped_hit(qseq, target_seq)
+                hit = local_alignment_stats(qseq, target_seq)
+                target_fragment = target_seq[max(0, hit.target_start - 1) : hit.target_end]
+                motif, donor, acceptor = splice_motif_score(target_fragment)
+                frame_status = "coding_frame_preserved" if (hit.query_end - hit.query_start + 1) % 3 == 0 else "frameshift_or_stop_risk"
                 row = {
                     "family_id": family_id,
                     "species": species,
                     "gene_copy_id": gene_copy_id,
                     "query_id": query_id,
                     "target_id": target_id,
-                    "start": hit["start"],
-                    "end": hit["end"],
+                    "start": hit.target_start,
+                    "end": hit.target_end,
                     "strand": strand,
-                    "identity": hit["identity"],
-                    "coverage": hit["coverage"],
+                    "identity": hit.identity,
+                    "coverage": hit.coverage,
+                    "alignment_score": hit.score,
+                    "alignment_cigar": hit.cigar,
+                    "splice_motif_score": motif,
+                    "splice_donor": donor,
+                    "splice_acceptor": acceptor,
+                    "frame_status": frame_status,
                 }
                 if best is None or (row["identity"], row["coverage"]) > (best["identity"], best["coverage"]):
                     best = row
@@ -255,10 +266,12 @@ def scan_hidden_segments(source_fasta, target_fasta, output_dir, family_id="NA",
         best["support_call"] = "hidden_segment_candidate" if best["identity"] >= min_identity and best["coverage"] >= min_coverage else "low_support"
         best["identity"] = f"{best['identity']:.6g}"
         best["coverage"] = f"{best['coverage']:.6g}"
+        best["alignment_score"] = f"{best['alignment_score']:.6g}"
+        best["splice_motif_score"] = f"{best['splice_motif_score']:.6g}"
         rows.append(best)
     write_tsv(
         output_dir / "hidden_segment_scan.tsv",
         rows,
-        ["family_id", "species", "gene_copy_id", "query_id", "target_id", "start", "end", "strand", "identity", "coverage", "support_call"],
+        ["family_id", "species", "gene_copy_id", "query_id", "target_id", "start", "end", "strand", "identity", "coverage", "alignment_score", "alignment_cigar", "splice_motif_score", "splice_donor", "splice_acceptor", "frame_status", "support_call"],
     )
     return rows

@@ -32,6 +32,10 @@ INSIPHY implements three linked tasks:
 3. fixed-tree structural inference for segment presence, role, adjacency,
    source mixture, and copy multiplicity.
 
+Version 0.2 adds transcript-aware extraction, splice/frame-aware hidden segment
+scans, graph-based homologous segment correspondence, copy relationship calls
+and branch-length-aware CTMC/Mk model fitting.
+
 The first implementation focuses on duplicated and chimeric genes. The bundled
 demos are curated method fixtures:
 
@@ -47,11 +51,11 @@ accession-level reanalyses.
 Run the bundled demos without installation:
 
 ```bash
-PYTHONPATH=src python -m insiphy.cli run \
+PYTHONPATH=src python3 -m insiphy.cli run \
   --input-dir demos/jingwei \
   --output-dir demo_results/jingwei
 
-PYTHONPATH=src python -m insiphy.cli run \
+PYTHONPATH=src python3 -m insiphy.cli run \
   --input-dir demos/sdic \
   --output-dir demo_results/sdic
 ```
@@ -59,7 +63,7 @@ PYTHONPATH=src python -m insiphy.cli run \
 Prepare tables from a genome FASTA and GFF/GTF annotation:
 
 ```bash
-PYTHONPATH=src python -m insiphy.cli extract-gene \
+PYTHONPATH=src python3 -m insiphy.cli extract-gene \
   --genome genome.fa \
   --annotation annotation.gff3 \
   --gene-id GeneA \
@@ -68,7 +72,7 @@ PYTHONPATH=src python -m insiphy.cli extract-gene \
   --gene-copy-id SpeciesA_GeneA \
   --output-dir work/family_a
 
-PYTHONPATH=src python -m insiphy.cli derive-tables \
+PYTHONPATH=src python3 -m insiphy.cli derive-tables \
   --input-dir work/family_a \
   --identity-threshold 0.7
 ```
@@ -76,7 +80,7 @@ PYTHONPATH=src python -m insiphy.cli derive-tables \
 Add `species_tree.tsv`, then run:
 
 ```bash
-PYTHONPATH=src python -m insiphy.cli run \
+PYTHONPATH=src python3 -m insiphy.cli run \
   --input-dir work/family_a \
   --output-dir results/family_a
 ```
@@ -84,21 +88,21 @@ PYTHONPATH=src python -m insiphy.cli run \
 Run local tests:
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests
+PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
 Run a small simulated benchmark:
 
 ```bash
-PYTHONPATH=src python -m insiphy.cli simulate \
+PYTHONPATH=src python3 -m insiphy.cli simulate \
   --output-dir simulated/sim_gene \
   --seed 7
 
-PYTHONPATH=src python -m insiphy.cli run \
+PYTHONPATH=src python3 -m insiphy.cli run \
   --input-dir simulated/sim_gene \
   --output-dir simulated/sim_gene_results
 
-PYTHONPATH=src python -m insiphy.cli benchmark \
+PYTHONPATH=src python3 -m insiphy.cli benchmark \
   --input-dir simulated/sim_gene \
   --output-dir simulated/sim_gene_results
 ```
@@ -106,17 +110,17 @@ PYTHONPATH=src python -m insiphy.cli benchmark \
 Prepare a real case from curated local genome and annotation files:
 
 ```bash
-PYTHONPATH=src python -m insiphy.cli inspect-annotation \
+PYTHONPATH=src python3 -m insiphy.cli inspect-annotation \
   --annotation annotation.gff3 \
   --query jingwei \
   --output-dir work/inspect
 
-PYTHONPATH=src python -m insiphy.cli build-case \
+PYTHONPATH=src python3 -m insiphy.cli build-case \
   --manifest examples/real_cases/jingwei/manifest.tsv \
   --species-tree examples/real_cases/jingwei/species_tree.tsv \
   --output-dir work/jingwei_case
 
-PYTHONPATH=src python -m insiphy.cli scan-hidden-segments \
+PYTHONPATH=src python3 -m insiphy.cli scan-hidden-segments \
   --source-fasta source_segments.fa \
   --target-fasta target_gene_interval.fa \
   --output-dir work/hidden_scan
@@ -126,12 +130,17 @@ PYTHONPATH=src python -m insiphy.cli scan-hidden-segments \
 
 - `annotation_completion_candidates.tsv`
 - `hsg_assignments.tsv`
+- `hsg_graph_edges.tsv`
 - `segment_conservation.tsv`
 - `segment_correspondence.tsv`
+- `transcript_paths.tsv`
+- `intron_sites.tsv`
+- `copy_relationships.tsv`
 - `ancestral_state_probabilities.tsv`
 - `branch_event_probabilities.tsv`
 - `candidate_structural_events.tsv`
 - `character_model_scores.tsv`
+- `model_fit.tsv`
 - `model_comparison.tsv`
 - `baseline_comparison.tsv`
 - `intragenic_graph_edges.tsv`
@@ -141,7 +150,8 @@ PYTHONPATH=src python -m insiphy.cli scan-hidden-segments \
 
 `candidate_structural_events.tsv` includes a biological `event_class` field,
 so low-level state changes can be interpreted as exonization, source joining,
-new adjacency, segment loss/gain or copy expansion candidates.
+new adjacency, segment loss/gain, copy expansion, retrocopy-like or annotation
+artifact candidates.
 
 Biological sources and demo scope are documented in `docs/data_sources.md`.
 Input formats and method details are documented in `docs/input_format.md` and

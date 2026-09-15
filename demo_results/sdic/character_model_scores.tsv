@@ -1,12 +1,12 @@
-layer	object_id	model	parsimony_score	log_likelihood	state_count	observed_tip_count
-segment_presence	H_Anx_A	likelihood_like_discrete_character	0	-1.30195	2	3
-role_state	H_Anx_A	likelihood_like_discrete_character	0	-2.24938	5	3
-segment_presence	H_sdic_I	likelihood_like_discrete_character	0	-0.693147	2	1
-role_state	H_sdic_I	likelihood_like_discrete_character	2	-4.47877	5	2
-segment_presence	H_sw_S	likelihood_like_discrete_character	0	-1.30195	2	3
-role_state	H_sw_S	likelihood_like_discrete_character	0	-2.24938	5	3
-adjacency_state	H_Anx_A__H_sdic_I	likelihood_like_discrete_character	0	-0.693147	2	1
-adjacency_state	H_Anx_A__H_sw_S	likelihood_like_discrete_character	2	-2.75279	2	3
-adjacency_state	H_sdic_I__H_sw_S	likelihood_like_discrete_character	0	-0.693147	2	1
-source_mixture	sdic	likelihood_like_discrete_character	2	-4.45729	3	3
-copy_multiplicity	sdic	likelihood_like_discrete_character	1.5	-4.73017	4	3
+layer	object_id	model	parsimony_score	log_likelihood	state_count	observed_tip_count	fitted_rate	aic	bic
+segment_presence	H_Anx_A	likelihood_like_discrete_character	0	-1.30195	2	3	0.005	3.42634	2.52496
+role_state	H_Anx_A	likelihood_like_discrete_character	0	-2.24938	5	3	0.005	5.25896	4.35757
+segment_presence	H_sdic_I	likelihood_like_discrete_character	0	-0.693147	2	1	0.005	3.38629	1.38629
+role_state	H_sdic_I	likelihood_like_discrete_character	2	-4.47877	5	2	1	9.59724	8.29039
+segment_presence	H_sw_S	likelihood_like_discrete_character	0	-1.30195	2	3	0.005	3.42634	2.52496
+role_state	H_sw_S	likelihood_like_discrete_character	0	-2.24938	5	3	0.005	5.25896	4.35757
+adjacency_state	H_Anx_A__H_sdic_I	likelihood_like_discrete_character	0	-0.693147	2	1	0.005	3.38629	1.38629
+adjacency_state	H_Anx_A__H_sw_S	likelihood_like_discrete_character	2	-2.75279	2	3	0.4	6.24053	5.33914
+adjacency_state	H_sdic_I__H_sw_S	likelihood_like_discrete_character	0	-0.693147	2	1	0.005	3.38629	1.38629
+source_mixture	sdic	likelihood_like_discrete_character	2	-4.45729	3	3	0.65	8.79077	7.88939
+copy_multiplicity	sdic	likelihood_like_discrete_character	1.5	-5.69743	6	3	0.4	12.7514	11.85

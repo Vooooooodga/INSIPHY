@@ -62,11 +62,17 @@ class PreprocessTests(unittest.TestCase):
             adj = read_tsv(out / "physical_adjacencies.tsv")
             hom = read_tsv(out / "segment_homology.tsv")
             matches = read_tsv(out / "segment_matches.tsv")
+            paths = read_tsv(out / "transcript_paths.tsv")
+            introns = read_tsv(out / "intron_sites.tsv")
+            copy_context = read_tsv(out / "copy_context.tsv")
             self.assertEqual(len(occ), 3)
             self.assertEqual(len(adj), 2)
             self.assertEqual({row["role"] for row in occ}, {"CDS", "intron"})
             self.assertTrue(hom)
             self.assertIn("phase_score", matches[0])
+            self.assertTrue(paths)
+            self.assertEqual(introns[0]["phase_compatibility"], "incompatible")
+            self.assertIn("copy_subclass", copy_context[0])
 
 
 class SimulationBenchmarkTests(unittest.TestCase):
@@ -80,9 +86,26 @@ class SimulationBenchmarkTests(unittest.TestCase):
             benchmark_events(sim, out)
             truth = read_tsv(sim / "truth_events.tsv")
             bench = read_tsv(out / "benchmark_summary.tsv")
+            fit = read_tsv(out / "model_fit.tsv")
             self.assertTrue(truth)
             self.assertGreaterEqual(float(bench[0]["recall"]), 0.0)
             self.assertIn("precision", bench[0])
+            self.assertTrue(fit)
+            self.assertEqual(fit[0]["model"], "ctmc_mk_branch_length")
+
+    def test_annotation_dropout_negative_control(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            sim = tmp / "sim_dropout"
+            out = tmp / "out_dropout"
+            simulate_dataset(sim, seed=11, scenario="annotation_dropout")
+            run_all(sim, out)
+            benchmark_events(sim, out)
+            annot = read_tsv(out / "annotation_completion_candidates.tsv")
+            bench = read_tsv(out / "benchmark_summary.tsv")
+            self.assertIn("hidden_segment_candidate", {row["completion_call"] for row in annot})
+            self.assertEqual(bench[0]["truth_events"], "0")
+            self.assertEqual(bench[0]["called_events"], "0")
 
 
 class RealCasePreparationTests(unittest.TestCase):
@@ -154,6 +177,8 @@ class RealCasePreparationTests(unittest.TestCase):
             rows = read_tsv(out / "hidden_segment_scan.tsv")
             self.assertEqual(rows[0]["support_call"], "hidden_segment_candidate")
             self.assertGreaterEqual(float(rows[0]["identity"]), 0.9)
+            self.assertIn("alignment_cigar", rows[0])
+            self.assertIn("frame_status", rows[0])
 
 
 if __name__ == "__main__":

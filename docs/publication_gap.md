@@ -1,8 +1,9 @@
 # Publication Gap
 
-INSIPHY v0.1.0 is a runnable method scaffold. It is useful for demonstrating
-the method logic, but a manuscript-grade method requires stronger evidence in
-four areas.
+INSIPHY v0.2.0 is a runnable method prototype. It now includes transcript-aware
+extraction, graph-based segment correspondence and branch-length-aware CTMC/Mk
+fitting. A manuscript-grade method still requires stronger evidence in four
+areas.
 
 ## Current Strengths
 
@@ -13,6 +14,8 @@ four areas.
 - The outputs report candidate events in biological terms, including
   exonization, new adjacency, source joining and copy expansion.
 - Small jingwei and Sdic demos run in CI.
+- Annotation-dropout negative controls are represented in the simulator and
+  benchmark layer.
 
 ## Required Before Publication
 
@@ -29,6 +32,7 @@ four areas.
 
 ## Current Implementation Gap
 
-The package now includes simulation and benchmark commands, but these are
-minimal. They should be expanded to cover many trees, multiple event rates and
-controlled annotation dropout before claims about accuracy are made.
+The package now includes simulation and benchmark commands, including a first
+annotation-dropout negative control. They should be expanded to cover many
+trees, multiple event rates, real accession-level cases and independent
+simulation generators before claims about accuracy are made.
