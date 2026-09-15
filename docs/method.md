@@ -37,6 +37,8 @@ Candidate events are reported with both low-level state changes and a biological
 `copy_duplication_or_expansion`.
 
 The current implementation uses a Sankoff-style discrete character model for
-state reconstruction and a lightweight competing-model score. This gives a
-transparent first-pass event history. The planned publication version will add
-calibrated likelihood-style model comparison and simulation benchmarks.
+state reconstruction, a likelihood-like pruning score for each structural
+character and a lightweight competing-model score. This gives a transparent
+first-pass event history. The planned publication version will expand the
+simulation benchmark and calibrate event support under broader missing
+annotation scenarios.

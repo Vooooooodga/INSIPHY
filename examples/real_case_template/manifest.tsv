@@ -1,0 +1,2 @@
+case_id	species	assembly	annotation	gene_id	gene_copy_id	genome_fasta	annotation_file	notes
+jingwei_template	Drosophila_yakuba	TBD	TBD	TBD	TBD	/data/db/genome/TBD/genome.fa.gz	/data/db/genome/TBD/annotation.gff3.gz	fill_with_curated_accession

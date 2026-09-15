@@ -4,7 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from .correspondence import simple_identity
-from .io import parse_fasta, read_tsv, write_tsv
+from .io import parse_fasta, read_tsv, to_float, write_tsv
 
 
 SEGMENT_FIELDS = [
@@ -248,8 +248,84 @@ def make_copy_context(occurrences):
     return rows
 
 
+def segment_length(row):
+    return max(1, int(row.get("end", "0")) - int(row.get("start", "0")) + 1)
+
+
+def phase_score(left, right):
+    left_phase = left.get("phase", ".")
+    right_phase = right.get("phase", ".")
+    if left_phase in {".", "NA", ""} or right_phase in {".", "NA", ""}:
+        return 0.6
+    return 1.0 if left_phase == right_phase else 0.1
+
+
+def role_boundary_score(left, right):
+    if left.get("role") == right.get("role"):
+        return 1.0
+    exon_like = {"CDS", "exon", "UTR", "noncoding_exon"}
+    if left.get("role") in exon_like and right.get("role") in exon_like:
+        return 0.75
+    return 0.25
+
+
+def copy_order_context(occurrences):
+    by_copy = defaultdict(list)
+    for row in occurrences:
+        by_copy[(row["family_id"], row["species"], row["gene_copy_id"])].append(row)
+    context = {}
+    for key, rows in by_copy.items():
+        ordered = sorted(rows, key=lambda row: (row.get("contig", ""), int(row.get("start", "0")), int(row.get("end", "0"))))
+        total = max(1, len(ordered) - 1)
+        for idx, row in enumerate(ordered):
+            context[row["occurrence_id"]] = {
+                "index": idx,
+                "scaled_index": idx / total,
+                "left_role": ordered[idx - 1]["role"] if idx > 0 else "terminal",
+                "right_role": ordered[idx + 1]["role"] if idx + 1 < len(ordered) else "terminal",
+                "copy_size": len(ordered),
+            }
+    return context
+
+
+def context_score(left_ctx, right_ctx, side):
+    key = f"{side}_role"
+    if left_ctx.get(key) == right_ctx.get(key):
+        return 1.0
+    if "terminal" in {left_ctx.get(key), right_ctx.get(key)}:
+        return 0.5
+    return 0.25
+
+
+def match_evidence(left, right, seqs, context):
+    left_seq = seqs.get(left["occurrence_id"], "")
+    right_seq = seqs.get(right["occurrence_id"], "")
+    identity = simple_identity(left_seq, right_seq)
+    coverage = min(len(left_seq), len(right_seq)) / max(1, max(len(left_seq), len(right_seq)))
+    left_ctx = context.get(left["occurrence_id"], {})
+    right_ctx = context.get(right["occurrence_id"], {})
+    order = 1.0 - abs(to_float(left_ctx.get("scaled_index"), 0.5) - to_float(right_ctx.get("scaled_index"), 0.5))
+    left_context = context_score(left_ctx, right_ctx, "left")
+    right_context = context_score(left_ctx, right_ctx, "right")
+    boundary = 0.5 * role_boundary_score(left, right) + 0.5 * phase_score(left, right)
+    phase = phase_score(left, right)
+    total = 0.40 * identity + 0.15 * coverage + 0.10 * left_context + 0.10 * right_context + 0.10 * boundary + 0.10 * phase + 0.05 * order
+    return {
+        "alignment_score": identity,
+        "coverage_score": coverage,
+        "left_context_score": left_context,
+        "right_context_score": right_context,
+        "boundary_score": boundary,
+        "phase_score": phase,
+        "order_score": order,
+        "size_ratio": min(segment_length(left), segment_length(right)) / max(segment_length(left), segment_length(right)),
+        "total_score": total,
+    }
+
+
 def cluster_segments(occurrences, seqs, identity_threshold=0.7):
     parent = {row["occurrence_id"]: row["occurrence_id"] for row in occurrences}
+    context = copy_order_context(occurrences)
 
     def find(x):
         while parent[x] != x:
@@ -267,9 +343,10 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7):
         for right in occurrences[i + 1 :]:
             if left["family_id"] != right["family_id"]:
                 continue
-            score = simple_identity(seqs.get(left["occurrence_id"], ""), seqs.get(right["occurrence_id"], ""))
+            evidence = match_evidence(left, right, seqs, context)
+            score = evidence["total_score"]
             same_role = left.get("role") == right.get("role")
-            if score >= identity_threshold or (same_role and score >= identity_threshold - 0.1):
+            if score >= identity_threshold or (same_role and evidence["alignment_score"] >= identity_threshold - 0.1 and evidence["coverage_score"] >= 0.5):
                 union(left["occurrence_id"], right["occurrence_id"])
                 status = "mapped"
             else:
@@ -279,12 +356,14 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7):
                     "match_id": f"match_{len(matches) + 1:05d}",
                     "query_occurrence_id": left["occurrence_id"],
                     "subject_occurrence_id": right["occurrence_id"],
-                    "alignment_score": f"{score:.6g}",
-                    "left_context_score": "0.5",
-                    "right_context_score": "0.5",
-                    "left_boundary_score": "0.5",
-                    "right_boundary_score": "0.5",
-                    "size_ratio": "1.0",
+                    "alignment_score": f"{evidence['alignment_score']:.6g}",
+                    "coverage_score": f"{evidence['coverage_score']:.6g}",
+                    "left_context_score": f"{evidence['left_context_score']:.6g}",
+                    "right_context_score": f"{evidence['right_context_score']:.6g}",
+                    "boundary_score": f"{evidence['boundary_score']:.6g}",
+                    "phase_score": f"{evidence['phase_score']:.6g}",
+                    "order_score": f"{evidence['order_score']:.6g}",
+                    "size_ratio": f"{evidence['size_ratio']:.6g}",
                     "total_score": f"{score:.6g}",
                     "match_status": status,
                 }
@@ -300,8 +379,8 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7):
                 {
                     "homology_id": cluster_id[root],
                     "occurrence_id": occ_id,
-                    "support_type": "sequence_cluster",
-                    "confidence": "0.7",
+                    "support_type": "sequence_context_cluster",
+                    "confidence": "0.75",
                     "source_label": "unknown_source",
                 }
             )
@@ -319,7 +398,7 @@ def derive_tables(input_dir, output_dir=None, identity_threshold=0.7):
     write_tsv(
         output_dir / "segment_matches.tsv",
         matches,
-        ["match_id", "query_occurrence_id", "subject_occurrence_id", "alignment_score", "left_context_score", "right_context_score", "left_boundary_score", "right_boundary_score", "size_ratio", "total_score", "match_status"],
+        ["match_id", "query_occurrence_id", "subject_occurrence_id", "alignment_score", "coverage_score", "left_context_score", "right_context_score", "boundary_score", "phase_score", "order_score", "size_ratio", "total_score", "match_status"],
     )
     write_tsv(output_dir / "physical_adjacencies.tsv", make_adjacencies(occurrences), ["adjacency_id", "family_id", "species", "gene_copy_id", "left_occurrence_id", "right_occurrence_id", "adjacency_status"])
     write_tsv(output_dir / "copy_context.tsv", make_copy_context(occurrences), ["family_id", "species", "gene_copy_id", "copy_class"])

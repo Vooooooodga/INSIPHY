@@ -16,14 +16,33 @@ def simple_identity(seq_a, seq_b):
 def match_total(row):
     if row.get("total_score") not in ("", "NA", None):
         return to_float(row.get("total_score"))
+    boundary = to_float(row.get("boundary_score"), None)
+    if boundary is None:
+        boundary = 0.5 * (to_float(row.get("left_boundary_score"), 0.5) + to_float(row.get("right_boundary_score"), 0.5))
     return (
-        0.25 * to_float(row.get("alignment_score"))
-        + 0.15 * to_float(row.get("left_context_score"))
-        + 0.15 * to_float(row.get("right_context_score"))
-        + 0.20 * to_float(row.get("left_boundary_score"))
-        + 0.20 * to_float(row.get("right_boundary_score"))
-        + 0.05 * to_float(row.get("size_ratio"), 1.0)
+        0.40 * to_float(row.get("alignment_score"))
+        + 0.15 * to_float(row.get("coverage_score"), to_float(row.get("size_ratio"), 1.0))
+        + 0.10 * to_float(row.get("left_context_score"), 0.5)
+        + 0.10 * to_float(row.get("right_context_score"), 0.5)
+        + 0.10 * boundary
+        + 0.10 * to_float(row.get("phase_score"), 0.5)
+        + 0.05 * to_float(row.get("order_score"), 0.5)
     )
+
+
+def normalized_components(row):
+    boundary = to_float(row.get("boundary_score"), None)
+    if boundary is None:
+        boundary = 0.5 * (to_float(row.get("left_boundary_score"), 0.5) + to_float(row.get("right_boundary_score"), 0.5))
+    return {
+        "alignment_score": to_float(row.get("alignment_score")),
+        "coverage_score": to_float(row.get("coverage_score"), to_float(row.get("size_ratio"), 1.0)),
+        "left_context_score": to_float(row.get("left_context_score"), 0.5),
+        "right_context_score": to_float(row.get("right_context_score"), 0.5),
+        "boundary_score": boundary,
+        "phase_score": to_float(row.get("phase_score"), 0.5),
+        "order_score": to_float(row.get("order_score"), 0.5),
+    }
 
 
 def infer_correspondence(input_dir, output_dir):
@@ -75,12 +94,20 @@ def infer_correspondence(input_dir, output_dir):
     grouped = defaultdict(list)
     for row in matches:
         score = match_total(row)
+        components = normalized_components(row)
         grouped[row["query_occurrence_id"]].append((score, row["match_id"]))
         scored.append(
             {
                 "match_id": row["match_id"],
                 "query_occurrence_id": row["query_occurrence_id"],
                 "subject_occurrence_id": row["subject_occurrence_id"],
+                "alignment_score": f"{components['alignment_score']:.6g}",
+                "coverage_score": f"{components['coverage_score']:.6g}",
+                "left_context_score": f"{components['left_context_score']:.6g}",
+                "right_context_score": f"{components['right_context_score']:.6g}",
+                "boundary_score": f"{components['boundary_score']:.6g}",
+                "phase_score": f"{components['phase_score']:.6g}",
+                "order_score": f"{components['order_score']:.6g}",
                 "total_score": f"{score:.6g}",
                 "match_status": row.get("match_status", "ambiguous"),
                 "correspondence_call": "unclassified",
@@ -97,5 +124,5 @@ def infer_correspondence(input_dir, output_dir):
 
     write_tsv(f"{output_dir}/hsg_assignments.tsv", hsg_rows, ["homology_id", "occurrence_id", "family_id", "species", "gene_copy_id", "source_label", "support_type", "confidence"])
     write_tsv(f"{output_dir}/segment_conservation.tsv", conservation, ["homology_id", "occurrence_count", "species_count", "mean_pairwise_identity", "role_spectrum", "conservation_call"])
-    write_tsv(f"{output_dir}/segment_correspondence.tsv", scored, ["match_id", "query_occurrence_id", "subject_occurrence_id", "total_score", "match_status", "correspondence_call"])
+    write_tsv(f"{output_dir}/segment_correspondence.tsv", scored, ["match_id", "query_occurrence_id", "subject_occurrence_id", "alignment_score", "coverage_score", "left_context_score", "right_context_score", "boundary_score", "phase_score", "order_score", "total_score", "match_status", "correspondence_call"])
     return hsg_rows, conservation, scored

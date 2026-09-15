@@ -7,3 +7,5 @@
 - Added first-pass HSG, correspondence, adjacency and copy-context builders.
 - Added fixed-tree structural inference for intragenic segment evolution.
 - Added jingwei and Sdic curated micro-demos.
+- Added literature review, publication-gap notes, likelihood-like character
+  scores, baseline comparisons, simulation and benchmark commands.

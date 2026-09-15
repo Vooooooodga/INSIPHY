@@ -1,6 +1,6 @@
-match_id	query_occurrence_id	subject_occurrence_id	total_score	match_status	correspondence_call
-jm1	Dyak_jgw_A	Dmel_Adh_A	0.757	mapped	best_unique
-jm2	Dtei_jgw_A	Dmel_Adh_A	0.746	mapped	best_unique
-jm3	Dyak_jgw_Y	Dmel_yande_Y	0.702	mapped	best_unique
-jm4	Dtei_jgw_Y	Dmel_yande_Y	0.715	mapped	best_unique
-jm5	Dyak_hidden_Y2	Dmel_yande_Y	0.6525	mapped	best_unique
+match_id	query_occurrence_id	subject_occurrence_id	alignment_score	coverage_score	left_context_score	right_context_score	boundary_score	phase_score	order_score	total_score	match_status	correspondence_call
+jm1	Dyak_jgw_A	Dmel_Adh_A	0.96	1	0.72	0.7	0.635	0.5	0.5	0.8145	mapped	best_unique
+jm2	Dtei_jgw_A	Dmel_Adh_A	0.95	1	0.7	0.69	0.625	0.5	0.5	0.8065	mapped	best_unique
+jm3	Dyak_jgw_Y	Dmel_yande_Y	0.89	1	0.55	0.78	0.575	0.5	0.5	0.7715	mapped	best_unique
+jm4	Dtei_jgw_Y	Dmel_yande_Y	0.9	1	0.56	0.8	0.59	0.5	0.5	0.78	mapped	best_unique
+jm5	Dyak_hidden_Y2	Dmel_yande_Y	0.82	0.2	0.7	0.75	0.55	0.5	0.5	0.633	mapped	best_unique

@@ -73,6 +73,48 @@ def transition_cost(layer, src, dst):
     return 1.0
 
 
+def transition_probability(layer, src, dst, states, rate=0.15):
+    if src == dst:
+        return max(1e-12, 1.0 - rate)
+    weights = []
+    for state in states:
+        if state != src:
+            weights.append(math.exp(-transition_cost(layer, src, state)))
+    denom = sum(weights) or 1.0
+    return max(1e-12, rate * math.exp(-transition_cost(layer, src, dst)) / denom)
+
+
+def discrete_log_likelihood(tree, tips_by_label, states, layer, rate=0.15):
+    states = tuple(sorted(states))
+    allowed = {}
+    for label, value in tips_by_label.items():
+        node = tree.leaf_by_label.get(label)
+        if node is None:
+            continue
+        value = norm_state(value)
+        allowed[node] = {value} if value in states else set(states)
+
+    likelihoods = {}
+    for node in tree.postorder():
+        likelihoods[node] = {}
+        if not tree.children.get(node):
+            node_allowed = allowed.get(node, set(states))
+            for state in states:
+                likelihoods[node][state] = 1.0 if state in node_allowed else 0.0
+            continue
+        for state in states:
+            prob = 1.0
+            for child in tree.children[node]:
+                child_sum = 0.0
+                for child_state in states:
+                    child_sum += transition_probability(layer, state, child_state, states, rate) * likelihoods[child][child_state]
+                prob *= max(child_sum, 1e-300)
+            likelihoods[node][state] = prob
+    root_prior = 1.0 / max(1, len(states))
+    total = sum(root_prior * likelihoods[tree.root][state] for state in states)
+    return math.log(max(total, 1e-300))
+
+
 def sankoff(tree, tips_by_label, states, layer):
     states = tuple(sorted(states))
     allowed = {}

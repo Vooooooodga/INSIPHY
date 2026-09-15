@@ -87,6 +87,22 @@ Run local tests:
 PYTHONPATH=src python -m unittest discover -s tests
 ```
 
+Run a small simulated benchmark:
+
+```bash
+PYTHONPATH=src python -m insiphy.cli simulate \
+  --output-dir simulated/sim_gene \
+  --seed 7
+
+PYTHONPATH=src python -m insiphy.cli run \
+  --input-dir simulated/sim_gene \
+  --output-dir simulated/sim_gene_results
+
+PYTHONPATH=src python -m insiphy.cli benchmark \
+  --input-dir simulated/sim_gene \
+  --output-dir simulated/sim_gene_results
+```
+
 ## Main Outputs
 
 - `annotation_completion_candidates.tsv`
@@ -96,7 +112,9 @@ PYTHONPATH=src python -m unittest discover -s tests
 - `ancestral_state_probabilities.tsv`
 - `branch_event_probabilities.tsv`
 - `candidate_structural_events.tsv`
+- `character_model_scores.tsv`
 - `model_comparison.tsv`
+- `baseline_comparison.tsv`
 - `intragenic_graph_edges.tsv`
 - `demo_summary.tsv`
 
@@ -107,3 +125,5 @@ new adjacency, segment loss/gain or copy expansion candidates.
 Biological sources and demo scope are documented in `docs/data_sources.md`.
 Input formats and method details are documented in `docs/input_format.md` and
 `docs/method.md`.
+Reference-method notes and remaining publication gaps are documented in
+`docs/literature_review.md` and `docs/publication_gap.md`.

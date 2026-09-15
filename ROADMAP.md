@@ -8,6 +8,7 @@ INSIPHY v0.1.0 is a runnable method scaffold. It includes:
 - first-pass segment occurrence, sequence, adjacency and copy-context tables;
 - homologous segment grouping and correspondence scoring;
 - fixed-tree reconstruction of intragenic structural characters;
+- likelihood-like character scores, simple baselines and simulated benchmarks;
 - jingwei and Sdic curated micro-demos;
 - unit tests for demos and genome/annotation preprocessing.
 

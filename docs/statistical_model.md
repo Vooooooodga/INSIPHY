@@ -15,6 +15,10 @@ INSIPHY currently separates biological evidence from phylogenetic interpretation
 - Node probabilities are converted from Sankoff scores by local exponential
   weighting, giving an interpretable approximation rather than a calibrated
   posterior.
+- Each structural character also receives a likelihood-like pruning score under
+  a simple discrete transition model. This score is useful for ranking and
+  debugging, and it should be calibrated by simulation before manuscript-level
+  accuracy claims.
 
 ## Model Comparison
 
@@ -22,6 +26,7 @@ Two lightweight comparisons are reported:
 
 - strict annotation vs annotation-error model;
 - independent character changes vs one compound chimeric/copy event.
+- annotation-only, sequence-only and synteny-aware phylogenetic baselines.
 
 These scores are intended as first-pass evidence summaries. A publication-grade
 version should add simulation-based calibration, likelihood-style transition
