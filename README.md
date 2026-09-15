@@ -42,6 +42,11 @@ scans, graph-based homologous segment correspondence, copy relationship calls,
 branch-length-aware CTMC/Mk model fitting and invariant-model LRT p values for
 structural characters.
 
+The distributed package is a Python CLI/library. It does not require Nextflow,
+Snakemake or a workflow engine. On the R730 server, Nextflow+Slurm was used only
+to create formal, auditable real-demo run records under the local project
+standards.
+
 The first implementation focuses on duplicated and chimeric genes. The bundled
 demos are curated method fixtures:
 
