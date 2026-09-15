@@ -3,7 +3,17 @@
 from collections import defaultdict
 
 from .io import norm_state, read_tsv, to_float, write_tsv
-from .tree import SpeciesTree, ctmc_posteriors, discrete_log_likelihood, fit_discrete_ctmc, fit_invariant_test, sankoff
+from .tree import (
+    SpeciesTree,
+    bootstrap_invariant_test,
+    ctmc_posteriors,
+    discrete_log_likelihood,
+    fit_discrete_ctmc,
+    fit_foreground_rate_test,
+    fit_invariant_test,
+    sankoff,
+    stochastic_map_summary,
+)
 
 
 EXONIC = {"CDS", "UTR", "noncoding_exon", "exon"}
@@ -32,7 +42,25 @@ def role_from_occurrences(rows):
     return "unknown"
 
 
-def add_character(tree, layer, object_id, tips, states, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows):
+def add_character(
+    tree,
+    layer,
+    object_id,
+    tips,
+    states,
+    state_rows,
+    branch_rows,
+    model_score_rows,
+    model_fit_rows,
+    hypothesis_rows,
+    bootstrap_rows,
+    stochastic_rows,
+    foreground_rows,
+    bootstrap_replicates=0,
+    stochastic_maps=0,
+    seed=7,
+    foreground_edges=None,
+):
     score, probs, edges = sankoff(tree, tips, states, layer)
     observed_tip_count = sum(1 for value in tips.values() if norm_state(value) != "unknown")
     if observed_tip_count < 2:
@@ -92,6 +120,68 @@ def add_character(tree, layer, object_id, tips, states, state_rows, branch_rows,
     test = fit_invariant_test(tree, tips, states, layer)
     _ctmc_nodes, ctmc_edges = ctmc_posteriors(tree, tips, states, layer, rate=fit["rate"])
     ctmc_by_edge = {(row["parent_node"], row["child_node"]): row for row in ctmc_edges}
+    bootstrap = bootstrap_invariant_test(tree, tips, states, layer, replicates=bootstrap_replicates, seed=seed, tip_error=1e-6)
+    if bootstrap:
+        bootstrap_rows.append(
+            {
+                "layer": layer,
+                "object_id": object_id,
+                "test_id": bootstrap["test_id"],
+                "observed_lrt": f"{bootstrap['observed_lrt']:.6g}",
+                "bootstrap_replicates": bootstrap["bootstrap_replicates"],
+                "empirical_p_value": f"{bootstrap['empirical_p_value']:.6g}",
+                "monte_carlo_se": f"{bootstrap['monte_carlo_se']:.6g}",
+                "null_lrt_mean": f"{bootstrap['null_lrt_mean']:.6g}",
+                "null_lrt_q025": f"{bootstrap['null_lrt_q025']:.6g}",
+                "null_lrt_q500": f"{bootstrap['null_lrt_q500']:.6g}",
+                "null_lrt_q975": f"{bootstrap['null_lrt_q975']:.6g}",
+                "seed": bootstrap["seed"],
+                "tip_error": f"{bootstrap['tip_error']:.6g}",
+            }
+        )
+    for row in stochastic_map_summary(tree, tips, states, layer, rate=fit["rate"], replicates=stochastic_maps, seed=seed, tip_error=1e-6):
+        stochastic_rows.append(
+            {
+                "layer": layer,
+                "object_id": object_id,
+                "parent_node": row["parent_node"],
+                "child_node": row["child_node"],
+                "parent_label": tree.label[row["parent_node"]],
+                "child_label": tree.label[row["child_node"]],
+                "map_sample_count": row["map_sample_count"],
+                "posterior_pr_any_change": f"{row['posterior_pr_any_change']:.6g}",
+                "posterior_expected_change_count": f"{row['posterior_expected_change_count']:.6g}",
+                "posterior_change_count_low": f"{row['posterior_change_count_low']:.6g}",
+                "posterior_change_count_high": f"{row['posterior_change_count_high']:.6g}",
+                "posterior_most_frequent_transition": row["posterior_most_frequent_transition"],
+                "posterior_transition_probability": f"{row['posterior_transition_probability']:.6g}",
+            }
+        )
+    foreground = fit_foreground_rate_test(tree, tips, states, layer, foreground_edges, tip_error=1e-6) if foreground_edges else None
+    if foreground:
+        foreground_rows.append(
+            {
+                "layer": layer,
+                "object_id": object_id,
+                "test_id": "foreground_background_rate",
+                "null_model": foreground["null_model"],
+                "alternative_model": foreground["alternative_model"],
+                "null_log_likelihood": f"{foreground['null_log_likelihood']:.6g}",
+                "alternative_log_likelihood": f"{foreground['alternative_log_likelihood']:.6g}",
+                "lrt_statistic": f"{foreground['lrt_statistic']:.6g}",
+                "df": foreground["df"],
+                "p_value": f"{foreground['p_value']:.6g}",
+                "p_value_method": foreground["p_value_method"],
+                "background_rate": f"{foreground['background_rate']:.6g}",
+                "foreground_rate": f"{foreground['foreground_rate']:.6g}",
+                "rate_ratio": f"{foreground['rate_ratio']:.6g}",
+                "null_aic": f"{foreground['null_aic']:.6g}",
+                "alternative_aic": f"{foreground['alternative_aic']:.6g}",
+                "null_bic": f"{foreground['null_bic']:.6g}",
+                "alternative_bic": f"{foreground['alternative_bic']:.6g}",
+                "observed_tip_count": foreground["observed_tip_count"],
+            }
+        )
     model_score_rows.append(
         {
             "layer": layer,
@@ -195,11 +285,34 @@ def classify_branch_event(layer, change):
     return "structural_state_change"
 
 
-def infer_phylogeny(input_dir, output_dir):
+def read_foreground_edges(path, tree):
+    if not path:
+        return set()
+    rows = read_tsv(path, optional=True)
+    label_to_node = {label: node for node, label in tree.label.items()}
+    out = set()
+    for row in rows:
+        parent = row.get("parent_node") or row.get("parent_id") or ""
+        child = row.get("child_node") or row.get("child_id") or ""
+        scope = row.get("branch_scope") or row.get("branch") or ""
+        if (parent, child) in set(tree.edges()):
+            out.add((parent, child))
+            continue
+        if scope and "->" in scope:
+            parent_label, child_label = scope.split("->", 1)
+            parent_node = label_to_node.get(parent_label.strip())
+            child_node = label_to_node.get(child_label.strip())
+            if parent_node and child_node:
+                out.add((parent_node, child_node))
+    return out
+
+
+def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_maps=0, seed=7, foreground_branches=None):
     occurrences = read_tsv(f"{input_dir}/segment_occurrences.tsv", ["occurrence_id", "family_id", "species", "gene_copy_id", "role", "presence_status"])
     homology = read_tsv(f"{input_dir}/segment_homology.tsv", ["homology_id", "occurrence_id", "support_type", "confidence"])
     adjacencies = read_tsv(f"{input_dir}/physical_adjacencies.tsv", ["adjacency_id", "family_id", "species", "gene_copy_id", "left_occurrence_id", "right_occurrence_id", "adjacency_status"])
     tree = SpeciesTree(read_tsv(f"{input_dir}/species_tree.tsv", ["node_id", "parent_id", "label"]))
+    foreground_edges = read_foreground_edges(foreground_branches, tree)
     copy_context = read_tsv(f"{input_dir}/copy_context.tsv", ["family_id", "species", "gene_copy_id", "copy_class"], optional=True)
     copy_relationships = read_tsv(f"{input_dir}/copy_relationships.tsv", ["family_id", "species", "query_copy_id", "subject_copy_id", "relationship_class"], optional=True)
     annotation_candidates = read_tsv(f"{output_dir}/annotation_completion_candidates.tsv", ["evidence_id", "completion_call"], optional=True)
@@ -219,6 +332,9 @@ def infer_phylogeny(input_dir, output_dir):
     model_score_rows = []
     model_fit_rows = []
     hypothesis_rows = []
+    bootstrap_rows = []
+    stochastic_rows = []
+    foreground_rows = []
     object_family = {}
     for hsg, occ_ids in sorted(occ_by_hsg.items()):
         by_species = defaultdict(list)
@@ -229,8 +345,8 @@ def infer_phylogeny(input_dir, output_dir):
                 by_species[occ["species"]].append(occ)
                 families.add(occ["family_id"])
         object_family[hsg] = ";".join(sorted(families)) if families else hsg
-        add_character(tree, "segment_presence", hsg, {sp: state_from_occurrences(rows) for sp, rows in by_species.items()}, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows)
-        add_character(tree, "role_state", hsg, {sp: role_from_occurrences(rows) for sp, rows in by_species.items()}, {"absent", "CDS", "exon_or_UTR", "intron_or_noncoding", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows)
+        add_character(tree, "segment_presence", hsg, {sp: state_from_occurrences(rows) for sp, rows in by_species.items()}, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
+        add_character(tree, "role_state", hsg, {sp: role_from_occurrences(rows) for sp, rows in by_species.items()}, {"absent", "CDS", "exon_or_UTR", "intron_or_noncoding", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
 
     graph_edges = []
     adj_by_pair = defaultdict(lambda: defaultdict(list))
@@ -264,7 +380,7 @@ def infer_phylogeny(input_dir, output_dir):
         for species, vals in by_species.items():
             vals = [norm_state(value) for value in vals]
             tips[species] = "present" if "present" in vals else "absent" if vals and all(value == "absent" for value in vals) else "unknown"
-        add_character(tree, "adjacency_state", pair_id, tips, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows)
+        add_character(tree, "adjacency_state", pair_id, tips, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
 
     source_states_by_family_species = defaultdict(list)
     for key in sorted({(row["family_id"], row["species"], row["gene_copy_id"]) for row in occurrences}):
@@ -277,7 +393,7 @@ def infer_phylogeny(input_dir, output_dir):
         source_tips[family][species] = "multi_source" if "multi_source" in states else "single_source" if "single_source" in states else "unknown"
     for family, tips in sorted(source_tips.items()):
         object_family[family] = family
-        add_character(tree, "source_mixture", family, tips, {"single_source", "multi_source", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows)
+        add_character(tree, "source_mixture", family, tips, {"single_source", "multi_source", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
 
     copy_states_by_family_species = defaultdict(list)
     for row in copy_context:
@@ -298,7 +414,7 @@ def infer_phylogeny(input_dir, output_dir):
             copy_tips[family][species] = "unknown"
     for family, tips in sorted(copy_tips.items()):
         object_family[family] = family
-        add_character(tree, "copy_multiplicity", family, tips, {"single_copy", "tandem_multi_copy", "same_contig_multi_copy", "dispersed_multi_copy", "unresolved", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows)
+        add_character(tree, "copy_multiplicity", family, tips, {"single_copy", "tandem_multi_copy", "same_contig_multi_copy", "dispersed_multi_copy", "unresolved", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
 
     hidden_calls = {"hidden_segment_candidate", "shifted_splice_site_candidate", "joined_exon_candidate", "hidden_segment_with_frame_disruption"}
     hidden_support = sum(to_float(row.get("support_score")) for row in annotation_candidates if row.get("completion_call") in hidden_calls)
@@ -389,6 +505,9 @@ def infer_phylogeny(input_dir, output_dir):
     write_tsv(f"{output_dir}/character_model_scores.tsv", model_score_rows, ["layer", "object_id", "model", "parsimony_score", "log_likelihood", "state_count", "observed_tip_count", "fitted_rate", "aic", "bic"])
     write_tsv(f"{output_dir}/model_fit.tsv", model_fit_rows, ["layer", "object_id", "model", "fitted_rate", "log_likelihood", "aic", "bic", "observed_tip_count"])
     write_tsv(f"{output_dir}/hypothesis_tests.tsv", hypothesis_rows, ["layer", "object_id", "test_id", "null_model", "alternative_model", "null_log_likelihood", "alternative_log_likelihood", "lrt_statistic", "df", "p_value", "p_value_method", "fitted_rate", "null_aic", "alternative_aic", "null_bic", "alternative_bic", "observed_tip_count", "tip_error"])
+    write_tsv(f"{output_dir}/hypothesis_bootstrap.tsv", bootstrap_rows, ["layer", "object_id", "test_id", "observed_lrt", "bootstrap_replicates", "empirical_p_value", "monte_carlo_se", "null_lrt_mean", "null_lrt_q025", "null_lrt_q500", "null_lrt_q975", "seed", "tip_error"])
+    write_tsv(f"{output_dir}/branch_history_posteriors.tsv", stochastic_rows, ["layer", "object_id", "parent_node", "child_node", "parent_label", "child_label", "map_sample_count", "posterior_pr_any_change", "posterior_expected_change_count", "posterior_change_count_low", "posterior_change_count_high", "posterior_most_frequent_transition", "posterior_transition_probability"])
+    write_tsv(f"{output_dir}/foreground_tests.tsv", foreground_rows, ["layer", "object_id", "test_id", "null_model", "alternative_model", "null_log_likelihood", "alternative_log_likelihood", "lrt_statistic", "df", "p_value", "p_value_method", "background_rate", "foreground_rate", "rate_ratio", "null_aic", "alternative_aic", "null_bic", "alternative_bic", "observed_tip_count"])
     write_tsv(f"{output_dir}/candidate_structural_events.tsv", event_rows, ["family_id", "event_type", "event_class", "evidence_layer", "object_id", "branch_scope", "event_probability", "ctmc_change_probability", "change", "alternative_explanation"])
     write_tsv(f"{output_dir}/model_comparison.tsv", model_rows, ["comparison_id", "model", "score", "delta_vs_best", "interpretation"])
     write_tsv(f"{output_dir}/intragenic_graph_edges.tsv", graph_edges, ["family_id", "species", "gene_copy_id", "edge_id", "left_hsg", "right_hsg", "left_occurrence_id", "right_occurrence_id", "adjacency_status", "left_source_labels", "right_source_labels"])

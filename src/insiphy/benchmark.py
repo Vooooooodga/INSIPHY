@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from .io import read_tsv, write_tsv
+from .io import read_tsv, to_float, write_tsv
 
 
 def event_key(row, include_branch=False):
@@ -17,6 +17,7 @@ def benchmark_events(input_dir, output_dir):
     output_dir = Path(output_dir)
     truth = read_tsv(input_dir / "truth_events.tsv", ["family_id", "event_class"], optional=True)
     calls = read_tsv(output_dir / "candidate_structural_events.tsv", ["family_id", "event_class"], optional=True)
+    bootstraps = read_tsv(output_dir / "hypothesis_bootstrap.tsv", ["empirical_p_value"], optional=True)
     truth_set = {event_key(row) for row in truth}
     call_set = {event_key(row) for row in calls}
     truth_branch_set = {event_key(row, include_branch=True) for row in truth if row.get("branch_scope")}
@@ -56,4 +57,18 @@ def benchmark_events(input_dir, output_dir):
         )
     write_tsv(output_dir / "benchmark_summary.tsv", rows, ["truth_events", "called_events", "true_positive", "false_positive", "false_negative", "precision", "recall", "f1", "branch_true_positive", "branch_accuracy"])
     write_tsv(output_dir / "benchmark_detailed.tsv", details, ["family_id", "event_class", "truth_status", "call_status", "benchmark_call"])
+    empirical = [to_float(row.get("empirical_p_value"), None) for row in bootstraps]
+    empirical = [value for value in empirical if value is not None]
+    mcse = [to_float(row.get("monte_carlo_se"), None) for row in bootstraps]
+    mcse = [value for value in mcse if value is not None]
+    calibration = [
+        {
+            "bootstrap_tests": len(empirical),
+            "empirical_p_le_0_05": sum(1 for value in empirical if value <= 0.05),
+            "empirical_p_le_0_10": sum(1 for value in empirical if value <= 0.10),
+            "mean_empirical_p": f"{(sum(empirical) / len(empirical)):.6g}" if empirical else "NA",
+            "mean_monte_carlo_se": f"{(sum(mcse) / len(mcse)):.6g}" if mcse else "NA",
+        }
+    ]
+    write_tsv(output_dir / "benchmark_calibration.tsv", calibration, ["bootstrap_tests", "empirical_p_le_0_05", "empirical_p_le_0_10", "mean_empirical_p", "mean_monte_carlo_se"])
     return rows

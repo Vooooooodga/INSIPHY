@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0 - 2026-09-15
+
+- Added optional alignment backend selection for segment correspondence and
+  hidden-segment scans: `internal`, `minimap2` and `miniprot`.
+- Added candidate prefiltering, role-shift-aware intron/exon compatibility,
+  and threaded pair scoring to reduce unnecessary pairwise alignment work.
+- Added CTMC parametric bootstrap calibration in `hypothesis_bootstrap.tsv`.
+- Added stochastic character mapping summaries in
+  `branch_history_posteriors.tsv`.
+- Added optional foreground/background structural-rate tests in
+  `foreground_tests.tsv`.
+- Added benchmark calibration summaries and additional named simulation
+  scenarios for exonization, source joining, tandem duplication and
+  split/fusion checks.
+
 ## 0.4.0 - 2026-09-15
 
 - Added manifest-level `role_hint`, `source_label` and `copy_role` support for

@@ -95,6 +95,23 @@ class SimulationBenchmarkTests(unittest.TestCase):
             self.assertTrue(fit)
             self.assertEqual(fit[0]["model"], "ctmc_mk_branch_length")
 
+    def test_bootstrap_and_stochastic_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            sim = tmp / "sim_stats"
+            out = tmp / "out_stats"
+            simulate_dataset(sim, seed=13, scenario="exonization")
+            run_all(sim, out, bootstrap_replicates=5, stochastic_maps=5, seed=13)
+            benchmark_events(sim, out)
+            boot = read_tsv(out / "hypothesis_bootstrap.tsv")
+            histories = read_tsv(out / "branch_history_posteriors.tsv")
+            calibration = read_tsv(out / "benchmark_calibration.tsv")
+            self.assertTrue(boot)
+            self.assertIn("empirical_p_value", boot[0])
+            self.assertTrue(histories)
+            self.assertIn("posterior_pr_any_change", histories[0])
+            self.assertEqual(calibration[0]["bootstrap_tests"], str(len(boot)))
+
     def test_annotation_dropout_negative_control(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

@@ -15,6 +15,9 @@ retrocopy insertion and assembly/annotation artifacts can all create partially
 overlapping evidence patterns. INSIPHY v0.4.0 covers the core duplicated and
 chimeric-gene cases, but the publication version should expose these alternative
 explanations explicitly in benchmark tables and event confidence summaries.
+INSIPHY v0.5.0 adds the first implementation of these statistical summaries:
+bootstrap p-value calibration, stochastic-map branch histories and
+foreground/background structural-rate tests.
 
 ## ExOrthist
 
@@ -82,12 +85,10 @@ motivate later foreground/background and correlated-character tests; in the
 current implementation this is represented by an invariant-model LRT for each
 structural character.
 
-Stochastic character mapping is the relevant next layer for branch event
-posteriors. The current INSIPHY branch table reports endpoint posterior
-probabilities for parent-child state changes under the fitted CTMC. A
-publication version should also sample complete character histories conditional
-on the tips, because a branch can contain zero, one or multiple changes even
-when the endpoint states are the same. Those samples would provide
+Stochastic character mapping is the relevant layer for branch event posteriors.
+INSIPHY reports endpoint posterior probabilities for parent-child state changes
+under the fitted CTMC and, when requested, samples complete histories
+conditional on the tips by CTMC uniformization. These samples provide
 posterior-like summaries such as `Pr(change on branch)`, expected number of
 changes, most frequent transition type and credible intervals across stochastic
 maps.

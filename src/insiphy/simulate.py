@@ -3,7 +3,7 @@
 import random
 from pathlib import Path
 
-from .io import write_tsv
+from .io import read_tsv, write_tsv
 
 
 def mutate(seq, rng, rate=0.05):
@@ -134,6 +134,22 @@ def simulate_negative_dataset(output_dir, seed=7, hidden_dropout=False):
         for name, seq in sorted(fasta_records.items()):
             handle.write(f">{name}\n{seq}\n")
     return []
+
+
+SCENARIO_TRUTH_FILTERS = {
+    "exonization": {"exonization_candidate"},
+    "source_join": {"segment_fusion_or_new_adjacency"},
+    "tandem_duplication": {"copy_duplication_or_expansion"},
+    "segment_split_fusion": {"segment_fusion_or_new_adjacency", "segment_split_or_adjacency_loss"},
+}
+
+
+def filter_truth_events(output_dir, allowed_classes):
+    output_dir = Path(output_dir)
+    truth = read_tsv(output_dir / "truth_events.tsv", optional=True)
+    kept = [row for row in truth if row.get("event_class") in allowed_classes]
+    write_tsv(output_dir / "truth_events.tsv", kept, ["family_id", "event_class", "branch_scope", "object_id", "notes"])
+    return kept
 
 
 def simulate_dataset(output_dir, seed=7, scenario="compound"):
@@ -298,4 +314,6 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
     with (output_dir / "segment_sequences.fasta").open("w") as handle:
         for name, seq in sorted(fasta_records.items()):
             handle.write(f">{name}\n{seq}\n")
+    if scenario in SCENARIO_TRUTH_FILTERS:
+        return filter_truth_events(output_dir, SCENARIO_TRUTH_FILTERS[scenario])
     return truth

@@ -6,7 +6,11 @@ small pure-Python fallbacks so source-tree tests can run before installation.
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
 
 DNA_COMPLEMENT = str.maketrans("ACGTNacgtn", "TGCANtgcan")
@@ -22,6 +26,11 @@ class AlignmentStats:
     target_start: int = 1
     target_end: int = 0
     cigar: str = "NA"
+    backend: str = "internal"
+
+
+class AlignmentBackendError(RuntimeError):
+    """Raised when an explicitly requested external alignment backend fails."""
 
 
 def revcomp(seq: str) -> str:
@@ -111,7 +120,136 @@ def _compress_ops(ops):
     return "".join(out)
 
 
-def global_alignment_stats(seq_a: str, seq_b: str) -> AlignmentStats:
+def _write_temp_fasta(path: Path, name: str, seq: str):
+    path.write_text(f">{name}\n{(seq or '').upper()}\n")
+
+
+def _parse_paf_tags(fields):
+    tags = {}
+    for field in fields[12:]:
+        parts = field.split(":", 2)
+        if len(parts) == 3:
+            tags[parts[0]] = parts[2]
+    return tags
+
+
+def _external_minimap2_stats(query: str, target: str, mode: str, threads: int = 1) -> AlignmentStats:
+    exe = shutil.which("minimap2")
+    if not exe:
+        raise AlignmentBackendError("minimap2 was requested but is not available on PATH")
+    query = (query or "").upper()
+    target = (target or "").upper()
+    if not query or not target:
+        return AlignmentStats(0.0, 0.0, 0.0, query_end=len(query), target_end=len(target), backend="minimap2")
+    with tempfile.TemporaryDirectory(prefix="insiphy_minimap2_") as tmp:
+        tmp = Path(tmp)
+        query_path = tmp / "query.fa"
+        target_path = tmp / "target.fa"
+        _write_temp_fasta(query_path, "query", query)
+        _write_temp_fasta(target_path, "target", target)
+        cmd = [
+            exe,
+            "-c",
+            "-x",
+            "asm20",
+            "-t",
+            str(max(1, int(threads or 1))),
+            str(target_path),
+            str(query_path),
+        ]
+        proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+    if proc.returncode != 0:
+        raise AlignmentBackendError(proc.stderr.strip() or "minimap2 failed")
+    best = None
+    for line in proc.stdout.splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        fields = line.split("\t")
+        if len(fields) < 12:
+            continue
+        qlen = int(fields[1])
+        qstart = int(fields[2])
+        qend = int(fields[3])
+        tstart = int(fields[7])
+        tend = int(fields[8])
+        matches = float(fields[9])
+        block = max(1.0, float(fields[10]))
+        tags = _parse_paf_tags(fields)
+        identity = matches / block
+        if mode == "global":
+            coverage = min((qend - qstart) / max(1, qlen), abs(tend - tstart) / max(1, len(target)))
+        else:
+            coverage = (qend - qstart) / max(1, qlen)
+        score = float(tags.get("AS", matches))
+        stat = AlignmentStats(identity, coverage, score, qstart + 1, qend, min(tstart, tend) + 1, max(tstart, tend), tags.get("cg", "NA"), "minimap2")
+        rank = (stat.coverage * stat.identity, stat.score)
+        if best is None or rank > best[0]:
+            best = (rank, stat)
+    if best is None:
+        return AlignmentStats(0.0, 0.0, 0.0, query_end=len(query), target_end=len(target), backend="minimap2")
+    return best[1]
+
+
+def _external_miniprot_stats(query: str, target: str, threads: int = 1) -> AlignmentStats:
+    exe = shutil.which("miniprot")
+    if not exe:
+        raise AlignmentBackendError("miniprot was requested but is not available on PATH")
+    query = (query or "").upper()
+    target = (target or "").upper()
+    if not query or not target:
+        return AlignmentStats(0.0, 0.0, 0.0, query_end=len(query), target_end=len(target), backend="miniprot")
+    with tempfile.TemporaryDirectory(prefix="insiphy_miniprot_") as tmp:
+        tmp = Path(tmp)
+        query_path = tmp / "query.fa"
+        target_path = tmp / "target.fa"
+        _write_temp_fasta(query_path, "query", query)
+        _write_temp_fasta(target_path, "target", target)
+        cmd = [exe, "-t", str(max(1, int(threads or 1))), str(target_path), str(query_path)]
+        proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+    if proc.returncode != 0:
+        raise AlignmentBackendError(proc.stderr.strip() or "miniprot failed")
+    best = None
+    for line in proc.stdout.splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        fields = line.split("\t")
+        if len(fields) < 12:
+            continue
+        qlen = int(fields[1])
+        qstart = int(fields[2])
+        qend = int(fields[3])
+        tstart = int(fields[7])
+        tend = int(fields[8])
+        matches = float(fields[9])
+        block = max(1.0, float(fields[10]))
+        tags = _parse_paf_tags(fields)
+        identity = matches / block
+        coverage = (qend - qstart) / max(1, qlen)
+        score = float(tags.get("AS", matches))
+        stat = AlignmentStats(identity, coverage, score, qstart + 1, qend, min(tstart, tend) + 1, max(tstart, tend), tags.get("cg", "NA"), "miniprot")
+        rank = (stat.coverage * stat.identity, stat.score)
+        if best is None or rank > best[0]:
+            best = (rank, stat)
+    if best is None:
+        return AlignmentStats(0.0, 0.0, 0.0, query_end=len(query), target_end=len(target), backend="miniprot")
+    return best[1]
+
+
+def available_alignment_backends():
+    rows = [{"aligner": "internal", "available": 1, "notes": "pure-python/Biopython fallback"}]
+    rows.append({"aligner": "minimap2", "available": int(shutil.which("minimap2") is not None), "notes": "external nucleotide aligner"})
+    rows.append({"aligner": "miniprot", "available": int(shutil.which("miniprot") is not None), "notes": "external protein-to-genome aligner"})
+    return rows
+
+
+def global_alignment_stats(seq_a: str, seq_b: str, backend: str = "internal", threads: int = 1) -> AlignmentStats:
+    backend = (backend or "internal").lower()
+    if backend == "minimap2":
+        return _external_minimap2_stats(seq_a, seq_b, "global", threads)
+    if backend == "miniprot":
+        return _external_miniprot_stats(seq_a, seq_b, threads)
+    if backend != "internal":
+        raise AlignmentBackendError(f"unsupported alignment backend: {backend}")
     try:
         from Bio import pairwise2  # type: ignore
 
@@ -202,7 +340,14 @@ def _fallback_local(query: str, target: str, match=2, mismatch=-1, gap=-2) -> Al
     )
 
 
-def local_alignment_stats(query: str, target: str) -> AlignmentStats:
+def local_alignment_stats(query: str, target: str, backend: str = "internal", threads: int = 1) -> AlignmentStats:
+    backend = (backend or "internal").lower()
+    if backend == "minimap2":
+        return _external_minimap2_stats(query, target, "local", threads)
+    if backend == "miniprot":
+        return _external_miniprot_stats(query, target, threads)
+    if backend != "internal":
+        raise AlignmentBackendError(f"unsupported alignment backend: {backend}")
     try:
         from Bio import pairwise2  # type: ignore
 

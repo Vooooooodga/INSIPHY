@@ -35,9 +35,11 @@ INSIPHY implements three linked tasks:
 3. fixed-tree structural inference for segment presence, role, adjacency,
    source mixture, and copy multiplicity.
 
-Version 0.4 adds manifest-level `source_label`, `copy_role` and `role_hint`
-support so source/background and derived copies can be carried into HSG source
-mixture inference. Version 0.3 adds transcript-aware extraction, splice/frame-aware hidden segment
+Version 0.5 adds optional external alignment backends, threaded candidate
+scoring, CTMC bootstrap calibration, stochastic character mapping summaries and
+foreground/background structural-rate tests. Version 0.4 adds manifest-level
+`source_label`, `copy_role` and `role_hint` support so source/background and
+derived copies can be carried into HSG source mixture inference. Version 0.3 adds transcript-aware extraction, splice/frame-aware hidden segment
 scans, graph-based homologous segment correspondence, copy relationship calls,
 branch-length-aware CTMC/Mk model fitting and invariant-model LRT p values for
 structural characters.
@@ -87,7 +89,9 @@ PYTHONPATH=src python3 -m insiphy.cli extract-gene \
 
 PYTHONPATH=src python3 -m insiphy.cli derive-tables \
   --input-dir work/family_a \
-  --identity-threshold 0.7
+  --identity-threshold 0.7 \
+  --aligner internal \
+  --threads 1
 ```
 
 Add `species_tree.tsv`, then run:
@@ -95,7 +99,10 @@ Add `species_tree.tsv`, then run:
 ```bash
 PYTHONPATH=src python3 -m insiphy.cli run \
   --input-dir work/family_a \
-  --output-dir results/family_a
+  --output-dir results/family_a \
+  --bootstrap-replicates 200 \
+  --stochastic-maps 200 \
+  --seed 7
 ```
 
 Run local tests:
@@ -136,7 +143,14 @@ PYTHONPATH=src python3 -m insiphy.cli build-case \
 PYTHONPATH=src python3 -m insiphy.cli scan-hidden-segments \
   --source-fasta source_segments.fa \
   --target-fasta target_gene_interval.fa \
-  --output-dir work/hidden_scan
+  --output-dir work/hidden_scan \
+  --aligner internal
+```
+
+Check optional alignment backends on the current machine:
+
+```bash
+PYTHONPATH=src python3 -m insiphy.cli inspect-aligners
 ```
 
 ## Main Outputs
@@ -155,6 +169,10 @@ PYTHONPATH=src python3 -m insiphy.cli scan-hidden-segments \
 - `character_model_scores.tsv`
 - `model_fit.tsv`
 - `hypothesis_tests.tsv`
+- `hypothesis_bootstrap.tsv`
+- `branch_history_posteriors.tsv`
+- `foreground_tests.tsv`
+- `alignment_backend_report.tsv`
 - `model_comparison.tsv`
 - `baseline_comparison.tsv`
 - `intragenic_graph_edges.tsv`
@@ -165,13 +183,17 @@ PYTHONPATH=src python3 -m insiphy.cli scan-hidden-segments \
 `candidate_structural_events.tsv` includes a biological `event_class` field,
 so low-level state changes can be interpreted as exonization, source joining,
 new adjacency, segment loss/gain, copy expansion, retrocopy-like or annotation
-artifact candidates. `hypothesis_tests.tsv` reports the explicit statistical
-test for each structural character: invariant/no-change null model versus a
-one-rate CTMC/Mk model on the species tree, with likelihoods, LRT statistic,
-p value, fitted rate, AIC and BIC.
+artifact candidates. `hypothesis_tests.tsv` reports the invariant/no-change
+null model versus a one-rate CTMC/Mk model on the species tree, with
+likelihoods, LRT statistic, p value, fitted rate, AIC and BIC.
+`hypothesis_bootstrap.tsv` adds empirical p values from parametric bootstrap
+when requested. `branch_history_posteriors.tsv` reports stochastic-map
+posterior summaries for branch event placement.
 
 Biological sources and demo scope are documented in `docs/data_sources.md`.
 Input formats and method details are documented in `docs/input_format.md` and
 `docs/method.md`.
 Reference-method notes and remaining publication gaps are documented in
 `docs/literature_review.md` and `docs/publication_gap.md`.
+Algorithm and engineering notes are documented in
+`docs/algorithm_engineering.md`.

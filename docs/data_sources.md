@@ -53,3 +53,15 @@ phylogenetic module can then compare whether a hidden segment is better treated
 as an annotation gap or as a real structural loss/gain, and whether a gene copy
 is better explained by independent segment changes or by one compound
 chimeric/copy event.
+
+## Real-Data Benchmark Direction
+
+The first real-data benchmark should remain Drosophila-focused. Jingwei and
+Sdic are the positive controls already represented by bundled method fixtures.
+The next case should add an independent young duplicate or chimeric gene such
+as sphinx, followed by a conserved single-copy negative control. The benchmark
+plan and acceptance criteria are recorded in `docs/real_data_benchmark.md`.
+
+Large FASTA/GFF/GTF files are intentionally excluded from the repository.
+Manifests should point to local project inputs and record source release,
+assembly, annotation, source labels and copy roles.

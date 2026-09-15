@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from .alignment import global_alignment_stats, phase_compatibility, splice_motif_score
+from .alignment import available_alignment_backends, global_alignment_stats, phase_compatibility, splice_motif_score
 from .io import open_text, parse_fasta, read_tsv, to_float, write_tsv
 
 
@@ -627,8 +628,11 @@ def role_boundary_score(left, right):
     if left.get("role") == right.get("role"):
         return 1.0
     exon_like = {"CDS", "exon", "UTR", "noncoding_exon"}
+    noncoding_like = {"intron", "regulatory", "intergenic", "noncoding", "intron_or_noncoding"}
     if left.get("role") in exon_like and right.get("role") in exon_like:
         return 0.75
+    if {left.get("role"), right.get("role")} & exon_like and {left.get("role"), right.get("role")} & noncoding_like:
+        return 0.45
     return 0.25
 
 
@@ -684,10 +688,39 @@ def pair_threshold(left, right, base_threshold, distance_lookup):
     return base_threshold, category
 
 
-def match_evidence(left, right, seqs, context):
+def cheap_match_evidence(left, right, context, alignment_backend="prefilter"):
+    left_ctx = context.get(left["occurrence_id"], {})
+    right_ctx = context.get(right["occurrence_id"], {})
+    order = 1.0 - abs(to_float(left_ctx.get("scaled_index"), 0.5) - to_float(right_ctx.get("scaled_index"), 0.5))
+    left_context = context_score(left_ctx, right_ctx, "left")
+    right_context = context_score(left_ctx, right_ctx, "right")
+    boundary = 0.5 * role_boundary_score(left, right) + 0.5 * phase_score(left, right)
+    phase = phase_score(left, right)
+    strand = 1.0 if left.get("strand") == right.get("strand") else 0.6
+    splice = 1.0 - abs(to_float(left.get("splice_motif_score"), 0.5) - to_float(right.get("splice_motif_score"), 0.5))
+    size_ratio = min(segment_length(left), segment_length(right)) / max(segment_length(left), segment_length(right))
+    total = 0.10 * left_context + 0.10 * right_context + 0.10 * boundary + 0.08 * phase + 0.06 * order + 0.04 * strand + 0.04 * splice
+    return {
+        "alignment_score": 0.0,
+        "coverage_score": 0.0,
+        "left_context_score": left_context,
+        "right_context_score": right_context,
+        "boundary_score": boundary,
+        "phase_score": phase,
+        "order_score": order,
+        "strand_score": strand,
+        "splice_score": splice,
+        "size_ratio": size_ratio,
+        "alignment_cigar": "NA",
+        "alignment_backend": alignment_backend,
+        "total_score": total,
+    }
+
+
+def match_evidence(left, right, seqs, context, aligner="internal", threads=1):
     left_seq = seqs.get(left["occurrence_id"], "")
     right_seq = seqs.get(right["occurrence_id"], "")
-    aln = global_alignment_stats(left_seq, right_seq)
+    aln = global_alignment_stats(left_seq, right_seq, backend=aligner, threads=threads)
     identity = aln.identity
     coverage = aln.coverage
     left_ctx = context.get(left["occurrence_id"], {})
@@ -712,11 +745,14 @@ def match_evidence(left, right, seqs, context):
         "splice_score": splice,
         "size_ratio": min(segment_length(left), segment_length(right)) / max(segment_length(left), segment_length(right)),
         "alignment_cigar": aln.cigar,
+        "alignment_backend": aln.backend,
         "total_score": total,
     }
 
 
 EXON_LIKE_ROLES = {"CDS", "exon", "UTR", "noncoding_exon"}
+NONCODING_ROLES = {"intron", "regulatory", "intergenic", "noncoding", "intron_or_noncoding"}
+STRUCTURAL_ROLES = EXON_LIKE_ROLES | NONCODING_ROLES
 UNKNOWN_SOURCE_LABELS = {"", "NA", "unknown", "unknown_source", "ambiguous", "unresolved"}
 
 
@@ -729,7 +765,9 @@ def roles_compatible(left, right):
     right_role = right.get("role", "")
     if left_role == right_role:
         return True
-    return left_role in EXON_LIKE_ROLES and right_role in EXON_LIKE_ROLES
+    if left_role in EXON_LIKE_ROLES and right_role in EXON_LIKE_ROLES:
+        return True
+    return left_role in STRUCTURAL_ROLES and right_role in STRUCTURAL_ROLES
 
 
 def sequence_supported_mapping(evidence, threshold):
@@ -831,7 +869,20 @@ def graph_components(nodes, edges, occurrence_by_id=None):
         return [sorted(vals) for vals in groups.values()]
 
 
-def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=None):
+def should_align_pair(left, right, seqs, min_size_ratio=0.25):
+    if left["family_id"] != right["family_id"]:
+        return False, "different_family"
+    if occurrence_copy_key(left) == occurrence_copy_key(right):
+        return False, "same_copy_excluded"
+    size_ratio = min(segment_length(left), segment_length(right)) / max(segment_length(left), segment_length(right))
+    if size_ratio < min_size_ratio:
+        return False, "length_ratio_prefilter"
+    if not seqs.get(left["occurrence_id"]) or not seqs.get(right["occurrence_id"]):
+        return False, "missing_sequence"
+    return True, "aligned_candidate"
+
+
+def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=None, aligner="internal", threads=1, min_size_ratio=0.25):
     context = copy_order_context(occurrences)
     distance_lookup = load_distance_table(distance_table)
     occurrence_by_id = {row["occurrence_id"]: row for row in occurrences}
@@ -839,11 +890,30 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
     accepted_edges = []
     score_by_occ = defaultdict(list)
     source_support = defaultdict(lambda: defaultdict(float))
-    for i, left in enumerate(occurrences):
-        for right in occurrences[i + 1 :]:
-            if left["family_id"] != right["family_id"]:
-                continue
-            evidence = match_evidence(left, right, seqs, context)
+    raw_pairs = [(left, right) for i, left in enumerate(occurrences) for right in occurrences[i + 1 :] if left["family_id"] == right["family_id"]]
+    pairs = [(idx, left, right) for idx, (left, right) in enumerate(raw_pairs)]
+
+    def score_pair(item):
+        idx, left, right = item
+        should_align, prefilter_status = should_align_pair(left, right, seqs, min_size_ratio)
+        if should_align:
+            evidence = match_evidence(left, right, seqs, context, aligner=aligner, threads=1)
+        else:
+            evidence = cheap_match_evidence(left, right, context, alignment_backend=prefilter_status)
+        return idx, left, right, evidence, prefilter_status
+
+    scored_pairs = []
+    worker_count = max(1, int(threads or 1))
+    if worker_count > 1 and len(pairs) > 1:
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            futures = [pool.submit(score_pair, pair) for pair in pairs]
+            for future in as_completed(futures):
+                scored_pairs.append(future.result())
+        scored_pairs.sort(key=lambda row: row[0])
+    else:
+        scored_pairs = [score_pair(pair) for pair in pairs]
+
+    for _idx, left, right, evidence, prefilter_status in scored_pairs:
             threshold, distance_class = pair_threshold(left, right, identity_threshold, distance_lookup)
             score = evidence["total_score"]
             same_copy = occurrence_copy_key(left) == occurrence_copy_key(right)
@@ -864,7 +934,7 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
                         source_support[left["occurrence_id"]][source] += score
                 status = "mapped"
             else:
-                status = "low_similarity"
+                status = prefilter_status if prefilter_status != "aligned_candidate" else "low_similarity"
             matches.append(
                 {
                     "match_id": f"match_{len(matches) + 1:05d}",
@@ -884,6 +954,7 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
                     "distance_class": distance_class,
                     "threshold": f"{threshold:.6g}",
                     "alignment_cigar": evidence["alignment_cigar"],
+                    "alignment_backend": evidence["alignment_backend"],
                     "match_status": status,
                 }
             )
@@ -907,13 +978,13 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
     return homology, matches
 
 
-def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_table=None):
+def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_table=None, aligner="internal", threads=1, min_size_ratio=0.25):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir or input_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     occurrences = read_tsv(input_dir / "segment_occurrences.tsv", SEGMENT_FIELDS)
     seqs = parse_fasta(input_dir / "segment_sequences.fasta")
-    homology, matches = cluster_segments(occurrences, seqs, identity_threshold, distance_table)
+    homology, matches = cluster_segments(occurrences, seqs, identity_threshold, distance_table, aligner=aligner, threads=threads, min_size_ratio=min_size_ratio)
     write_tsv(output_dir / "segment_homology.tsv", homology, ["homology_id", "occurrence_id", "support_type", "confidence", "source_label"])
     match_fields = [
         "match_id",
@@ -933,9 +1004,21 @@ def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_t
         "distance_class",
         "threshold",
         "alignment_cigar",
+        "alignment_backend",
         "match_status",
     ]
     write_tsv(output_dir / "segment_matches.tsv", matches, match_fields)
+    backend_rows = []
+    for row in available_alignment_backends():
+        backend_rows.append(
+            {
+                **row,
+                "selected": int(row["aligner"] == aligner),
+                "threads": threads,
+                "min_size_ratio": f"{min_size_ratio:.6g}",
+            }
+        )
+    write_tsv(output_dir / "alignment_backend_report.tsv", backend_rows, ["aligner", "available", "selected", "threads", "min_size_ratio", "notes"])
     write_tsv(output_dir / "physical_adjacencies.tsv", make_adjacencies(occurrences), ["adjacency_id", "family_id", "species", "gene_copy_id", "left_occurrence_id", "right_occurrence_id", "adjacency_status"])
     write_tsv(output_dir / "copy_context.tsv", make_copy_context(occurrences), ["family_id", "species", "gene_copy_id", "copy_class", "copy_subclass", "copy_span"])
     write_tsv(output_dir / "copy_relationships.tsv", make_copy_relationships(occurrences), ["family_id", "species", "query_copy_id", "subject_copy_id", "relationship_class", "synteny_score", "distance_bp", "evidence"])

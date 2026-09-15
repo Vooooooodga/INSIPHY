@@ -163,7 +163,7 @@ def write_provenance(manifest_rows, output_dir):
     write_tsv(Path(output_dir) / "case_provenance.tsv", rows, fields)
 
 
-def build_case(manifest, output_dir, identity_threshold=0.7, species_tree=None, transcript_policy="canonical", canonical_rule="longest_cds"):
+def build_case(manifest, output_dir, identity_threshold=0.7, species_tree=None, transcript_policy="canonical", canonical_rule="longest_cds", aligner="internal", threads=1, min_size_ratio=0.25):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     rows = read_tsv(manifest, ["case_id", "species", "family_id", "gene_id", "gene_copy_id", "genome_fasta", "annotation_file"])
@@ -232,7 +232,7 @@ def build_case(manifest, output_dir, identity_threshold=0.7, species_tree=None, 
         if tree_path.exists():
             (output_dir / "species_tree.tsv").write_text(tree_path.read_text())
     if appended:
-        derive_tables(output_dir, output_dir, identity_threshold)
+        derive_tables(output_dir, output_dir, identity_threshold, aligner=aligner, threads=threads, min_size_ratio=min_size_ratio)
     write_tsv(output_dir / "case_build_report.tsv", report, ["case_id", "species", "gene_id", "gene_copy_id", "status", "segment_count", "message"])
     return report
 
@@ -261,7 +261,7 @@ def best_ungapped_hit(query, target):
     return best
 
 
-def scan_hidden_segments(source_fasta, target_fasta, output_dir, family_id="NA", species="NA", gene_copy_id="NA", min_identity=0.75, min_coverage=0.5):
+def scan_hidden_segments(source_fasta, target_fasta, output_dir, family_id="NA", species="NA", gene_copy_id="NA", min_identity=0.75, min_coverage=0.5, aligner="internal", threads=1):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     sources = parse_fasta(source_fasta)
@@ -271,7 +271,7 @@ def scan_hidden_segments(source_fasta, target_fasta, output_dir, family_id="NA",
         best = None
         for target_id, target_seq in sorted(targets.items()):
             for strand, qseq in [("+", query_seq), ("-", revcomp(query_seq))]:
-                hit = local_alignment_stats(qseq, target_seq)
+                hit = local_alignment_stats(qseq, target_seq, backend=aligner, threads=threads)
                 target_fragment = target_seq[max(0, hit.target_start - 1) : hit.target_end]
                 motif, donor, acceptor = splice_motif_score(target_fragment)
                 frame_status = "coding_frame_preserved" if (hit.query_end - hit.query_start + 1) % 3 == 0 else "frameshift_or_stop_risk"
@@ -288,6 +288,7 @@ def scan_hidden_segments(source_fasta, target_fasta, output_dir, family_id="NA",
                     "coverage": hit.coverage,
                     "alignment_score": hit.score,
                     "alignment_cigar": hit.cigar,
+                    "alignment_backend": hit.backend,
                     "splice_motif_score": motif,
                     "splice_donor": donor,
                     "splice_acceptor": acceptor,
@@ -306,6 +307,6 @@ def scan_hidden_segments(source_fasta, target_fasta, output_dir, family_id="NA",
     write_tsv(
         output_dir / "hidden_segment_scan.tsv",
         rows,
-        ["family_id", "species", "gene_copy_id", "query_id", "target_id", "start", "end", "strand", "identity", "coverage", "alignment_score", "alignment_cigar", "splice_motif_score", "splice_donor", "splice_acceptor", "frame_status", "support_call"],
+        ["family_id", "species", "gene_copy_id", "query_id", "target_id", "start", "end", "strand", "identity", "coverage", "alignment_score", "alignment_cigar", "alignment_backend", "splice_motif_score", "splice_donor", "splice_acceptor", "frame_status", "support_call"],
     )
     return rows

@@ -1,9 +1,11 @@
 # Publication Gap
 
-INSIPHY v0.4.0 is a runnable method prototype. It now includes transcript-aware
+INSIPHY v0.5.0 is a runnable method prototype. It now includes transcript-aware
 extraction, graph-based segment correspondence, source/copy-role propagation,
-branch-length-aware CTMC/Mk fitting and invariant-model LRT p values. A
-manuscript-grade method still requires stronger evidence in five areas.
+branch-length-aware CTMC/Mk fitting, invariant-model LRT p values,
+parametric-bootstrap calibration, stochastic-map branch summaries and optional
+foreground/background structural-rate tests. A manuscript-grade method still
+requires stronger evidence in five areas.
 
 ## Current Strengths
 
@@ -13,7 +15,8 @@ manuscript-grade method still requires stronger evidence in five areas.
   correspondence and phylogenetic structural inference.
 - The outputs report candidate events in biological terms, including
   exonization, new adjacency, source joining and copy expansion, and they now
-  include likelihood parameters and p values for structural characters.
+  include likelihood parameters, p values, empirical bootstrap p values and
+  branch posterior summaries for structural characters.
 - Small jingwei and Sdic demos run as package fixtures, and the accession-level
   NCBI Gene locus demos now recover source-mixture evidence for both cases.
 - Annotation-dropout negative controls are represented in the simulator and
@@ -27,24 +30,23 @@ manuscript-grade method still requires stronger evidence in five areas.
    analyses using documented genome and annotation versions, then add at least
    one conserved negative control and one additional duplicated/chimeric case.
 2. **Statistical calibration**: compare Sankoff scores, CTMC likelihoods, LRT
-   p values and simulated ground truth; add parametric bootstrap for LRT P
-   values.
+   p values, bootstrap p values, stochastic-map posterior summaries and
+   simulated ground truth across many trees and event rates.
 3. **Baseline comparisons**: quantify gains over annotation-only,
    sequence-only and intron/exon-position-only approaches.
 4. **Robustness tests**: simulate missing annotation, fragmented gene models,
    tandem duplicates and ambiguous paralogy.
 5. **Evidence reporting**: provide manuscript tables for event class, branch,
    support, model score, alternative explanation and input evidence.
-6. **Branch histories**: add stochastic character mapping or a clearly labeled
-   approximation, with posterior probability of event placement on each branch.
+6. **Branch histories**: evaluate stochastic character mapping calibration and
+   branch placement accuracy under known simulated histories.
 
 ## Current Implementation Gap
 
-The package now includes simulation and benchmark commands, including a first
-annotation-dropout negative control. They should be expanded to cover many
-trees, multiple event rates, foreground/background branch scenarios, real
-accession-level cases and independent simulation generators before claims about
-accuracy are made.
+The package now includes simulation and benchmark commands, bootstrap
+calibration summaries and named event scenarios. They should be expanded to
+cover many trees, multiple event rates, real accession-level cases and
+independent simulation generators before claims about accuracy are made.
 
 ## Benchmark Plan
 

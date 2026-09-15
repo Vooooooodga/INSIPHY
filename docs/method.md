@@ -18,7 +18,10 @@ the internal structure of that supplied copy set.
    conflict.
 3. **Homologous segment grouping**: pairwise segment similarity, boundary
    compatibility, intron phase, splice motif, strand, flanking context and
-   local order are combined into graph-based HSG assignments.
+   local order are combined into graph-based HSG assignments. The sequence
+   alignment layer can use the internal fallback aligner, minimap2 for
+   nucleotide segment matching, or miniprot for protein-to-genome style
+   completion tests when suitable input is provided.
 4. **Intragenic synteny graph**: ordered HSG adjacencies describe the internal
    synteny of each gene copy.
 5. **Phylogenetic reconstruction**: segment presence, role state, adjacency,
@@ -45,9 +48,11 @@ The current implementation uses a Sankoff-style discrete character model for
 state reconstruction and a branch-length-aware CTMC/Mk likelihood fit for each
 structural character. INSIPHY reports fitted event-rate parameters, log
 likelihood, AIC/BIC, invariant-model LRT p values, CTMC branch-change
-probabilities, candidate branch events and lightweight competing-model scores.
-The publication version should expand real accession-level case studies,
-foreground/background structural-rate tests and simulation-based calibration.
+probabilities, bootstrap-calibrated empirical p values when requested,
+stochastic-map branch-history summaries, foreground/background rate tests,
+candidate branch events and lightweight competing-model scores. The publication
+version should expand real accession-level case studies, independent benchmark
+sets and large-scale calibration.
 
 ## Statistical Method Mapping
 
@@ -63,6 +68,10 @@ INSIPHY adapts four families of phylogenetic methods to intragenic structure:
 - **Likelihood-ratio testing**: compares a no-change structural model against
   a fitted change model and returns `p_value`, `lrt_statistic` and model
   parameters.
+- **Parametric bootstrap**: simulates structural characters under the null on
+  the same tree and reports an empirical p value for small-tree calibration.
+- **Stochastic character mapping**: samples complete CTMC histories along
+  branches, giving posterior summaries for event count and transition type.
 - **Ancestral adjacency reconstruction**: whole-genome synteny methods treat
   neighboring genes as phylogenetic characters; INSIPHY applies the same idea
   inside one gene by treating neighboring HSGs as intragenic synteny edges.
