@@ -4,7 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from .correspondence import simple_identity
-from .io import parse_fasta, read_tsv, to_float, write_tsv
+from .io import open_text, parse_fasta, read_tsv, to_float, write_tsv
 
 
 SEGMENT_FIELDS = [
@@ -42,7 +42,7 @@ def parse_attributes(raw):
 
 def read_annotation(path):
     rows = []
-    with Path(path).open() as handle:
+    with open_text(path) as handle:
         for raw in handle:
             if not raw.strip() or raw.startswith("#"):
                 continue

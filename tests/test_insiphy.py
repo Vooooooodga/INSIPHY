@@ -5,6 +5,7 @@ from pathlib import Path
 from insiphy.cli import run_all
 from insiphy.io import read_tsv
 from insiphy.benchmark import benchmark_events
+from insiphy.case import build_case, inspect_annotation, scan_hidden_segments
 from insiphy.preprocess import derive_tables, extract_gene
 from insiphy.simulate import simulate_dataset
 
@@ -82,6 +83,77 @@ class SimulationBenchmarkTests(unittest.TestCase):
             self.assertTrue(truth)
             self.assertGreaterEqual(float(bench[0]["recall"]), 0.0)
             self.assertIn("precision", bench[0])
+
+
+class RealCasePreparationTests(unittest.TestCase):
+    def write_case_files(self, tmp, species):
+        genome = tmp / f"{species}.fa"
+        annot = tmp / f"{species}.gff3"
+        genome.write_text(">chr1\n" + "ACGT" * 120 + "\n")
+        annot.write_text(
+            "\n".join(
+                [
+                    f"chr1\tINSIPHY\tgene\t10\t160\t.\t+\t.\tID={species}_geneA;Name=GeneA;Alias=jgw,jingwei",
+                    f"chr1\tINSIPHY\tmRNA\t10\t160\t.\t+\t.\tID={species}_txA;Parent={species}_geneA",
+                    f"chr1\tINSIPHY\tCDS\t20\t50\t.\t+\t0\tID={species}_cds1;Parent={species}_txA",
+                    f"chr1\tINSIPHY\tCDS\t100\t140\t.\t+\t1\tID={species}_cds2;Parent={species}_txA",
+                ]
+            )
+            + "\n"
+        )
+        return genome, annot
+
+    def test_inspect_annotation_aliases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            genome, annot = self.write_case_files(tmp, "SpA")
+            out = tmp / "inspect"
+            inspect_annotation(annot, out, queries=["jingwei"], species="SpA", case_id="case1")
+            rows = read_tsv(out / "gene_candidate_report.tsv")
+            self.assertTrue(rows)
+            self.assertEqual(rows[0]["feature_id"], "SpA_geneA")
+            self.assertEqual(rows[0]["match_rank"], "exact_token")
+
+    def test_build_case_from_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            g1, a1 = self.write_case_files(tmp, "SpA")
+            g2, a2 = self.write_case_files(tmp, "SpB")
+            manifest = tmp / "manifest.tsv"
+            tree = tmp / "species_tree.tsv"
+            out = tmp / "case"
+            manifest.write_text(
+                "\n".join(
+                    [
+                        "case_id\tspecies\tfamily_id\tgene_id\tgene_copy_id\tgenome_fasta\tannotation_file\tassembly\tannotation\tsource_url\trelease\tnotes",
+                        f"case1\tSpA\tfam1\tSpA_geneA\tSpA_geneA\t{g1}\t{a1}\tasmA\tannA\tlocal\tv1\tok",
+                        f"case1\tSpB\tfam1\tSpB_geneA\tSpB_geneA\t{g2}\t{a2}\tasmB\tannB\tlocal\tv1\tok",
+                    ]
+                )
+                + "\n"
+            )
+            tree.write_text("node_id\tparent_id\tlabel\nroot\t\troot\nspa\troot\tSpA\nspb\troot\tSpB\n")
+            build_case(manifest, out, species_tree=tree)
+            report = read_tsv(out / "case_build_report.tsv")
+            prov = read_tsv(out / "case_provenance.tsv")
+            occ = read_tsv(out / "segment_occurrences.tsv")
+            self.assertEqual({row["status"] for row in report}, {"extracted"})
+            self.assertEqual(len(prov), 2)
+            self.assertTrue(occ)
+            self.assertTrue((out / "species_tree.tsv").exists())
+
+    def test_scan_hidden_segments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            source = tmp / "source.fa"
+            target = tmp / "target.fa"
+            out = tmp / "scan"
+            source.write_text(">hidden_seg\nAACCGGTTAACC\n")
+            target.write_text(">gene_interval\nTTTTTAACCGGTTAACCGGGGG\n")
+            scan_hidden_segments(source, target, out, family_id="fam", species="SpA", gene_copy_id="copy1", min_identity=0.9)
+            rows = read_tsv(out / "hidden_segment_scan.tsv")
+            self.assertEqual(rows[0]["support_call"], "hidden_segment_candidate")
+            self.assertGreaterEqual(float(rows[0]["identity"]), 0.9)
 
 
 if __name__ == "__main__":

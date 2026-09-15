@@ -103,6 +103,25 @@ PYTHONPATH=src python -m insiphy.cli benchmark \
   --output-dir simulated/sim_gene_results
 ```
 
+Prepare a real case from curated local genome and annotation files:
+
+```bash
+PYTHONPATH=src python -m insiphy.cli inspect-annotation \
+  --annotation annotation.gff3 \
+  --query jingwei \
+  --output-dir work/inspect
+
+PYTHONPATH=src python -m insiphy.cli build-case \
+  --manifest examples/real_cases/jingwei/manifest.tsv \
+  --species-tree examples/real_cases/jingwei/species_tree.tsv \
+  --output-dir work/jingwei_case
+
+PYTHONPATH=src python -m insiphy.cli scan-hidden-segments \
+  --source-fasta source_segments.fa \
+  --target-fasta target_gene_interval.fa \
+  --output-dir work/hidden_scan
+```
+
 ## Main Outputs
 
 - `annotation_completion_candidates.tsv`
@@ -117,6 +136,8 @@ PYTHONPATH=src python -m insiphy.cli benchmark \
 - `baseline_comparison.tsv`
 - `intragenic_graph_edges.tsv`
 - `demo_summary.tsv`
+- real-case preparation outputs: `gene_candidate_report.tsv`,
+  `case_provenance.tsv`, `case_build_report.tsv`, `hidden_segment_scan.tsv`
 
 `candidate_structural_events.tsv` includes a biological `event_class` field,
 so low-level state changes can be interpreted as exonization, source joining,

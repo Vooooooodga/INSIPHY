@@ -1,0 +1,6 @@
+case_id	species	family_id	gene_id	gene_copy_id	genome_fasta	annotation_file	assembly	annotation	source_url	release	notes
+sdic	Drosophila_melanogaster	sdic	TBD_Sdic	Dmel_Sdic	/data/db/genome/Drosophila_melanogaster/TBD/genome.fa.gz	/data/db/genome/Drosophila_melanogaster/TBD/annotation.gff3.gz	TBD	TBD	FlyBase	FB2026_02	derived_copy
+sdic	Drosophila_melanogaster	sdic	TBD_AnxB10	Dmel_AnxB10	/data/db/genome/Drosophila_melanogaster/TBD/genome.fa.gz	/data/db/genome/Drosophila_melanogaster/TBD/annotation.gff3.gz	TBD	TBD	FlyBase	FB2026_02	source_locus
+sdic	Drosophila_melanogaster	sdic	TBD_sw	Dmel_sw	/data/db/genome/Drosophila_melanogaster/TBD/genome.fa.gz	/data/db/genome/Drosophila_melanogaster/TBD/annotation.gff3.gz	TBD	TBD	FlyBase	FB2026_02	source_locus
+sdic	Drosophila_simulans	sdic	TBD_AnxB10	Dsim_AnxB10	/data/db/genome/Drosophila_simulans/TBD/genome.fa.gz	/data/db/genome/Drosophila_simulans/TBD/annotation.gff3.gz	TBD	TBD	FlyBase	FB2026_02	background_source_locus
+sdic	Drosophila_yakuba	sdic	TBD_AnxB10	Dyak_AnxB10	/data/db/genome/Drosophila_yakuba/TBD/genome.fa.gz	/data/db/genome/Drosophila_yakuba/TBD/annotation.gff3.gz	TBD	TBD	FlyBase	FB2026_02	background_source_locus

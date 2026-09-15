@@ -1,0 +1,6 @@
+node_id	parent_id	label
+root		root
+Drosophila_yakuba	root	Drosophila_yakuba
+sim_mel	root	sim_mel
+Drosophila_simulans	sim_mel	Drosophila_simulans
+Drosophila_melanogaster	sim_mel	Drosophila_melanogaster

@@ -1,0 +1,10 @@
+node_id	parent_id	label
+root		root
+mel_sim	root	mel_sim
+Drosophila_melanogaster	mel_sim	Drosophila_melanogaster
+Drosophila_simulans	mel_sim	Drosophila_simulans
+yak_tei_ere	root	yak_tei_ere
+Drosophila_erecta	yak_tei_ere	Drosophila_erecta
+yak_tei	yak_tei_ere	yak_tei
+Drosophila_yakuba	yak_tei	Drosophila_yakuba
+Drosophila_teissieri	yak_tei	Drosophila_teissieri

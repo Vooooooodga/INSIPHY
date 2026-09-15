@@ -9,3 +9,5 @@
 - Added jingwei and Sdic curated micro-demos.
 - Added literature review, publication-gap notes, likelihood-like character
   scores, baseline comparisons, simulation and benchmark commands.
+- Added real-case preparation commands for annotation inspection, case manifest
+  builds and hidden-segment scans.

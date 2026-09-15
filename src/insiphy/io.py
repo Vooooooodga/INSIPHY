@@ -1,17 +1,25 @@
 """TSV and FASTA helpers used by INSIPHY."""
 
 import csv
+import gzip
 from pathlib import Path
 
 
 UNKNOWN = {"", "NA", "unknown", "ambiguous", "truncated", "unresolved"}
 
 
+def open_text(path):
+    path = Path(path)
+    if path.suffix == ".gz":
+        return gzip.open(path, "rt")
+    return path.open()
+
+
 def read_tsv(path, required=None, optional=False):
     path = Path(path)
     if optional and not path.exists():
         return []
-    with path.open(newline="") as handle:
+    with open_text(path) as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         missing = [field for field in (required or []) if field not in (reader.fieldnames or [])]
         if missing:
@@ -36,7 +44,7 @@ def parse_fasta(path):
     records = {}
     name = None
     seq = []
-    with path.open() as handle:
+    with open_text(path) as handle:
         for raw in handle:
             line = raw.strip()
             if not line:

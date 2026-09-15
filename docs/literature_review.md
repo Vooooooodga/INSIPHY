@@ -60,3 +60,16 @@ exon shuffling, exonization, intronization or coding-role loss, split/fusion of
 segments, and duplicate-copy divergence. The first version reports these as
 candidate structural histories with explicit alternative explanations, because
 incomplete annotation and paralogy ambiguity can mimic true structural change.
+
+## Real-Case Data Sources
+
+The first real case studies should use FlyBase bulk genome and annotation files
+where possible. The current template records FlyBase `FB2026_02` as the default
+release placeholder for Drosophila species with FlyBase genomes. D. teissieri
+may require Ensembl Metazoa or NCBI annotation if the exact assembly/release is
+not represented in the same FlyBase genome set; the template records
+`Prin_Dtei_1.1` as the assembly name to check.
+
+Large genome FASTA and GFF/GTF files should stay outside the GitHub repository.
+INSIPHY stores only the manifest, stable gene IDs, release labels, local paths
+and provenance.

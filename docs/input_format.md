@@ -42,3 +42,48 @@ PYTHONPATH=src python -m insiphy.cli derive-tables \
   annotation conflicts.
 
 The demo directories provide complete examples for all tables.
+
+## Real Case Manifest
+
+`build-case` reads a tab-delimited manifest with at least these fields:
+
+```text
+case_id	species	family_id	gene_id	gene_copy_id	genome_fasta	annotation_file
+```
+
+Recommended additional fields are:
+
+```text
+assembly	annotation	source_url	release	notes
+```
+
+The command writes:
+
+- `case_provenance.tsv`
+- `case_build_report.tsv`
+- extracted INSIPHY input tables
+
+Example:
+
+```bash
+PYTHONPATH=src python -m insiphy.cli build-case \
+  --manifest examples/real_cases/jingwei/manifest.tsv \
+  --species-tree examples/real_cases/jingwei/species_tree.tsv \
+  --output-dir work/jingwei_case
+```
+
+`inspect-annotation` can be used before manifest finalization to discover gene
+IDs from symbols or aliases:
+
+```bash
+PYTHONPATH=src python -m insiphy.cli inspect-annotation \
+  --annotation annotation.gff3 \
+  --alias-file examples/real_cases/jingwei/gene_aliases.tsv \
+  --species Drosophila_yakuba \
+  --case-id jingwei \
+  --output-dir work/jingwei_inspect
+```
+
+`scan-hidden-segments` performs a lightweight ungapped local scan of source
+segments against a target gene interval FASTA. It is intended for curated local
+intervals or flank windows, not whole-genome searches.
