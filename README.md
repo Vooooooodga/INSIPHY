@@ -10,6 +10,9 @@ INSIPHY 面向近缘物种之间的单基因或单基因家族比较。项目输
 序列和已有注释信息，例如 genome FASTA、GFF/GTF annotation 和物种树。方法
 重点是基因内部结构的 synteny：在不同物种、不同拷贝之间识别可对应的外显子、
 CDS、内含子来源片段和邻接关系，并在系统发育框架下解释这些结构如何变化。
+同源基因或候选同源拷贝集合由上游方法提供，例如 OrthoFinder、OMA、
+OrthoDB 或人工整理的 duplication clade；INSIPHY 不负责全基因组 orthogroup
+推断。
 
 当前版本围绕两个核心问题展开：
 
@@ -32,9 +35,12 @@ INSIPHY implements three linked tasks:
 3. fixed-tree structural inference for segment presence, role, adjacency,
    source mixture, and copy multiplicity.
 
-Version 0.2 adds transcript-aware extraction, splice/frame-aware hidden segment
-scans, graph-based homologous segment correspondence, copy relationship calls
-and branch-length-aware CTMC/Mk model fitting.
+Version 0.4 adds manifest-level `source_label`, `copy_role` and `role_hint`
+support so source/background and derived copies can be carried into HSG source
+mixture inference. Version 0.3 adds transcript-aware extraction, splice/frame-aware hidden segment
+scans, graph-based homologous segment correspondence, copy relationship calls,
+branch-length-aware CTMC/Mk model fitting and invariant-model LRT p values for
+structural characters.
 
 The first implementation focuses on duplicated and chimeric genes. The bundled
 demos are curated method fixtures:
@@ -70,6 +76,8 @@ PYTHONPATH=src python3 -m insiphy.cli extract-gene \
   --family-id family_a \
   --species SpeciesA \
   --gene-copy-id SpeciesA_GeneA \
+  --source-label source_A \
+  --copy-role source \
   --output-dir work/family_a
 
 PYTHONPATH=src python3 -m insiphy.cli derive-tables \
@@ -141,6 +149,7 @@ PYTHONPATH=src python3 -m insiphy.cli scan-hidden-segments \
 - `candidate_structural_events.tsv`
 - `character_model_scores.tsv`
 - `model_fit.tsv`
+- `hypothesis_tests.tsv`
 - `model_comparison.tsv`
 - `baseline_comparison.tsv`
 - `intragenic_graph_edges.tsv`
@@ -151,7 +160,10 @@ PYTHONPATH=src python3 -m insiphy.cli scan-hidden-segments \
 `candidate_structural_events.tsv` includes a biological `event_class` field,
 so low-level state changes can be interpreted as exonization, source joining,
 new adjacency, segment loss/gain, copy expansion, retrocopy-like or annotation
-artifact candidates.
+artifact candidates. `hypothesis_tests.tsv` reports the explicit statistical
+test for each structural character: invariant/no-change null model versus a
+one-rate CTMC/Mk model on the species tree, with likelihoods, LRT statistic,
+p value, fitted rate, AIC and BIC.
 
 Biological sources and demo scope are documented in `docs/data_sources.md`.
 Input formats and method details are documented in `docs/input_format.md` and

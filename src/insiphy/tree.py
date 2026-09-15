@@ -2,6 +2,7 @@
 
 import math
 from collections import defaultdict
+from functools import lru_cache
 
 from .io import norm_state
 
@@ -90,7 +91,8 @@ def _transition_probability_approx(layer, src, dst, states, rate=0.15, branch_le
     return max(1e-12, effective_rate * math.exp(-transition_cost(layer, src, dst)) / denom)
 
 
-def transition_matrix(layer, states, rate=0.15, branch_length=1.0):
+@lru_cache(maxsize=4096)
+def _transition_matrix_cached(layer, states, rate=0.15, branch_length=1.0):
     states = tuple(sorted(states))
     try:
         import numpy as np  # type: ignore
@@ -113,27 +115,45 @@ def transition_matrix(layer, states, rate=0.15, branch_length=1.0):
         return {(src, dst): _transition_probability_approx(layer, src, dst, states, rate, branch_length) for src in states for dst in states}
 
 
+def transition_matrix(layer, states, rate=0.15, branch_length=1.0):
+    return _transition_matrix_cached(layer, tuple(sorted(states)), rate, branch_length)
+
+
 def transition_probability(layer, src, dst, states, rate=0.15, branch_length=1.0):
     return transition_matrix(layer, states, rate, branch_length)[(src, dst)]
 
 
-def discrete_log_likelihood(tree, tips_by_label, states, layer, rate=0.15):
-    states = tuple(sorted(states))
-    allowed = {}
+def emission_probability(observed, state, states, tip_error=0.0):
+    observed = norm_state(observed)
+    if observed == "unknown" or observed not in states:
+        return 1.0
+    if observed == state:
+        return max(1e-12, 1.0 - tip_error)
+    if tip_error <= 0.0:
+        return 0.0
+    return max(1e-12, tip_error / max(1, len(states) - 1))
+
+
+def _tip_observations(tree, tips_by_label):
+    observations = {}
     for label, value in tips_by_label.items():
         node = tree.leaf_by_label.get(label)
-        if node is None:
-            continue
-        value = norm_state(value)
-        allowed[node] = {value} if value in states else set(states)
+        if node is not None:
+            observations[node] = norm_state(value)
+    return observations
+
+
+def discrete_likelihood_tables(tree, tips_by_label, states, layer, rate=0.15, tip_error=0.0):
+    states = tuple(sorted(states))
+    observations = _tip_observations(tree, tips_by_label)
 
     likelihoods = {}
     for node in tree.postorder():
         likelihoods[node] = {}
         if not tree.children.get(node):
-            node_allowed = allowed.get(node, set(states))
+            observed = observations.get(node, "unknown")
             for state in states:
-                likelihoods[node][state] = 1.0 if state in node_allowed else 0.0
+                likelihoods[node][state] = emission_probability(observed, state, states, tip_error)
             continue
         for state in states:
             prob = 1.0
@@ -147,12 +167,17 @@ def discrete_log_likelihood(tree, tips_by_label, states, layer, rate=0.15):
             likelihoods[node][state] = prob
     root_prior = 1.0 / max(1, len(states))
     total = sum(root_prior * likelihoods[tree.root][state] for state in states)
+    return likelihoods, root_prior, max(total, 1e-300)
+
+
+def discrete_log_likelihood(tree, tips_by_label, states, layer, rate=0.15, tip_error=0.0):
+    _likelihoods, _root_prior, total = discrete_likelihood_tables(tree, tips_by_label, states, layer, rate, tip_error)
     return math.log(max(total, 1e-300))
 
 
-def fit_discrete_ctmc(tree, tips_by_label, states, layer):
+def fit_discrete_ctmc(tree, tips_by_label, states, layer, tip_error=0.0):
     rates = [0.005, 0.01, 0.03, 0.05, 0.08, 0.12, 0.18, 0.25, 0.4, 0.65, 1.0, 1.5]
-    scored = [(discrete_log_likelihood(tree, tips_by_label, states, layer, rate), rate) for rate in rates]
+    scored = [(discrete_log_likelihood(tree, tips_by_label, states, layer, rate, tip_error), rate) for rate in rates]
     log_likelihood, rate = max(scored, key=lambda item: item[0])
     observed = sum(1 for value in tips_by_label.values() if norm_state(value) != "unknown")
     k = 1
@@ -166,6 +191,88 @@ def fit_discrete_ctmc(tree, tips_by_label, states, layer):
         "bic": bic,
         "observed_tip_count": observed,
     }
+
+
+def chi_square_sf_df1(statistic):
+    statistic = max(0.0, statistic)
+    try:
+        from scipy.stats import chi2  # type: ignore
+
+        return float(chi2.sf(statistic, 1))
+    except Exception:
+        return math.erfc(math.sqrt(statistic / 2.0))
+
+
+def fit_invariant_test(tree, tips_by_label, states, layer, tip_error=1e-6):
+    observed = sum(1 for value in tips_by_label.values() if norm_state(value) != "unknown")
+    alt = fit_discrete_ctmc(tree, tips_by_label, states, layer, tip_error=tip_error)
+    null_log_likelihood = discrete_log_likelihood(tree, tips_by_label, states, layer, rate=0.0, tip_error=tip_error)
+    lrt = max(0.0, 2.0 * (alt["log_likelihood"] - null_log_likelihood))
+    boundary_mixture_p = 0.5 * chi_square_sf_df1(lrt)
+    null_k = 0
+    alt_k = 1
+    return {
+        "null_model": "invariant_no_structural_change",
+        "alternative_model": alt["model"],
+        "null_log_likelihood": null_log_likelihood,
+        "alternative_log_likelihood": alt["log_likelihood"],
+        "lrt_statistic": lrt,
+        "df": 1,
+        "p_value": boundary_mixture_p,
+        "p_value_method": "0.5*chi_square_df1_boundary_rate_test",
+        "null_aic": 2 * null_k - 2 * null_log_likelihood,
+        "alternative_aic": 2 * alt_k - 2 * alt["log_likelihood"],
+        "null_bic": math.log(max(1, observed)) * null_k - 2 * null_log_likelihood,
+        "alternative_bic": math.log(max(1, observed)) * alt_k - 2 * alt["log_likelihood"],
+        "fitted_rate": alt["rate"],
+        "observed_tip_count": observed,
+        "tip_error": tip_error,
+    }
+
+
+def ctmc_posteriors(tree, tips_by_label, states, layer, rate=0.15, tip_error=1e-6):
+    states = tuple(sorted(states))
+    likelihoods, root_prior, total = discrete_likelihood_tables(tree, tips_by_label, states, layer, rate, tip_error)
+    outside = {tree.root: {state: root_prior for state in states}}
+    node_rows = []
+    branch_rows = []
+
+    for node in tree.preorder():
+        denom = total or 1.0
+        for state in states:
+            posterior = outside[node][state] * likelihoods[node][state] / denom
+            node_rows.append({"node_id": node, "state": state, "ctmc_probability": posterior})
+        for child in tree.children.get(node, []):
+            outside[child] = {}
+            matrix = transition_matrix(layer, states, rate, tree.branch_length(child))
+            sibling_terms = {}
+            for state in states:
+                prob = outside[node][state]
+                for sibling in tree.children[node]:
+                    if sibling == child:
+                        continue
+                    sibling_matrix = transition_matrix(layer, states, rate, tree.branch_length(sibling))
+                    prob *= sum(sibling_matrix[(state, sibling_state)] * likelihoods[sibling][sibling_state] for sibling_state in states)
+                sibling_terms[state] = prob
+            for child_state in states:
+                outside[child][child_state] = sum(sibling_terms[parent_state] * matrix[(parent_state, child_state)] for parent_state in states)
+
+            joint = {}
+            for parent_state in states:
+                for child_state in states:
+                    joint[(parent_state, child_state)] = sibling_terms[parent_state] * matrix[(parent_state, child_state)] * likelihoods[child][child_state] / denom
+            change_probability = sum(prob for (parent_state, child_state), prob in joint.items() if parent_state != child_state)
+            best_pair, best_prob = max(joint.items(), key=lambda item: item[1])
+            branch_rows.append(
+                {
+                    "parent_node": node,
+                    "child_node": child,
+                    "ctmc_change_probability": change_probability,
+                    "ctmc_most_likely_change": f"{best_pair[0]}->{best_pair[1]}",
+                    "ctmc_most_likely_change_probability": best_prob,
+                }
+            )
+    return node_rows, branch_rows
 
 
 def sankoff(tree, tips_by_label, states, layer):

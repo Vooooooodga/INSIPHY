@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.4.0 - 2026-09-15
+
+- Added manifest-level `role_hint`, `source_label` and `copy_role` support for
+  source/background/derived copy sets supplied by upstream homology workflows.
+- Propagated source labels into extracted `segment_occurrences.tsv` and HSG
+  `segment_homology.tsv` rows.
+- Added source-label inference for derived-copy segments from strongest
+  source-copy HSG matches, enabling chimeric source mixture calls for cases
+  such as jingwei and Sdic.
+- Documented that INSIPHY starts from a supplied homologous gene/copy set and
+  does not perform whole-genome orthogroup inference.
+
+## 0.3.0 - 2026-09-15
+
+- Added `hypothesis_tests.tsv` with invariant-model likelihood-ratio tests,
+  p values, fitted CTMC/Mk rates and null/alternative AIC/BIC values.
+- Added CTMC branch-change probability columns to
+  `branch_event_probabilities.tsv` and `candidate_structural_events.tsv`.
+- Tightened HSG clustering with role-compatible sequence support and a
+  one-segment-per-gene-copy component constraint to reduce transitive
+  over-merging on real locus inputs.
+- Added `insufficient_observed_tips` reporting for phylogenetic tests with
+  fewer than two informative terminal observations.
+- Cached CTMC transition matrices for faster real-case runs.
+- Documented the statistical model mapping from intragenic structural
+  characters to parsimony, CTMC/Mk likelihood and LRT outputs.
+
 ## 0.2.0 - 2026-09-15
 
 - Added transcript-aware GFF/GTF extraction with `transcript_paths.tsv` and

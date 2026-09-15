@@ -19,11 +19,13 @@ class DemoTests(unittest.TestCase):
             run_all(ROOT / "demos" / "jingwei", tmp)
             rows = read_tsv(Path(tmp) / "demo_summary.tsv")
             scores = read_tsv(Path(tmp) / "character_model_scores.tsv")
+            tests = read_tsv(Path(tmp) / "hypothesis_tests.tsv")
             baselines = read_tsv(Path(tmp) / "baseline_comparison.tsv")
             self.assertEqual(rows[0]["family_id"], "jingwei")
             self.assertEqual(rows[0]["hidden_segment_candidates"], "1")
             self.assertEqual(rows[0]["best_compound_model"], "compound_chimeric_or_copy_event")
             self.assertTrue(scores)
+            self.assertIn("p_value", tests[0])
             self.assertEqual({row["baseline_model"] for row in baselines}, {"annotation_only", "sequence_only", "synteny_aware_phylogenetic"})
 
     def test_sdic_demo_summary(self):

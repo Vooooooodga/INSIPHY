@@ -31,6 +31,8 @@ SEGMENT_FIELDS = [
     "frame_status",
 ]
 
+SEGMENT_OUTPUT_FIELDS = SEGMENT_FIELDS + ["source_label", "copy_role"]
+
 TRANSCRIPT_PATH_FIELDS = [
     "path_id",
     "family_id",
@@ -380,6 +382,8 @@ def extract_gene(
     append=False,
     transcript_policy="canonical",
     canonical_rule="longest_cds",
+    source_label="unknown_source",
+    copy_role="candidate",
 ):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -448,6 +452,8 @@ def extract_gene(
                     "splice_donor": donor,
                     "splice_acceptor": acceptor,
                     "frame_status": "coding_frame_annotated" if role == "CDS" and feat.get("phase", ".") not in {".", "NA"} else "not_coding_or_unknown",
+                    "source_label": source_label or "unknown_source",
+                    "copy_role": copy_role or "candidate",
                 }
             )
             fasta.write(f">{occ_id}\n{seq}\n")
@@ -494,7 +500,7 @@ def extract_gene(
             }
         )
 
-    write_tsv(output_dir / "segment_occurrences.tsv", rows, SEGMENT_FIELDS)
+    write_tsv(output_dir / "segment_occurrences.tsv", rows, SEGMENT_OUTPUT_FIELDS)
     write_tsv(output_dir / "transcript_paths.tsv", tx_path_rows, TRANSCRIPT_PATH_FIELDS)
     write_tsv(output_dir / "intron_sites.tsv", intron_rows, INTRON_SITE_FIELDS)
     return rows
@@ -710,7 +716,92 @@ def match_evidence(left, right, seqs, context):
     }
 
 
-def graph_components(nodes, edges):
+EXON_LIKE_ROLES = {"CDS", "exon", "UTR", "noncoding_exon"}
+UNKNOWN_SOURCE_LABELS = {"", "NA", "unknown", "unknown_source", "ambiguous", "unresolved"}
+
+
+def occurrence_copy_key(row):
+    return (row.get("family_id", ""), row.get("species", ""), row.get("gene_copy_id", ""))
+
+
+def roles_compatible(left, right):
+    left_role = left.get("role", "")
+    right_role = right.get("role", "")
+    if left_role == right_role:
+        return True
+    return left_role in EXON_LIKE_ROLES and right_role in EXON_LIKE_ROLES
+
+
+def sequence_supported_mapping(evidence, threshold):
+    identity = evidence["alignment_score"]
+    coverage = evidence["coverage_score"]
+    size_ratio = evidence["size_ratio"]
+    if size_ratio < 0.35:
+        return False
+    if identity >= threshold and coverage >= 0.45:
+        return True
+    if identity >= threshold + 0.15 and coverage >= 0.30:
+        return True
+    return False
+
+
+def split_source_labels(value):
+    labels = []
+    for part in str(value or "").replace("|", ";").replace(",", ";").split(";"):
+        label = part.strip()
+        if label and label not in UNKNOWN_SOURCE_LABELS:
+            labels.append(label)
+    return sorted(set(labels))
+
+
+def known_source_labels(row):
+    if row.get("copy_role") == "derived":
+        return []
+    return split_source_labels(row.get("source_label"))
+
+
+def inferred_source_label(row, support):
+    own = split_source_labels(row.get("source_label"))
+    if own and row.get("copy_role") != "derived":
+        return ";".join(own)
+    if not support:
+        return "unknown_source"
+    best = max(support.values())
+    top = sorted(source for source, score in support.items() if score >= best * 0.90)
+    return ";".join(top) if top else "unknown_source"
+
+
+def graph_components(nodes, edges, occurrence_by_id=None):
+    if occurrence_by_id:
+        parent = {node: node for node in nodes}
+        members = {
+            node: {occurrence_copy_key(occurrence_by_id[node])}
+            for node in nodes
+            if node in occurrence_by_id
+        }
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(a, b):
+            ra, rb = find(a), find(b)
+            if ra == rb:
+                return
+            if members.get(ra, set()) & members.get(rb, set()):
+                return
+            parent[rb] = ra
+            members[ra] = members.get(ra, set()) | members.get(rb, set())
+
+        for left, right, _score in sorted(edges, key=lambda row: row[2], reverse=True):
+            union(left, right)
+        groups = defaultdict(list)
+        for node in nodes:
+            groups[find(node)].append(node)
+        return [sorted(vals) for vals in groups.values()]
+
     try:
         import networkx as nx  # type: ignore
 
@@ -743,9 +834,11 @@ def graph_components(nodes, edges):
 def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=None):
     context = copy_order_context(occurrences)
     distance_lookup = load_distance_table(distance_table)
+    occurrence_by_id = {row["occurrence_id"]: row for row in occurrences}
     matches = []
     accepted_edges = []
     score_by_occ = defaultdict(list)
+    source_support = defaultdict(lambda: defaultdict(float))
     for i, left in enumerate(occurrences):
         for right in occurrences[i + 1 :]:
             if left["family_id"] != right["family_id"]:
@@ -753,12 +846,22 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
             evidence = match_evidence(left, right, seqs, context)
             threshold, distance_class = pair_threshold(left, right, identity_threshold, distance_lookup)
             score = evidence["total_score"]
-            same_role = left.get("role") == right.get("role")
-            mapped = score >= threshold or (same_role and evidence["alignment_score"] >= threshold - 0.1 and evidence["coverage_score"] >= 0.5)
+            same_copy = occurrence_copy_key(left) == occurrence_copy_key(right)
+            compatible = roles_compatible(left, right)
+            sequence_ok = sequence_supported_mapping(evidence, threshold)
+            mapped = (not same_copy) and compatible and sequence_ok and score >= threshold
             if mapped:
                 accepted_edges.append((left["occurrence_id"], right["occurrence_id"], score))
                 score_by_occ[left["occurrence_id"]].append(score)
                 score_by_occ[right["occurrence_id"]].append(score)
+                left_sources = known_source_labels(left)
+                right_sources = known_source_labels(right)
+                if left_sources and not right_sources:
+                    for source in left_sources:
+                        source_support[right["occurrence_id"]][source] += score
+                if right_sources and not left_sources:
+                    for source in right_sources:
+                        source_support[left["occurrence_id"]][source] += score
                 status = "mapped"
             else:
                 status = "low_similarity"
@@ -785,7 +888,7 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
                 }
             )
     nodes = [row["occurrence_id"] for row in occurrences]
-    components = graph_components(nodes, accepted_edges)
+    components = graph_components(nodes, accepted_edges, occurrence_by_id)
     homology = []
     for idx, occ_ids in enumerate(sorted(components, key=lambda vals: vals[0]), start=1):
         hsg = f"HSG_{idx:04d}"
@@ -798,7 +901,7 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
                     "occurrence_id": occ_id,
                     "support_type": "sequence_boundary_context_graph",
                     "confidence": f"{confidence:.6g}",
-                    "source_label": "unknown_source",
+                    "source_label": inferred_source_label(occurrence_by_id.get(occ_id, {}), source_support.get(occ_id, {})),
                 }
             )
     return homology, matches

@@ -3,6 +3,11 @@
 INSIPHY can start from genome FASTA plus GFF/GTF annotation, or from prepared
 TSV tables.
 
+The gene or copy set is supplied by the user. In a normal project this set
+comes from an upstream orthogroup/paralogy analysis such as OrthoFinder, OMA,
+OrthoDB or a curated duplication clade. INSIPHY starts after that step and
+focuses on gene-internal structure.
+
 ## FASTA/GFF Extraction
 
 `extract-gene` extracts one gene copy from genome sequence and annotation:
@@ -15,6 +20,8 @@ PYTHONPATH=src python3 -m insiphy.cli extract-gene \
   --family-id family_a \
   --species SpeciesA \
   --gene-copy-id SpeciesA_GeneA \
+  --source-label source_A \
+  --copy-role source \
   --output-dir work/family_a \
   --transcript-policy canonical
 ```
@@ -66,8 +73,15 @@ case_id	species	family_id	gene_id	gene_copy_id	genome_fasta	annotation_file
 Recommended additional fields are:
 
 ```text
-assembly	annotation	source_url	release	notes
+assembly	annotation	source_url	release	role_hint	source_label	copy_role	notes
 ```
+
+`source_label` names the inferred source locus or source class for a source or
+background copy, for example `Adh`, `ymp`, `AnxB10` or `sw`. `copy_role` can be
+`source`, `background`, `derived` or `candidate`. If `source_label` and
+`copy_role` are absent, `build-case` attempts a conservative inference from
+`role_hint`, `gene_symbol` and `gene_copy_id`. Derived copies receive source
+labels segment-by-segment from their strongest source-copy HSG matches.
 
 The command writes:
 

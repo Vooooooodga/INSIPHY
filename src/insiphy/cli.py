@@ -36,6 +36,8 @@ def main(argv=None):
     extract.add_argument("--append", action="store_true")
     extract.add_argument("--transcript-policy", choices=["canonical", "all"], default="canonical")
     extract.add_argument("--canonical-rule", choices=["longest_cds", "longest_span"], default="longest_cds")
+    extract.add_argument("--source-label", default="unknown_source")
+    extract.add_argument("--copy-role", choices=["source", "background", "derived", "candidate"], default="candidate")
 
     derive = sub.add_parser("derive-tables")
     derive.add_argument("--input-dir", required=True)
@@ -85,7 +87,7 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
     if args.command == "extract-gene":
-        extract_gene(args.genome, args.annotation, args.gene_id, args.family_id, args.species, args.gene_copy_id, args.output_dir, args.append, args.transcript_policy, args.canonical_rule)
+        extract_gene(args.genome, args.annotation, args.gene_id, args.family_id, args.species, args.gene_copy_id, args.output_dir, args.append, args.transcript_policy, args.canonical_rule, args.source_label, args.copy_role)
     elif args.command == "derive-tables":
         derive_tables(args.input_dir, args.output_dir, args.identity_threshold, args.distance_table)
     elif args.command == "simulate":

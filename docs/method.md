@@ -5,6 +5,10 @@ Segments can be annotated exons, CDS intervals, introns, or sequence-supported
 hidden candidates. The method reconstructs how these segments and their
 adjacencies changed on a fixed species tree.
 
+The method assumes that the compared gene copies have already been selected by
+an upstream homology workflow or by a curated case definition. INSIPHY analyzes
+the internal structure of that supplied copy set.
+
 ## Evidence Layers
 
 1. **Annotation extraction**: genome annotation supplies observed exons, CDS
@@ -39,7 +43,26 @@ Candidate events are reported with both low-level state changes and a biological
 
 The current implementation uses a Sankoff-style discrete character model for
 state reconstruction and a branch-length-aware CTMC/Mk likelihood fit for each
-structural character. INSIPHY reports fitted event-rate parameters, AIC/BIC,
-candidate branch events and lightweight competing-model scores. The publication
-version should expand real accession-level case studies and simulation-based
-calibration.
+structural character. INSIPHY reports fitted event-rate parameters, log
+likelihood, AIC/BIC, invariant-model LRT p values, CTMC branch-change
+probabilities, candidate branch events and lightweight competing-model scores.
+The publication version should expand real accession-level case studies,
+foreground/background structural-rate tests and simulation-based calibration.
+
+## Statistical Method Mapping
+
+INSIPHY adapts four families of phylogenetic methods to intragenic structure:
+
+- **Maximum parsimony / Sankoff reconstruction**: finds low-cost ancestral
+  histories for discrete segment states. Here the characters are segment
+  presence, segment role, source mixture, adjacency and copy multiplicity.
+- **Felsenstein pruning / Mk likelihood**: computes the likelihood of observed
+  tip states on a fixed tree under a continuous-time Markov model. Here the
+  Mk states are biological structural states such as `present/absent` or
+  `CDS/intron_or_noncoding`.
+- **Likelihood-ratio testing**: compares a no-change structural model against
+  a fitted change model and returns `p_value`, `lrt_statistic` and model
+  parameters.
+- **Ancestral adjacency reconstruction**: whole-genome synteny methods treat
+  neighboring genes as phylogenetic characters; INSIPHY applies the same idea
+  inside one gene by treating neighboring HSGs as intragenic synteny edges.

@@ -17,6 +17,38 @@ def split_aliases(value):
     return tokens
 
 
+def infer_manifest_source_label(row):
+    explicit = row.get("source_label", "")
+    if explicit and explicit not in {"NA", "unknown", "unknown_source"}:
+        return explicit
+    text = " ".join([row.get("role_hint", ""), row.get("gene_symbol", ""), row.get("gene_copy_id", "")]).lower()
+    if "derived" in text or "sdic" in text or "jgw" in text or "jingwei" in text:
+        return "unknown_source"
+    if "anxb10" in text or "annexin" in text:
+        return "AnxB10"
+    if "short_wing" in text or text.endswith(" sw") or "_sw" in text or " sw_" in text:
+        return "sw"
+    if "ymp" in text or "yande" in text or "yellow_emperor" in text or "yellow emperor" in text:
+        return "ymp"
+    if "adh" in text:
+        return "Adh"
+    return "unknown_source"
+
+
+def infer_manifest_copy_role(row):
+    explicit = row.get("copy_role", "")
+    if explicit and explicit != "NA":
+        return explicit
+    text = " ".join([row.get("role_hint", ""), row.get("gene_symbol", ""), row.get("gene_copy_id", "")]).lower()
+    if "derived" in text or "sdic" in text or "jgw" in text or "jingwei" in text:
+        return "derived"
+    if "source" in text:
+        return "source"
+    if "background" in text or "ortholog" in text:
+        return "background"
+    return "candidate"
+
+
 def feature_tokens(feature):
     attrs = feature.get("attrs", {})
     values = [feature.get("id", ""), feature.get("name", ""), feature.get("parent", "")]
@@ -124,7 +156,7 @@ def inspect_annotation(annotation, output_dir, queries=None, alias_file=None, sp
 
 
 def write_provenance(manifest_rows, output_dir):
-    fields = ["case_id", "species", "assembly", "annotation", "source_url", "release", "genome_fasta", "annotation_file", "notes"]
+    fields = ["case_id", "species", "assembly", "annotation", "source_url", "release", "genome_fasta", "annotation_file", "role_hint", "source_label", "copy_role", "notes"]
     rows = []
     for row in manifest_rows:
         rows.append({field: row.get(field, "NA") for field in fields})
@@ -167,6 +199,8 @@ def build_case(manifest, output_dir, identity_threshold=0.7, species_tree=None, 
                 append=appended,
                 transcript_policy=transcript_policy,
                 canonical_rule=canonical_rule,
+                source_label=infer_manifest_source_label(row),
+                copy_role=infer_manifest_copy_role(row),
             )
             appended = True
             after = len(read_tsv(output_dir / "segment_occurrences.tsv", optional=True))

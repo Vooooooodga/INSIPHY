@@ -38,6 +38,24 @@ role shifts suggest exonization or loss of coding/exonic role.
 
 Reference: https://genepainter.motorprotein.de/
 
+## Phylogenetic Discrete-Character Models
+
+INSIPHY treats intragenic structural states as discrete phylogenetic
+characters. The likelihood calculation follows the same logic as Felsenstein's
+pruning algorithm: conditional likelihoods are propagated from tips to root on
+a fixed tree. The state process is an Mk-style continuous-time Markov chain
+similar to discrete morphological-character models, with biological transition
+weights for gain, loss and role shift. Pagel-style discrete comparative models
+motivate later foreground/background and correlated-character tests; in the
+current implementation this is represented by an invariant-model LRT for each
+structural character.
+
+References:
+
+- https://pmc.ncbi.nlm.nih.gov/articles/PMC7803665/
+- https://academic.oup.com/sysbio/article-abstract/50/6/913/1665006
+- https://royalsocietypublishing.org/doi/10.1098/rspb.1994.0006
+
 ## DeCoSTAR, edgeHOG And MLGO
 
 Whole-genome structural phylogenetic methods often ask how adjacencies, gene

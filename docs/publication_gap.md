@@ -1,9 +1,9 @@
 # Publication Gap
 
-INSIPHY v0.2.0 is a runnable method prototype. It now includes transcript-aware
-extraction, graph-based segment correspondence and branch-length-aware CTMC/Mk
-fitting. A manuscript-grade method still requires stronger evidence in four
-areas.
+INSIPHY v0.3.0 is a runnable method prototype. It now includes transcript-aware
+extraction, graph-based segment correspondence, branch-length-aware CTMC/Mk
+fitting and invariant-model LRT p values. A manuscript-grade method still
+requires stronger evidence in four areas.
 
 ## Current Strengths
 
@@ -12,7 +12,8 @@ areas.
 - The package already separates annotation completion, homologous segment
   correspondence and phylogenetic structural inference.
 - The outputs report candidate events in biological terms, including
-  exonization, new adjacency, source joining and copy expansion.
+  exonization, new adjacency, source joining and copy expansion, and they now
+  include likelihood parameters and p values for structural characters.
 - Small jingwei and Sdic demos run in CI.
 - Annotation-dropout negative controls are represented in the simulator and
   benchmark layer.
@@ -21,8 +22,8 @@ areas.
 
 1. **Real case studies**: complete accession-level jingwei and Sdic analyses
    using documented genome and annotation versions.
-2. **Statistical calibration**: compare Sankoff scores, likelihood-like
-   character scores and simulated ground truth.
+2. **Statistical calibration**: compare Sankoff scores, CTMC likelihoods, LRT
+   p values and simulated ground truth.
 3. **Baseline comparisons**: quantify gains over annotation-only,
    sequence-only and intron/exon-position-only approaches.
 4. **Robustness tests**: simulate missing annotation, fragmented gene models,
@@ -34,5 +35,6 @@ areas.
 
 The package now includes simulation and benchmark commands, including a first
 annotation-dropout negative control. They should be expanded to cover many
-trees, multiple event rates, real accession-level cases and independent
-simulation generators before claims about accuracy are made.
+trees, multiple event rates, foreground/background branch scenarios, real
+accession-level cases and independent simulation generators before claims about
+accuracy are made.

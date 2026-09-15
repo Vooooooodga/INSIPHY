@@ -3,7 +3,7 @@
 from collections import defaultdict
 
 from .io import norm_state, read_tsv, to_float, write_tsv
-from .tree import SpeciesTree, discrete_log_likelihood, fit_discrete_ctmc, sankoff
+from .tree import SpeciesTree, ctmc_posteriors, discrete_log_likelihood, fit_discrete_ctmc, fit_invariant_test, sankoff
 
 
 EXONIC = {"CDS", "UTR", "noncoding_exon", "exon"}
@@ -32,10 +32,66 @@ def role_from_occurrences(rows):
     return "unknown"
 
 
-def add_character(tree, layer, object_id, tips, states, state_rows, branch_rows, model_score_rows, model_fit_rows):
+def add_character(tree, layer, object_id, tips, states, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows):
     score, probs, edges = sankoff(tree, tips, states, layer)
+    observed_tip_count = sum(1 for value in tips.values() if norm_state(value) != "unknown")
+    if observed_tip_count < 2:
+        model_score_rows.append(
+            {
+                "layer": layer,
+                "object_id": object_id,
+                "model": "insufficient_observed_tips",
+                "parsimony_score": f"{score:.6g}",
+                "log_likelihood": "NA",
+                "state_count": len(states),
+                "observed_tip_count": observed_tip_count,
+                "fitted_rate": "NA",
+                "aic": "NA",
+                "bic": "NA",
+            }
+        )
+        hypothesis_rows.append(
+            {
+                "layer": layer,
+                "object_id": object_id,
+                "test_id": "ctmc_vs_invariant",
+                "null_model": "invariant_no_structural_change",
+                "alternative_model": "ctmc_mk_branch_length",
+                "null_log_likelihood": "NA",
+                "alternative_log_likelihood": "NA",
+                "lrt_statistic": "NA",
+                "df": 1,
+                "p_value": "NA",
+                "p_value_method": "insufficient_observed_tips",
+                "fitted_rate": "NA",
+                "null_aic": "NA",
+                "alternative_aic": "NA",
+                "null_bic": "NA",
+                "alternative_bic": "NA",
+                "observed_tip_count": observed_tip_count,
+                "tip_error": "NA",
+            }
+        )
+        model_fit_rows.append(
+            {
+                "layer": layer,
+                "object_id": object_id,
+                "model": "insufficient_observed_tips",
+                "fitted_rate": "NA",
+                "log_likelihood": "NA",
+                "aic": "NA",
+                "bic": "NA",
+                "observed_tip_count": observed_tip_count,
+            }
+        )
+        for row in probs:
+            state_rows.append({"layer": layer, "object_id": object_id, "score": f"{score:.6g}", **row})
+        return
     log_likelihood = discrete_log_likelihood(tree, tips, states, layer)
     fit = fit_discrete_ctmc(tree, tips, states, layer)
+    test = fit_invariant_test(tree, tips, states, layer)
+    _ctmc_nodes, ctmc_edges = ctmc_posteriors(tree, tips, states, layer, rate=fit["rate"])
+    ctmc_by_edge = {(row["parent_node"], row["child_node"]): row for row in ctmc_edges}
     model_score_rows.append(
         {
             "layer": layer,
@@ -48,6 +104,28 @@ def add_character(tree, layer, object_id, tips, states, state_rows, branch_rows,
             "fitted_rate": f"{fit['rate']:.6g}",
             "aic": f"{fit['aic']:.6g}",
             "bic": f"{fit['bic']:.6g}",
+        }
+    )
+    hypothesis_rows.append(
+        {
+            "layer": layer,
+            "object_id": object_id,
+            "test_id": "ctmc_vs_invariant",
+            "null_model": test["null_model"],
+            "alternative_model": test["alternative_model"],
+            "null_log_likelihood": f"{test['null_log_likelihood']:.6g}",
+            "alternative_log_likelihood": f"{test['alternative_log_likelihood']:.6g}",
+            "lrt_statistic": f"{test['lrt_statistic']:.6g}",
+            "df": test["df"],
+            "p_value": f"{test['p_value']:.6g}",
+            "p_value_method": test["p_value_method"],
+            "fitted_rate": f"{test['fitted_rate']:.6g}",
+            "null_aic": f"{test['null_aic']:.6g}",
+            "alternative_aic": f"{test['alternative_aic']:.6g}",
+            "null_bic": f"{test['null_bic']:.6g}",
+            "alternative_bic": f"{test['alternative_bic']:.6g}",
+            "observed_tip_count": test["observed_tip_count"],
+            "tip_error": f"{test['tip_error']:.6g}",
         }
     )
     model_fit_rows.append(
@@ -65,8 +143,19 @@ def add_character(tree, layer, object_id, tips, states, state_rows, branch_rows,
     for row in probs:
         state_rows.append({"layer": layer, "object_id": object_id, "score": f"{score:.6g}", **row})
     for row in edges:
+        ctmc = ctmc_by_edge.get((row["parent_node"], row["child_node"]), {})
         event_type = f"{layer}_change" if row["status"] == "change_required" else "state_change"
-        branch_rows.append({"layer": layer, "object_id": object_id, "event_type": event_type, **row})
+        branch_rows.append(
+            {
+                "layer": layer,
+                "object_id": object_id,
+                "event_type": event_type,
+                **row,
+                "ctmc_change_probability": f"{ctmc.get('ctmc_change_probability', 0.0):.6g}",
+                "ctmc_most_likely_change": ctmc.get("ctmc_most_likely_change", "NA"),
+                "ctmc_most_likely_change_probability": f"{ctmc.get('ctmc_most_likely_change_probability', 0.0):.6g}",
+            }
+        )
 
 
 def classify_branch_event(layer, change):
@@ -129,6 +218,7 @@ def infer_phylogeny(input_dir, output_dir):
     branch_rows = []
     model_score_rows = []
     model_fit_rows = []
+    hypothesis_rows = []
     object_family = {}
     for hsg, occ_ids in sorted(occ_by_hsg.items()):
         by_species = defaultdict(list)
@@ -139,8 +229,8 @@ def infer_phylogeny(input_dir, output_dir):
                 by_species[occ["species"]].append(occ)
                 families.add(occ["family_id"])
         object_family[hsg] = ";".join(sorted(families)) if families else hsg
-        add_character(tree, "segment_presence", hsg, {sp: state_from_occurrences(rows) for sp, rows in by_species.items()}, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows)
-        add_character(tree, "role_state", hsg, {sp: role_from_occurrences(rows) for sp, rows in by_species.items()}, {"absent", "CDS", "exon_or_UTR", "intron_or_noncoding", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows)
+        add_character(tree, "segment_presence", hsg, {sp: state_from_occurrences(rows) for sp, rows in by_species.items()}, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows)
+        add_character(tree, "role_state", hsg, {sp: role_from_occurrences(rows) for sp, rows in by_species.items()}, {"absent", "CDS", "exon_or_UTR", "intron_or_noncoding", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows)
 
     graph_edges = []
     adj_by_pair = defaultdict(lambda: defaultdict(list))
@@ -174,7 +264,7 @@ def infer_phylogeny(input_dir, output_dir):
         for species, vals in by_species.items():
             vals = [norm_state(value) for value in vals]
             tips[species] = "present" if "present" in vals else "absent" if vals and all(value == "absent" for value in vals) else "unknown"
-        add_character(tree, "adjacency_state", pair_id, tips, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows)
+        add_character(tree, "adjacency_state", pair_id, tips, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows)
 
     source_states_by_family_species = defaultdict(list)
     for key in sorted({(row["family_id"], row["species"], row["gene_copy_id"]) for row in occurrences}):
@@ -187,7 +277,7 @@ def infer_phylogeny(input_dir, output_dir):
         source_tips[family][species] = "multi_source" if "multi_source" in states else "single_source" if "single_source" in states else "unknown"
     for family, tips in sorted(source_tips.items()):
         object_family[family] = family
-        add_character(tree, "source_mixture", family, tips, {"single_source", "multi_source", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows)
+        add_character(tree, "source_mixture", family, tips, {"single_source", "multi_source", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows)
 
     copy_states_by_family_species = defaultdict(list)
     for row in copy_context:
@@ -208,7 +298,7 @@ def infer_phylogeny(input_dir, output_dir):
             copy_tips[family][species] = "unknown"
     for family, tips in sorted(copy_tips.items()):
         object_family[family] = family
-        add_character(tree, "copy_multiplicity", family, tips, {"single_copy", "tandem_multi_copy", "same_contig_multi_copy", "dispersed_multi_copy", "unresolved", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows)
+        add_character(tree, "copy_multiplicity", family, tips, {"single_copy", "tandem_multi_copy", "same_contig_multi_copy", "dispersed_multi_copy", "unresolved", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows)
 
     hidden_calls = {"hidden_segment_candidate", "shifted_splice_site_candidate", "joined_exon_candidate", "hidden_segment_with_frame_disruption"}
     hidden_support = sum(to_float(row.get("support_score")) for row in annotation_candidates if row.get("completion_call") in hidden_calls)
@@ -240,6 +330,7 @@ def infer_phylogeny(input_dir, output_dir):
                     "object_id": row["object_id"],
                     "branch_scope": f"{row['parent_label']}->{row['child_label']}",
                     "event_probability": row["event_probability"],
+                    "ctmc_change_probability": row.get("ctmc_change_probability", "NA"),
                     "change": row["change"],
                     "alternative_explanation": "annotation_gap_or_mapping_ambiguity_if_sequence_support_low",
                 }
@@ -255,6 +346,7 @@ def infer_phylogeny(input_dir, output_dir):
                     "object_id": edge["edge_id"],
                     "branch_scope": "estimated_from_adjacency_state_history",
                     "event_probability": "NA",
+                    "ctmc_change_probability": "NA",
                     "change": f"{edge['left_source_labels']}->{edge['right_source_labels']}",
                     "alternative_explanation": "paralogy_or_homology_assignment_error_if_low_support",
                 }
@@ -272,6 +364,7 @@ def infer_phylogeny(input_dir, output_dir):
                     "object_id": f"{row['species']}:{row['query_copy_id']}--{row['subject_copy_id']}",
                     "branch_scope": "tip_copy_relationship_requires_phylogenetic_placement",
                     "event_probability": row.get("synteny_score", "NA"),
+                    "ctmc_change_probability": "NA",
                     "change": rel,
                     "alternative_explanation": "assembly_fragmentation_or_unresolved_paralogy_if_low_support",
                 }
@@ -292,10 +385,11 @@ def infer_phylogeny(input_dir, output_dir):
         )
 
     write_tsv(f"{output_dir}/ancestral_state_probabilities.tsv", state_rows, ["layer", "object_id", "score", "node_id", "node_label", "state", "probability", "is_parsimony_best"])
-    write_tsv(f"{output_dir}/branch_event_probabilities.tsv", branch_rows, ["layer", "object_id", "event_type", "parent_node", "child_node", "parent_label", "child_label", "branch_length", "status", "change", "event_probability"])
+    write_tsv(f"{output_dir}/branch_event_probabilities.tsv", branch_rows, ["layer", "object_id", "event_type", "parent_node", "child_node", "parent_label", "child_label", "branch_length", "status", "change", "event_probability", "ctmc_change_probability", "ctmc_most_likely_change", "ctmc_most_likely_change_probability"])
     write_tsv(f"{output_dir}/character_model_scores.tsv", model_score_rows, ["layer", "object_id", "model", "parsimony_score", "log_likelihood", "state_count", "observed_tip_count", "fitted_rate", "aic", "bic"])
     write_tsv(f"{output_dir}/model_fit.tsv", model_fit_rows, ["layer", "object_id", "model", "fitted_rate", "log_likelihood", "aic", "bic", "observed_tip_count"])
-    write_tsv(f"{output_dir}/candidate_structural_events.tsv", event_rows, ["family_id", "event_type", "event_class", "evidence_layer", "object_id", "branch_scope", "event_probability", "change", "alternative_explanation"])
+    write_tsv(f"{output_dir}/hypothesis_tests.tsv", hypothesis_rows, ["layer", "object_id", "test_id", "null_model", "alternative_model", "null_log_likelihood", "alternative_log_likelihood", "lrt_statistic", "df", "p_value", "p_value_method", "fitted_rate", "null_aic", "alternative_aic", "null_bic", "alternative_bic", "observed_tip_count", "tip_error"])
+    write_tsv(f"{output_dir}/candidate_structural_events.tsv", event_rows, ["family_id", "event_type", "event_class", "evidence_layer", "object_id", "branch_scope", "event_probability", "ctmc_change_probability", "change", "alternative_explanation"])
     write_tsv(f"{output_dir}/model_comparison.tsv", model_rows, ["comparison_id", "model", "score", "delta_vs_best", "interpretation"])
     write_tsv(f"{output_dir}/intragenic_graph_edges.tsv", graph_edges, ["family_id", "species", "gene_copy_id", "edge_id", "left_hsg", "right_hsg", "left_occurrence_id", "right_occurrence_id", "adjacency_status", "left_source_labels", "right_source_labels"])
     write_tsv(f"{output_dir}/demo_summary.tsv", demo_summary, ["family_id", "hidden_segment_candidates", "source_join_candidates", "multi_source_tip_count", "branch_event_candidates", "best_annotation_model", "best_compound_model"])
