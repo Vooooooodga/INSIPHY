@@ -41,6 +41,41 @@ def add_character(tree, layer, object_id, tips, states, state_rows, branch_rows)
         branch_rows.append({"layer": layer, "object_id": object_id, "event_type": event_type, **row})
 
 
+def classify_branch_event(layer, change):
+    if "->" not in change:
+        return "ambiguous_structural_change"
+    src, dst = change.split("->", 1)
+    if layer == "segment_presence":
+        if src == "absent" and dst == "present":
+            return "segment_gain"
+        if src == "present" and dst == "absent":
+            return "segment_loss"
+        return "segment_presence_shift"
+    if layer == "role_state":
+        if src in {"intron_or_noncoding", "absent"} and dst in {"CDS", "exon_or_UTR"}:
+            return "exonization_candidate"
+        if src in {"CDS", "exon_or_UTR"} and dst == "intron_or_noncoding":
+            return "coding_or_exonic_role_loss"
+        return "segment_role_shift"
+    if layer == "adjacency_state":
+        if src == "absent" and dst == "present":
+            return "segment_fusion_or_new_adjacency"
+        if src == "present" and dst == "absent":
+            return "segment_split_or_adjacency_loss"
+        return "adjacency_shift"
+    if layer == "source_mixture":
+        if dst == "multi_source":
+            return "chimeric_origin_or_source_mixing"
+        return "source_mixture_shift"
+    if layer == "copy_multiplicity":
+        if dst == "tandem_multi_copy":
+            return "copy_duplication_or_expansion"
+        if src == "tandem_multi_copy" and dst == "single_copy":
+            return "copy_loss_or_collapse"
+        return "copy_multiplicity_shift"
+    return "structural_state_change"
+
+
 def infer_phylogeny(input_dir, output_dir):
     occurrences = read_tsv(f"{input_dir}/segment_occurrences.tsv", ["occurrence_id", "family_id", "species", "gene_copy_id", "role", "presence_status"])
     homology = read_tsv(f"{input_dir}/segment_homology.tsv", ["homology_id", "occurrence_id", "support_type", "confidence"])
@@ -162,6 +197,8 @@ def infer_phylogeny(input_dir, output_dir):
                 {
                     "family_id": object_family.get(row["object_id"], row["object_id"].split("__")[0]),
                     "event_type": row["event_type"],
+                    "event_class": classify_branch_event(row["layer"], row["change"]),
+                    "evidence_layer": row["layer"],
                     "object_id": row["object_id"],
                     "branch_scope": f"{row['parent_label']}->{row['child_label']}",
                     "event_probability": row["event_probability"],
@@ -175,6 +212,8 @@ def infer_phylogeny(input_dir, output_dir):
                 {
                     "family_id": edge["family_id"],
                     "event_type": "source_join_candidate",
+                    "event_class": "chimeric_source_join_candidate",
+                    "evidence_layer": "intragenic_adjacency_graph",
                     "object_id": edge["edge_id"],
                     "branch_scope": "estimated_from_adjacency_state_history",
                     "event_probability": "NA",
@@ -199,7 +238,7 @@ def infer_phylogeny(input_dir, output_dir):
 
     write_tsv(f"{output_dir}/ancestral_state_probabilities.tsv", state_rows, ["layer", "object_id", "score", "node_id", "node_label", "state", "probability", "is_parsimony_best"])
     write_tsv(f"{output_dir}/branch_event_probabilities.tsv", branch_rows, ["layer", "object_id", "event_type", "parent_node", "child_node", "parent_label", "child_label", "status", "change", "event_probability"])
-    write_tsv(f"{output_dir}/candidate_structural_events.tsv", event_rows, ["family_id", "event_type", "object_id", "branch_scope", "event_probability", "change", "alternative_explanation"])
+    write_tsv(f"{output_dir}/candidate_structural_events.tsv", event_rows, ["family_id", "event_type", "event_class", "evidence_layer", "object_id", "branch_scope", "event_probability", "change", "alternative_explanation"])
     write_tsv(f"{output_dir}/model_comparison.tsv", model_rows, ["comparison_id", "model", "score", "delta_vs_best", "interpretation"])
     write_tsv(f"{output_dir}/intragenic_graph_edges.tsv", graph_edges, ["family_id", "species", "gene_copy_id", "edge_id", "left_hsg", "right_hsg", "left_occurrence_id", "right_occurrence_id", "adjacency_status", "left_source_labels", "right_source_labels"])
     write_tsv(f"{output_dir}/demo_summary.tsv", demo_summary, ["family_id", "hidden_segment_candidates", "source_join_candidates", "multi_source_tip_count", "branch_event_candidates", "best_annotation_model", "best_compound_model"])

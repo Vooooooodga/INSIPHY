@@ -31,6 +31,11 @@ changes:
 - duplicated-copy divergence;
 - annotation gap supported by sequence evidence.
 
+Candidate events are reported with both low-level state changes and a biological
+`event_class`, such as `exonization_candidate`,
+`segment_fusion_or_new_adjacency`, `chimeric_source_join_candidate` or
+`copy_duplication_or_expansion`.
+
 The current implementation uses a Sankoff-style discrete character model for
 state reconstruction and a lightweight competing-model score. This gives a
 transparent first-pass event history. The planned publication version will add

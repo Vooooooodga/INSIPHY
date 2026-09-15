@@ -94,6 +94,10 @@ PYTHONPATH=src python -m insiphy.cli run \
 - `intragenic_graph_edges.tsv`
 - `demo_summary.tsv`
 
+`candidate_structural_events.tsv` includes a biological `event_class` field,
+so low-level state changes can be interpreted as exonization, source joining,
+new adjacency, segment loss/gain or copy expansion candidates.
+
 Biological sources and demo scope are documented in `docs/data_sources.md`.
 Input formats and method details are documented in `docs/input_format.md` and
 `docs/method.md`.
