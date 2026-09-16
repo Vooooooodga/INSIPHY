@@ -5,6 +5,12 @@ from pathlib import Path
 from .io import read_tsv, to_float, write_tsv
 
 
+NON_BIOLOGICAL_BENCHMARK_CLASSES = {
+    "sequence_supported_annotation_gap",
+    "annotation_or_alignment_evidence",
+}
+
+
 def event_key(row, include_branch=False):
     base = (row.get("family_id", ""), row.get("event_class", ""))
     if include_branch:
@@ -17,6 +23,7 @@ def benchmark_events(input_dir, output_dir):
     output_dir = Path(output_dir)
     truth = read_tsv(input_dir / "truth_events.tsv", ["family_id", "event_class"], optional=True)
     calls = read_tsv(output_dir / "candidate_structural_events.tsv", ["family_id", "event_class"], optional=True)
+    calls = [row for row in calls if row.get("event_class") not in NON_BIOLOGICAL_BENCHMARK_CLASSES]
     bootstraps = read_tsv(output_dir / "hypothesis_bootstrap.tsv", ["empirical_p_value"], optional=True)
     truth_set = {event_key(row) for row in truth}
     call_set = {event_key(row) for row in calls}

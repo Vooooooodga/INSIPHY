@@ -1,77 +1,103 @@
 # INSIPHY Method Overview
 
-INSIPHY treats a gene copy as an ordered set of homologous internal segments.
-Segments can be annotated exons, CDS intervals, introns, or sequence-supported
-hidden candidates. The method reconstructs how these segments and their
-adjacencies changed on a fixed species tree.
+INSIPHY treats each supplied gene copy as an ordered set of internal structural
+segments. Segments can be annotated exons, CDS intervals, UTRs, introns or
+sequence-supported hidden candidates. The method reconstructs how these
+segments and their adjacencies changed on a fixed species tree.
 
-The method assumes that the compared gene copies have already been selected by
-an upstream homology workflow or by a curated case definition. INSIPHY analyzes
-the internal structure of that supplied copy set.
+The compared gene/copy set is supplied by an upstream homology workflow or a
+curated case definition. INSIPHY starts from that set and analyzes structure
+inside the homologous genes.
 
 ## Evidence Layers
 
-1. **Annotation extraction**: genome annotation supplies observed exons, CDS
-   intervals, UTRs, transcript paths and introns for each target copy.
-2. **Sequence-supported completion**: local sequence evidence can mark a
-   missing annotated segment as a hidden-segment candidate or an annotation
-   conflict.
+1. **Annotation extraction**: genome annotation supplies exons, CDS intervals,
+   UTRs, transcript paths and introns for each target copy.
+2. **Sequence-supported completion**: local sequence evidence marks missing
+   annotated segments, shifted splice boundaries or joined-segment candidates.
 3. **Homologous segment grouping**: pairwise segment similarity, boundary
    compatibility, intron phase, splice motif, strand, flanking context and
-   local order are combined into graph-based HSG assignments. The sequence
-   alignment layer can use the internal fallback aligner, minimap2 for
-   nucleotide segment matching, or miniprot for protein-to-genome style
-   completion tests when suitable input is provided.
-4. **Intragenic synteny graph**: ordered HSG adjacencies describe the internal
+   local order are combined into graph-based HSG assignments.
+4. **Tree-guided progressive interpretation**: segment support is summarized by
+   species-tree distance. Close-species support, within-clade support and
+   deep-tree support are kept visible in `progressive_correspondence.tsv`.
+5. **Intragenic synteny graph**: ordered HSG adjacencies describe the internal
    synteny of each gene copy.
-5. **Phylogenetic reconstruction**: segment presence, role state, adjacency,
+6. **Phylogenetic reconstruction**: segment presence, role state, adjacency,
    source mixture and copy multiplicity are optimized on the species tree.
+
+The sequence layer can use the internal fallback aligner, minimap2 for
+nucleotide segment matching, or miniprot for protein-to-genome style completion
+tests when suitable input is provided.
 
 ## Evolutionary Questions
 
-INSIPHY asks whether an event can be explained by gene-internal structural
-changes:
+INSIPHY asks whether a supplied gene/copy set shows gene-internal structural
+change on the species tree:
 
-- gain or loss of a homologous segment;
+- gain or loss of a homologous internal segment;
 - exonization of intronic or noncoding sequence;
-- fusion of segments from different source loci;
+- source joining in a chimeric or duplicated gene;
 - split or fusion of adjacent internal segments;
-- duplicated-copy divergence;
-- annotation gap supported by sequence evidence.
+- splice-boundary shift;
+- duplicated-copy divergence and copy expansion;
+- high-identity paralogous segment matches consistent with gene conversion
+  candidates;
+- annotation gap supported by local sequence evidence.
 
-Candidate events are reported with both low-level state changes and a biological
-`event_class`, such as `exonization_candidate`,
-`segment_fusion_or_new_adjacency`, `chimeric_source_join_candidate` or
-`copy_duplication_or_expansion`.
+Candidate events are reported with both low-level state changes and biological
+`event_class` labels, such as `exonization_candidate`,
+`segment_fusion_or_new_adjacency`, `chimeric_source_join_candidate`,
+`copy_duplication_or_expansion` or `gene_conversion_candidate`.
 
-The current implementation uses a Sankoff-style discrete character model for
-state reconstruction and a branch-length-aware CTMC/Mk likelihood fit for each
-structural character. INSIPHY reports fitted event-rate parameters, log
-likelihood, AIC/BIC, invariant-model LRT p values, CTMC branch-change
-probabilities, bootstrap-calibrated empirical p values when requested,
-stochastic-map branch-history summaries, foreground/background rate tests,
-candidate branch events and lightweight competing-model scores. The publication
-version should expand real accession-level case studies, independent benchmark
-sets and large-scale calibration.
+## Three-Layer Translation
 
-## Statistical Method Mapping
+INSIPHY makes the biological-to-statistical translation explicit.
 
-INSIPHY adapts four families of phylogenetic methods to intragenic structure:
+1. **Biological meaning**: a gene-internal event is a change in which internal
+   pieces exist, what role they play, where they sit relative to neighboring
+   pieces, and which source copy they resemble. For example, a chimeric gene is
+   represented by adjacent HSGs with different source labels; copy expansion is
+   represented by multiple related copies in the same species; exonization is
+   represented by a role shift from intron/noncoding to exon/CDS.
+2. **Mathematical object**: each biological question becomes one or more
+   discrete structural characters on a fixed tree. HSG presence is
+   `present/absent`; role is `CDS/exon_or_UTR/intron_or_noncoding/absent`;
+   adjacency is `present/absent`; source mixture is
+   `single_source/multi_source`; copy multiplicity is
+   `single_copy/tandem_multi_copy/dispersed_multi_copy/...`.
+3. **Statistical computation**: each character is analyzed with a discrete
+   phylogenetic model. Sankoff reconstruction places low-cost changes on the
+   tree; CTMC/Mk likelihood estimates transition rate; the invariant-model LRT
+   asks whether the character supports structural change; bootstrap and
+   stochastic mapping calibrate and place the event; foreground/background
+   tests ask whether selected branches have elevated structural-change rate.
 
-- **Maximum parsimony / Sankoff reconstruction**: finds low-cost ancestral
-  histories for discrete segment states. Here the characters are segment
-  presence, segment role, source mixture, adjacency and copy multiplicity.
-- **Felsenstein pruning / Mk likelihood**: computes the likelihood of observed
-  tip states on a fixed tree under a continuous-time Markov model. Here the
-  Mk states are biological structural states such as `present/absent` or
-  `CDS/intron_or_noncoding`.
-- **Likelihood-ratio testing**: compares a no-change structural model against
-  a fitted change model and returns `p_value`, `lrt_statistic` and model
-  parameters.
-- **Parametric bootstrap**: simulates structural characters under the null on
-  the same tree and reports an empirical p value for small-tree calibration.
-- **Stochastic character mapping**: samples complete CTMC histories along
-  branches, giving posterior summaries for event count and transition type.
-- **Ancestral adjacency reconstruction**: whole-genome synteny methods treat
-  neighboring genes as phylogenetic characters; INSIPHY applies the same idea
-  inside one gene by treating neighboring HSGs as intragenic synteny edges.
+The real-case outputs keep these layers linked: `candidate_structural_events.tsv`
+names the biological event, `object_id` points back to the structural character,
+and `event_support_summary.tsv` joins that event to p values, q values,
+bootstrap evidence and branch-history support where available.
+
+## Statistical Mapping
+
+INSIPHY adapts discrete-character phylogenetic models to intragenic structure:
+
+- **Weighted Sankoff reconstruction** estimates low-cost ancestral histories
+  for segment presence, role state, adjacency, source mixture and copy
+  multiplicity.
+- **Felsenstein pruning / Mk likelihood** fits a branch-length-aware CTMC model
+  for each structural character on the fixed species tree.
+- **Likelihood-ratio testing** compares an invariant no-change model against a
+  one-rate CTMC model and reports p value, fitted rate, AIC and BIC.
+- **Benjamini-Hochberg correction** reports q values across structural
+  characters.
+- **Parametric bootstrap** reports empirical p values for small-tree
+  calibration when requested.
+- **Stochastic character mapping** samples complete CTMC histories along
+  branches and reports posterior summaries for event placement.
+- **Foreground/background rate testing** asks whether user-selected branches
+  show elevated structural-change rates compared with background branches.
+
+The first publication version focuses on real Drosophila duplicated and
+chimeric gene cases plus a conserved negative control. Large-scale calibration
+remains a manuscript-readiness task.

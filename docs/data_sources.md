@@ -1,20 +1,20 @@
-# Data Sources And Demo Scope
+# Data Sources
 
-This package currently ships two curated micro-demos. They are small method
-fixtures built from published biological patterns and hand-written toy
-sequences, so they exercise the software logic without claiming to reproduce a
-complete accession-level analysis.
+INSIPHY real-case examples are Drosophila-focused because the selected gene
+histories are biologically interpretable and the available species are close
+enough for gene-internal synteny to be informative.
 
-## jingwei demo
+## jingwei
 
-Biological pattern represented:
+Expected biological pattern:
 
-- a duplicated gene with segments derived from `Adh` and `yande`;
-- coding recruitment of a segment that is intronic or noncoding in the source
+- a chimeric/duplicated gene involving `Adh`-derived sequence and `yande/ymp`
+  source sequence;
+- coding recruitment of sequence that is intronic or noncoding in the source
   context;
-- a hidden segment candidate supported by sequence and local synteny evidence.
+- source mixture and source-joining adjacency in the derived copy.
 
-Literature background:
+Selected literature background:
 
 - Long and Langley, 1993, Science: origin of jingwei by exon shuffling.
 - Long et al., 1999, Genetics: jingwei evolution and recruited sequence.
@@ -22,46 +22,42 @@ Literature background:
   https://doi.org/10.1093/oxfordjournals.molbev.a026413
 - Zhang et al., 2004, PNAS: https://doi.org/10.1073/pnas.0407066101
 
-## Sdic demo
+## Sdic
 
-Biological pattern represented:
+Expected biological pattern:
 
-- a duplicated gene family derived from `Annexin B10` and `sw`;
-- multi-source gene structure in the derived copy;
-- an intron-derived segment whose coding/exonic role is inferred from sequence
-  and structure evidence;
-- copy-number ambiguity in the derived species.
+- a young duplicated/chimeric gene family involving `Annexin B10` and `sw`;
+- multi-source gene structure in derived copies;
+- copy-number expansion and intragenic adjacency changes.
 
-Literature background:
+Selected literature background:
 
 - Nurminsky et al., 1998, Nature: https://doi.org/10.1038/25126
 - Yeh et al., 2012, G3: https://pmc.ncbi.nlm.nih.gov/articles/PMC3277543/
 - Zhao et al., 2023, Communications Biology:
   https://doi.org/10.1038/s42003-023-05427-4
 
-## Method Assumptions In The Demo Files
+## RpL32 Conserved Control
 
-The demo TSVs separate three evidence layers:
+Expected biological pattern:
 
-1. observed or sequence-completed segment occurrences;
-2. homologous segment group assignments and pairwise correspondence support;
-3. fixed species-tree structural characters for presence, role, adjacency,
-   source mixture, and copy multiplicity.
+- conserved ribosomal protein gene;
+- stable exon-intron structure among close Drosophila species;
+- low support for source joining, copy expansion and exonization.
 
-This keeps annotation completion separate from phylogenetic inference. The
-phylogenetic module can then compare whether a hidden segment is better treated
-as an annotation gap or as a real structural loss/gain, and whether a gene copy
-is better explained by independent segment changes or by one compound
-chimeric/copy event.
+This control is used to estimate false-positive behavior in the first
+accession-level benchmark.
 
-## Real-Data Benchmark Direction
+## Local Genome Data
 
-The first real-data benchmark should remain Drosophila-focused. Jingwei and
-Sdic are the positive controls already represented by bundled method fixtures.
-The next case should add an independent young duplicate or chimeric gene such
-as sphinx, followed by a conserved single-copy negative control. The benchmark
-plan and acceptance criteria are recorded in `docs/real_data_benchmark.md`.
+The R730 local data store currently contains:
 
-Large FASTA/GFF/GTF files are intentionally excluded from the repository.
-Manifests should point to local project inputs and record source release,
-assembly, annotation, source labels and copy roles.
+- `/data/db/genome/Drosophila_melanogaster/GCF_000001215.4/`
+- `/data/db/genome/Drosophila_simulans/GCF_016746395.2/`
+- `/data/db/genome/Drosophila_erecta/GCF_003286155.1/`
+- `/data/db/genome/Drosophila_yakuba/GCF_016746365.2/`
+- `/data/db/genome/Drosophila_teissieri/GCF_016746235.2/`
+
+Large FASTA/GFF/GTF files are excluded from the repository. Case manifests
+record local paths, assembly, annotation source, release, source labels and
+copy roles.

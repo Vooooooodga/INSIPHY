@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 
 from .alignment import global_alignment_stats
 from .io import parse_fasta, read_tsv, to_float, uniq, write_tsv
+from .tree import SpeciesTree
 
 
 def simple_identity(seq_a, seq_b):
@@ -42,6 +43,48 @@ def normalized_components(row):
         "strand_score": to_float(row.get("strand_score"), 0.5),
         "splice_score": to_float(row.get("splice_score"), 0.5),
     }
+
+
+def tree_distances(input_dir):
+    rows = read_tsv(f"{input_dir}/species_tree.tsv", optional=True)
+    if not rows:
+        return {}
+    tree = SpeciesTree(rows)
+    depth = {tree.root: 0.0}
+    for node in tree.preorder():
+        for child in tree.children.get(node, []):
+            depth[child] = depth[node] + tree.branch_length(child)
+
+    ancestors = {}
+    for node in tree.parent:
+        vals = []
+        cur = node
+        while cur:
+            vals.append(cur)
+            cur = tree.parent.get(cur)
+        ancestors[node] = vals
+
+    distances = {}
+    labels = sorted(tree.leaf_by_label)
+    for left_label in labels:
+        for right_label in labels:
+            left = tree.leaf_by_label[left_label]
+            right = tree.leaf_by_label[right_label]
+            right_ancestors = set(ancestors[right])
+            lca = next(node for node in ancestors[left] if node in right_ancestors)
+            distances[(left_label, right_label)] = depth[left] + depth[right] - 2 * depth[lca]
+    return distances
+
+
+def progressive_tier(distance):
+    if distance == "NA":
+        return "tree_not_available"
+    value = to_float(distance, 0.0)
+    if value <= 2.0:
+        return "nearest_species_support"
+    if value <= 4.0:
+        return "within_clade_support"
+    return "deep_tree_support"
 
 
 def reciprocal_status(scored):
@@ -84,6 +127,7 @@ def infer_correspondence(input_dir, output_dir):
     matches = read_tsv(f"{input_dir}/segment_matches.tsv", ["match_id", "query_occurrence_id", "subject_occurrence_id", "match_status"], optional=True)
     seqs = parse_fasta(f"{input_dir}/segment_sequences.fasta")
     occ_by_id = {row["occurrence_id"]: row for row in occurrences}
+    distances = tree_distances(input_dir)
 
     hsg_rows = []
     by_hsg = defaultdict(list)
@@ -185,6 +229,26 @@ def infer_correspondence(input_dir, output_dir):
         else:
             row["correspondence_call"] = best_status.get(row["match_id"], "not_best")
 
+    progressive_rows = []
+    for row in scored:
+        left = occ_by_id.get(row["query_occurrence_id"], {})
+        right = occ_by_id.get(row["subject_occurrence_id"], {})
+        pair_distance = distances.get((left.get("species"), right.get("species")), "NA")
+        pair_distance_text = f"{pair_distance:.6g}" if pair_distance != "NA" else "NA"
+        progressive_rows.append(
+            {
+                "match_id": row["match_id"],
+                "query_species": left.get("species", "NA"),
+                "subject_species": right.get("species", "NA"),
+                "query_gene_copy_id": left.get("gene_copy_id", "NA"),
+                "subject_gene_copy_id": right.get("gene_copy_id", "NA"),
+                "tree_distance": pair_distance_text,
+                "progressive_tier": progressive_tier(pair_distance_text),
+                "total_score": row["total_score"],
+                "correspondence_call": row["correspondence_call"],
+            }
+        )
+
     for row in hsg_rows:
         deg = degree.get(row["occurrence_id"], 0)
         base = to_float(row.get("membership_score"), 0.5)
@@ -220,4 +284,5 @@ def infer_correspondence(input_dir, output_dir):
         ],
     )
     write_tsv(f"{output_dir}/hsg_graph_edges.tsv", graph_edges, ["edge_id", "query_occurrence_id", "subject_occurrence_id", "total_score", "reciprocal_status", "edge_call"])
+    write_tsv(f"{output_dir}/progressive_correspondence.tsv", progressive_rows, ["match_id", "query_species", "subject_species", "query_gene_copy_id", "subject_gene_copy_id", "tree_distance", "progressive_tier", "total_score", "correspondence_call"])
     return hsg_rows, conservation, scored

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0 - 2026-09-16
+
+- Clarified the public method boundary: INSIPHY starts from supplied homologous
+  gene/copy sets and analyzes gene-internal structure on a species tree.
+- Added tree-distance-aware `progressive_correspondence.tsv` for interpreting
+  segment correspondence inside the supplied gene set.
+- Added q values, `event_support_summary.tsv` and gene-conversion candidate
+  calls to phylogenetic event reporting.
+- Added colorblind-friendly SVG visualizations with texture, shape, line style
+  and labels as primary encodings.
+- Updated accession-level Drosophila real-case manifests for `jingwei`, `Sdic`
+  and the RpL32 conserved control.
+- Removed the experimental genome-alignment import layer from the package API.
+
 ## 0.5.0 - 2026-09-15
 
 - Added optional alignment backend selection for segment correspondence and
@@ -63,7 +77,7 @@
 - Added genome FASTA/GFF extraction for single-gene copies.
 - Added first-pass HSG, correspondence, adjacency and copy-context builders.
 - Added fixed-tree structural inference for intragenic segment evolution.
-- Added jingwei and Sdic curated micro-demos.
+- Added jingwei and Sdic curated internal fixtures.
 - Added literature review, publication-gap notes, likelihood-like character
   scores, baseline comparisons, simulation and benchmark commands.
 - Added real-case preparation commands for annotation inspection, case manifest

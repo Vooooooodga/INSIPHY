@@ -6,10 +6,10 @@ INSIPHY currently separates biological evidence from phylogenetic interpretation
 
 1. **Evidence scoring for HSGs**: sequence identity, coverage, splice motif,
    intron phase, strand, boundary class and local order are combined into
-   homologous segment group scores. These are evidence scores for
-   correspondence, not phylogenetic p values. Real-case clustering also
-   requires role-compatible sequence support and constrains each HSG component
-   to contain at most one segment from the same gene copy.
+   homologous segment group scores. These scores describe segment
+   correspondence strength. Real-case clustering also requires role-compatible
+   sequence support and constrains each HSG component to contain at most one
+   segment from the same gene copy.
 2. **Weighted Sankoff reconstruction**: segment presence, segment role,
    intragenic adjacency, source mixture and copy multiplicity are reconstructed
    on a fixed species tree. Gains, losses and role shifts can have different
@@ -28,7 +28,11 @@ INSIPHY currently separates biological evidence from phylogenetic interpretation
 6. **Branch histories**: branch event tables include parsimony change status,
    CTMC endpoint posteriors and optional stochastic character mapping summaries
    for complete histories on each branch.
-7. **Foreground/background rate test**: when the user supplies foreground
+7. **Multiple-testing correction**: p values from structural-character LRTs are
+   adjusted by Benjamini-Hochberg and reported as q values.
+8. **Event support summary**: event calls are joined to LRT, q value,
+   bootstrap and stochastic-map summaries in `event_support_summary.tsv`.
+9. **Foreground/background rate test**: when the user supplies foreground
    branches, INSIPHY compares a one-rate CTMC against a two-rate model with a
    foreground structural-change rate and a background rate.
 
@@ -118,8 +122,8 @@ optimistic.
 - `character_model_scores.tsv`: parsimony score, likelihood score and fitted
   CTMC rate per character.
 - `model_fit.tsv`: CTMC/Mk likelihood, AIC, BIC and observed-tip count.
-- `hypothesis_tests.tsv`: invariant-model LRT, p value, null/alternative
-  likelihoods and model-selection values.
+- `hypothesis_tests.tsv`: invariant-model LRT, p value, q value,
+  null/alternative likelihoods and model-selection values.
 - `hypothesis_bootstrap.tsv`: empirical p value, Monte Carlo standard error and
   simulated null LRT quantiles when bootstrap is requested.
 - `branch_event_probabilities.tsv`: branch-level change candidates, including
@@ -128,6 +132,10 @@ optimistic.
 - `branch_history_posteriors.tsv`: stochastic character mapping posterior
   summaries when requested.
 - `foreground_tests.tsv`: optional foreground/background structural-rate tests.
+- `event_support_summary.tsv`: biological event class, branch scope, support
+  tier and linked statistical evidence.
+- `progressive_correspondence.tsv`: tree-distance-aware segment support summary
+  inside the supplied homologous gene set.
 - `benchmark_summary.tsv` and `benchmark_detailed.tsv`: event-level and
   branch-aware benchmark summaries for simulated truth sets.
 - `benchmark_calibration.tsv`: bootstrap p-value summary across characters.

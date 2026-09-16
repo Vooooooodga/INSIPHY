@@ -1,12 +1,9 @@
 # INSIPHY Input Format
 
 INSIPHY can start from genome FASTA plus GFF/GTF annotation, or from prepared
-TSV tables.
-
-The gene or copy set is supplied by the user. In a normal project this set
-comes from an upstream orthogroup/paralogy analysis such as OrthoFinder, OMA,
-OrthoDB or a curated duplication clade. INSIPHY starts after that step and
-focuses on gene-internal structure.
+TSV tables. The gene/copy set is supplied by the user, normally from an
+upstream OrthoFinder orthogroup, a paralogy analysis, or a curated duplication
+clade.
 
 ## FASTA/GFF Extraction
 
@@ -38,12 +35,13 @@ tables from extracted segments:
 PYTHONPATH=src python3 -m insiphy.cli derive-tables \
   --input-dir work/family_a \
   --identity-threshold 0.7 \
-  --distance-table species_distance.tsv
+  --aligner minimap2 \
+  --threads 4
 ```
 
-The optional distance table may contain `species1`, `species2` and `distance`
+An optional distance table may contain `species1`, `species2` and `distance`
 fields. Distance classes `short`, `medium` and `long` adjust correspondence
-stringency in the ExOrthist style.
+stringency.
 
 ## Required Tables For Inference
 
@@ -60,8 +58,6 @@ stringency in the ExOrthist style.
 - `sequence_synteny_evidence.tsv`: annotation support, hidden candidates or
   annotation conflicts.
 
-The demo directories provide complete examples for all tables.
-
 ## Real Case Manifest
 
 `build-case` reads a tab-delimited manifest with at least these fields:
@@ -70,7 +66,7 @@ The demo directories provide complete examples for all tables.
 case_id	species	family_id	gene_id	gene_copy_id	genome_fasta	annotation_file
 ```
 
-Recommended additional fields are:
+Recommended additional fields:
 
 ```text
 assembly	annotation	source_url	release	role_hint	source_label	copy_role	notes
@@ -79,15 +75,9 @@ assembly	annotation	source_url	release	role_hint	source_label	copy_role	notes
 `source_label` names the inferred source locus or source class for a source or
 background copy, for example `Adh`, `ymp`, `AnxB10` or `sw`. `copy_role` can be
 `source`, `background`, `derived` or `candidate`. If `source_label` and
-`copy_role` are absent, `build-case` attempts a conservative inference from
+`copy_role` are absent, `build-case` attempts conservative inference from
 `role_hint`, `gene_symbol` and `gene_copy_id`. Derived copies receive source
 labels segment-by-segment from their strongest source-copy HSG matches.
-
-The command writes:
-
-- `case_provenance.tsv`
-- `case_build_report.tsv`
-- extracted INSIPHY input tables
 
 Example:
 
@@ -95,7 +85,9 @@ Example:
 PYTHONPATH=src python3 -m insiphy.cli build-case \
   --manifest examples/real_cases/jingwei/manifest.tsv \
   --species-tree examples/real_cases/jingwei/species_tree.tsv \
-  --output-dir work/jingwei_case
+  --output-dir work/jingwei_case \
+  --aligner minimap2 \
+  --threads 4
 ```
 
 `inspect-annotation` can be used before manifest finalization to discover gene
@@ -113,4 +105,4 @@ PYTHONPATH=src python3 -m insiphy.cli inspect-annotation \
 `scan-hidden-segments` performs gapped local alignment of source segments
 against a target gene interval FASTA and reports identity, coverage, CIGAR-like
 alignment, splice motif score and frame status. It is intended for curated
-local intervals or flank windows, not whole-genome searches.
+local intervals or flank windows.

@@ -1,47 +1,41 @@
 # Algorithm And Engineering Notes
 
-INSIPHY keeps the method package focused on single genes or supplied homologous
-gene-copy sets. Upstream tools such as OrthoFinder, OMA, Broccoli or curated
-case manifests define the gene/copy set. INSIPHY then solves three internal
-problems: complete missing structure from genome sequence, infer homologous
-segments inside the supplied set, and reconstruct structural histories on a
-fixed species tree.
+INSIPHY is a single-gene or small gene-family method package. Upstream tools
+define the gene/copy set. INSIPHY then solves three internal problems:
+sequence-supported annotation completion, homologous segment correspondence and
+phylogenetic structural inference.
 
 ## Alignment Strategy
 
-The package has a small internal dynamic-programming fallback so tests and toy
-demos run without external software. Publication-scale runs should prefer
-mature aligners for the expensive sequence layer:
+The package keeps a small internal dynamic-programming fallback for reproducible
+local tests. Real accession-level runs should prefer mature local aligners:
 
-- `minimap2`: nucleotide segment and local genomic interval matching. It uses
-  minimizer seeding, chaining and base-level alignment, and provides CIGAR-like
-  PAF tags useful for structural evidence.
-- `miniprot`: protein-to-genome alignment with splicing and frameshift states.
-  It is useful when a protein sequence from an annotated source copy is mapped
-  back to a target genome interval to find hidden or shifted coding segments.
-- GenePainter/CESAR concepts: intron phase, intron position and coding-frame
-  constraints are treated as structural evidence, even when their code is not
-  embedded in INSIPHY.
+- `minimap2`: nucleotide segment and local genomic interval matching.
+- `miniprot`: protein-to-genome alignment with splice and frameshift states.
 
-The current CLI exposes `--aligner internal|minimap2|miniprot`. External tools
-are optional and discovered on `PATH`; their source code is not vendored.
+The CLI exposes `--aligner internal|minimap2|miniprot`. External tools are
+discovered on `PATH`; their code is not vendored.
+
+INSIPHY does not run whole-genome alignment. The relevant idea from progressive
+genome alignment is tree-guided ordering of evidence: segment support from close
+species is evaluated first, and deeper support is interpreted in the context of
+the supplied species tree. This behavior is represented in
+`progressive_correspondence.tsv`.
 
 ## Candidate Filtering
 
-A naive all-by-all segment comparison has O(n²) candidate pairs per family, and
-each exact dynamic-programming alignment can cost O(L1 x L2) time and memory.
-INSIPHY v0.5 therefore applies cheap filters before expensive alignment:
+A naive all-by-all segment comparison has O(n^2) candidate pairs per family, and
+exact dynamic programming can cost O(L1 x L2) time and memory. INSIPHY filters
+before alignment:
 
 - same family;
-- different gene copy for HSG graph edges;
+- different gene copy;
 - minimum length ratio;
 - available sequence;
-- role compatibility that still keeps intron/exon role-shift candidates.
+- role compatibility that keeps intron/exon role-shift candidates.
 
-This design keeps likely exonization and intronization cases in the candidate
-set while reducing alignments among impossible pairs. Pair scoring can run with
-`--threads`, and external aligners are called with one thread per pair to avoid
-oversubscribing CPU cores.
+Pair scoring can run with `--threads`. External aligners are called with one
+thread per pair to avoid oversubscribing CPU cores.
 
 ## Phylogenetic Algorithms
 
@@ -53,20 +47,32 @@ INSIPHY uses discrete structural characters:
 - source mixture;
 - copy multiplicity.
 
-For each character it runs:
+For each character it runs weighted Sankoff reconstruction, CTMC/Mk likelihood,
+invariant-model LRT, optional parametric bootstrap, optional stochastic
+character mapping and optional foreground/background CTMC rate comparison.
 
-- weighted Sankoff parsimony for low-cost ancestral states;
-- Felsenstein pruning under a branch-length-aware CTMC/Mk model;
-- likelihood-ratio testing against an invariant no-change model;
-- optional parametric bootstrap under the invariant null;
-- optional stochastic character mapping by CTMC uniformization;
-- optional foreground/background CTMC rate comparison.
+The stochastic mapping implementation fits a CTMC rate matrix, conditions on
+observed tips, samples endpoint states and samples complete paths by
+uniformization. The state spaces are small, which keeps the implementation
+tractable for single-gene analyses.
 
-The stochastic mapping implementation follows the standard SIMMAP/phytools
-logic: fit a CTMC rate matrix, condition on observed tips, sample endpoint
-states on each branch, and sample complete CTMC paths along branches. The bridge
-sampler uses uniformization, which is appropriate for the small state spaces in
-intragenic structural characters.
+## Code Quality Policy
+
+The implementation favors clear scientific code over defensive scaffolding:
+
+- user-facing input files get explicit required-field checks;
+- internal invariants fail directly when broken, so bugs are visible;
+- no broad exception swallowing around biological inference;
+- no speculative wrappers, duplicated fallback systems or unused abstraction
+  layers;
+- functions are named after biological or statistical operations;
+- comments explain algorithmic intent, not obvious assignments;
+- output tables stay flat and inspectable.
+
+This policy is meant to reduce maintenance cost and avoid code that looks
+machine-generated: repeated guard clauses, generic helper layers, excessive
+normalization and vague error recovery are removed unless they protect a real
+user input boundary.
 
 ## Memory And Runtime Defaults
 
@@ -77,9 +83,16 @@ The default package mode stays lightweight:
 - `--bootstrap-replicates 0`;
 - `--stochastic-maps 0`.
 
-Recommended real-case settings for a small gene family are:
+Recommended real-case settings for a small gene family:
 
 ```bash
+insiphy build-case \
+  --manifest manifest.tsv \
+  --species-tree species_tree.tsv \
+  --output-dir case_dir \
+  --aligner minimap2 \
+  --threads 4
+
 insiphy run \
   --input-dir case_dir \
   --output-dir result_dir \
@@ -88,23 +101,6 @@ insiphy run \
   --seed 7
 ```
 
-For larger families, increase `--threads` during `derive-tables` or
-`build-case`, inspect `alignment_backend_report.tsv`, and record runtime,
-memory and candidate-filtering ratios in the benchmark notes.
-
-## Reference Code And Methods
-
-Key methods reviewed for v0.5:
-
-- ExOrthist: exon orthology from supplied gene orthogroups using intron
-  position/phase, exon sequence and flanking exon context.
-- GenePainter: mapping intron positions and phases onto protein alignments.
-- CESAR/TOGA: coding-exon-aware realignment and genome-scale annotation
-  transfer ideas.
-- miniprot/minimap2/minisplice: modern sequence alignment, spliced alignment
-  and splice-site scoring backends.
-- SIMMAP/phytools: stochastic character mapping for discrete traits on
-  phylogenies.
-
-The implementation borrows algorithmic ideas and output semantics, while the
-INSIPHY codebase remains an independent Python package.
+For larger families, increase `--threads` during table derivation, inspect
+`alignment_backend_report.tsv`, and report runtime, memory and candidate counts
+in benchmark notes.

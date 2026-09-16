@@ -1,9 +1,10 @@
 # Publication Gap
 
-INSIPHY v0.5.0 is a runnable method prototype. It now includes transcript-aware
+INSIPHY v0.6.0 is a runnable method prototype. It includes transcript-aware
 extraction, graph-based segment correspondence, source/copy-role propagation,
 branch-length-aware CTMC/Mk fitting, invariant-model LRT p values,
-parametric-bootstrap calibration, stochastic-map branch summaries and optional
+BH q values, parametric-bootstrap calibration, stochastic-map branch summaries,
+event support tables, colorblind-friendly SVG output and optional
 foreground/background structural-rate tests. A manuscript-grade method still
 requires stronger evidence in five areas.
 
@@ -17,18 +18,18 @@ requires stronger evidence in five areas.
   exonization, new adjacency, source joining and copy expansion, and they now
   include likelihood parameters, p values, empirical bootstrap p values and
   branch posterior summaries for structural characters.
-- Small jingwei and Sdic demos run as package fixtures, and the accession-level
-  NCBI Gene locus demos now recover source-mixture evidence for both cases.
+- Accession-level real-case manifests are available for Drosophila `jingwei`,
+  `Sdic` and a conserved-control direction.
 - Annotation-dropout negative controls are represented in the simulator and
   benchmark layer.
 - The package is CLI-first and does not require Nextflow. Nextflow/Slurm runs
-  are server-side formal execution records for internal real-case demos.
+  are server-side formal execution records for internal real-case analyses.
 
 ## Required Before Publication
 
-1. **Real case studies**: complete accession-level `jingwei` and `Sdic`
-   analyses using documented genome and annotation versions, then add at least
-   one conserved negative control and one additional duplicated/chimeric case.
+1. **Real case studies**: complete accession-level `jingwei`, `Sdic` and RpL32
+   conserved-control analyses using documented genome and annotation versions,
+   then add at least one additional duplicated/chimeric case.
 2. **Statistical calibration**: compare Sankoff scores, CTMC likelihoods, LRT
    p values, bootstrap p values, stochastic-map posterior summaries and
    simulated ground truth across many trees and event rates.
@@ -43,10 +44,10 @@ requires stronger evidence in five areas.
 
 ## Current Implementation Gap
 
-The package now includes simulation and benchmark commands, bootstrap
-calibration summaries and named event scenarios. They should be expanded to
-cover many trees, multiple event rates, real accession-level cases and
-independent simulation generators before claims about accuracy are made.
+The package includes simulation and benchmark commands, bootstrap calibration
+summaries, event support summaries and named event scenarios. They should be
+expanded to cover many trees, multiple event rates, real accession-level cases
+and independent simulation generators before claims about accuracy are made.
 
 ## Benchmark Plan
 

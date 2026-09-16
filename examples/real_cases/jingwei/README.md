@@ -1,27 +1,34 @@
-# jingwei Real Case Template
+# jingwei Real Case
 
-This template records the expected INSIPHY inputs for an accession-level
-jingwei case study. Fill the `TBD` fields after genome and annotation files are
-curated on the server.
+This accession-level case uses local Drosophila NCBI RefSeq genome FASTA/GFF
+files under `/data/db/genome`.
 
-Target biology:
+Expected signal:
 
 - derived `jgw/jingwei` copy in the yakuba/teissieri lineage;
-- source relationship to `Adh` and `yande/yellow emperor`;
-- candidate sequence-supported hidden or role-shifted segments.
+- source relationship to `Adh` and `yande/ymp`;
+- source joining and possible role-shifted segments in the derived copy.
 
-Suggested steps:
+Example:
 
 ```bash
-PYTHONPATH=src python -m insiphy.cli inspect-annotation \
-  --annotation /data/db/genome/TBD/annotation.gff3.gz \
-  --alias-file examples/real_cases/jingwei/gene_aliases.tsv \
-  --species Drosophila_yakuba \
-  --case-id jingwei \
-  --output-dir work/jingwei_inspect
-
-PYTHONPATH=src python -m insiphy.cli build-case \
+PYTHONPATH=src python3 -m insiphy.cli build-case \
   --manifest examples/real_cases/jingwei/manifest.tsv \
   --species-tree examples/real_cases/jingwei/species_tree.tsv \
-  --output-dir work/jingwei_case
+  --output-dir work/jingwei_case \
+  --aligner minimap2 \
+  --threads 4
+
+PYTHONPATH=src python3 -m insiphy.cli run \
+  --input-dir work/jingwei_case \
+  --output-dir results/jingwei \
+  --bootstrap-replicates 200 \
+  --stochastic-maps 200 \
+  --foreground-branches examples/real_cases/jingwei/foreground_branches.tsv \
+  --seed 7
+
+PYTHONPATH=src python3 -m insiphy.cli visualize \
+  --input-dir work/jingwei_case \
+  --result-dir results/jingwei \
+  --output-dir results/jingwei_figures
 ```

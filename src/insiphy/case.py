@@ -174,59 +174,36 @@ def build_case(manifest, output_dir, identity_threshold=0.7, species_tree=None, 
         required_paths = [row.get("genome_fasta", ""), row.get("annotation_file", "")]
         missing_path = [path for path in required_paths if not path or path == "TBD" or not Path(path).exists()]
         if missing_path or row.get("gene_id", "") in {"", "TBD"}:
-            report.append(
-                {
-                    "case_id": row.get("case_id", "NA"),
-                    "species": row.get("species", "NA"),
-                    "gene_id": row.get("gene_id", "NA"),
-                    "gene_copy_id": row.get("gene_copy_id", "NA"),
-                    "status": "skipped_missing_input",
-                    "segment_count": 0,
-                    "message": ";".join(missing_path) or "missing_gene_id",
-                }
-            )
-            continue
-        try:
-            before = len(read_tsv(output_dir / "segment_occurrences.tsv", optional=True))
-            extract_gene(
-                row["genome_fasta"],
-                row["annotation_file"],
-                row["gene_id"],
-                row["family_id"],
-                row["species"],
-                row["gene_copy_id"],
-                output_dir,
-                append=appended,
-                transcript_policy=transcript_policy,
-                canonical_rule=canonical_rule,
-                source_label=infer_manifest_source_label(row),
-                copy_role=infer_manifest_copy_role(row),
-            )
-            appended = True
-            after = len(read_tsv(output_dir / "segment_occurrences.tsv", optional=True))
-            report.append(
-                {
-                    "case_id": row.get("case_id", "NA"),
-                    "species": row.get("species", "NA"),
-                    "gene_id": row.get("gene_id", "NA"),
-                    "gene_copy_id": row.get("gene_copy_id", "NA"),
-                    "status": "extracted",
-                    "segment_count": after - before,
-                    "message": "ok",
-                }
-            )
-        except SystemExit as exc:
-            report.append(
-                {
-                    "case_id": row.get("case_id", "NA"),
-                    "species": row.get("species", "NA"),
-                    "gene_id": row.get("gene_id", "NA"),
-                    "gene_copy_id": row.get("gene_copy_id", "NA"),
-                    "status": "failed",
-                    "segment_count": 0,
-                    "message": str(exc),
-                }
-            )
+            message = ";".join(missing_path) or "missing_gene_id"
+            raise SystemExit(f"manifest row has incomplete required input for {row.get('gene_copy_id', row.get('gene_id', 'unknown'))}: {message}")
+        before = len(read_tsv(output_dir / "segment_occurrences.tsv", optional=True))
+        extract_gene(
+            row["genome_fasta"],
+            row["annotation_file"],
+            row["gene_id"],
+            row["family_id"],
+            row["species"],
+            row["gene_copy_id"],
+            output_dir,
+            append=appended,
+            transcript_policy=transcript_policy,
+            canonical_rule=canonical_rule,
+            source_label=infer_manifest_source_label(row),
+            copy_role=infer_manifest_copy_role(row),
+        )
+        appended = True
+        after = len(read_tsv(output_dir / "segment_occurrences.tsv", optional=True))
+        report.append(
+            {
+                "case_id": row.get("case_id", "NA"),
+                "species": row.get("species", "NA"),
+                "gene_id": row.get("gene_id", "NA"),
+                "gene_copy_id": row.get("gene_copy_id", "NA"),
+                "status": "extracted",
+                "segment_count": after - before,
+                "message": "ok",
+            }
+        )
     if species_tree:
         tree_path = Path(species_tree)
         if tree_path.exists():

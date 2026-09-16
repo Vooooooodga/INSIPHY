@@ -1,8 +1,8 @@
 # Real-Data Benchmark Plan
 
-The first real-data benchmark should focus on Drosophila young or duplicate
-genes because the expected histories are well described in the literature and
-the species are close enough for gene-internal synteny to be informative.
+The first benchmark uses accession-level Drosophila genome FASTA and GFF files.
+The cases are young or duplicated genes with described structural histories,
+plus one conserved negative control.
 
 ## Priority Cases
 
@@ -20,56 +20,63 @@ the species are close enough for gene-internal synteny to be informative.
    - INSIPHY target signal: multi-source structure, copy expansion and
      intragenic adjacency changes.
 
-3. **sphinx or another Drosophila young duplicate/chimeric gene**
-   - Expected biology: a published young gene with clear genome-sequence
-     origin and close-species distribution.
-   - INSIPHY target signal: independent validation outside the two bundled
-     examples.
+3. **RpL32 conserved control**
+   - Expected biology: conserved ribosomal protein gene with stable
+     exon-intron organization across close Drosophila species.
+   - INSIPHY target signal: low support for source mixing, exonization and
+     structural novelty.
 
-4. **Conserved negative control**
-   - Candidate genes: stable, single-copy Drosophila housekeeping genes such as
-     `RpL32` or `Act5C`, chosen only after confirming orthology and annotation
-     quality in the selected genome set.
-   - INSIPHY target signal: low false-positive rate for segment gain/loss,
-     exonization and source mixing.
+## Available Local Data
 
-## Data Sources
+The current R730 data store contains the following complete genome/annotation
+pairs:
 
-Recommended primary sources:
+- `/data/db/genome/Drosophila_melanogaster/GCF_000001215.4/`
+- `/data/db/genome/Drosophila_simulans/GCF_016746395.2/`
+- `/data/db/genome/Drosophila_erecta/GCF_003286155.1/`
+- `/data/db/genome/Drosophila_yakuba/GCF_016746365.2/`
+- `/data/db/genome/Drosophila_teissieri/GCF_016746235.2/`
 
-- FlyBase genome FASTA and GFF/GTF releases for Drosophila species.
-- NCBI or Ensembl Metazoa for species or assemblies missing from FlyBase.
-- Published supplementary tables for duplicated-gene exon-intron divergence
-  studies when a specific independent benchmark case is selected.
+The repository stores only manifests, species trees and provenance notes. Large
+genome FASTA and GFF files stay under `/data/db/genome`.
 
-Large genome and annotation files should remain outside the GitHub repository.
-Case manifests in `examples/real_cases/` should record local paths, source
-release, assembly, annotation version, gene IDs, source labels and copy roles.
+## Full User Scenario
+
+Each real case should exercise:
+
+- `build-case` from real FASTA/GFF manifest;
+- `derive-tables` with `--threads` and at least one external local aligner when
+  available;
+- `run` with CTMC/LRT, BH q values, bootstrap, stochastic maps and foreground
+  branches;
+- `visualize` with colorblind-friendly SVG output;
+- `benchmark` for curated positive cases and negative control expectations.
 
 ## Benchmark Questions
 
-For each real case, report:
+For each case, report:
 
-- which supplied copies and source loci were analyzed;
-- which hidden segments were sequence-supported;
-- which HSGs were conserved, gained or role-shifted;
-- which branch has the highest posterior support for the event;
-- LRT p value, empirical bootstrap p value and fitted CTMC rate;
+- supplied copies and source loci;
+- hidden or shifted segments supported by sequence;
+- HSGs conserved, gained or role-shifted;
+- branch with strongest event support;
+- LRT p value, q value, empirical bootstrap p value and fitted CTMC rate;
 - stochastic-map `Pr(any change)` and expected change count on key branches;
 - alternative explanations: annotation dropout, fragmented assembly, paralogy
   ambiguity, gene conversion or weak sequence support.
 
-## Acceptance For v0.5 Real Demo
+## Acceptance For v0.6 Real Run
 
-A v0.5 real demo is acceptable when it can:
+A v0.6 real run is acceptable when it can:
 
-- run from a case manifest using only genome sequence, annotation and a species
-  tree;
-- reproduce the expected qualitative event class for jingwei and Sdic;
-- include at least one negative-control run with no strong source-mixing or
-  exonization signal;
+- run from accession-level genome FASTA/GFF plus a manifest and species tree;
+- recover expected qualitative event classes for `jingwei` and `Sdic`;
+- include the RpL32 negative control or a clearly documented equivalent
+  OrthoFinder-supported conserved control;
 - save all INSIPHY output tables needed for biological interpretation;
-- document data sources and unresolved uncertainty.
+- generate black-and-white-readable, colorblind-friendly synteny and event-map
+  figures;
+- document unresolved uncertainty.
 
-This benchmark remains a first real-world evaluation. Publication-level claims
-still require a larger case set and a quantified false-positive rate.
+Publication-level claims still require a larger case set and quantified
+false-positive rate.

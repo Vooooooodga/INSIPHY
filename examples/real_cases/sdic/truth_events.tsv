@@ -1,0 +1,3 @@
+family_id	event_class	branch_scope	object_id	notes
+sdic	chimeric_source_join_candidate	mel_sim->Drosophila_melanogaster	curated_sdic_source_join	expected AnxB10 and sw source joining in derived Sdic copies
+sdic	copy_duplication_or_expansion	mel_sim->Drosophila_melanogaster	curated_sdic_copy_expansion	expected Sdic copy expansion in D. melanogaster

@@ -4,11 +4,11 @@ Date: 2026-09-15
 
 ## Conclusion
 
-INSIPHY v0.4.0 has the correct core frame for a first method paper: upstream
+INSIPHY v0.6.0 has the correct core frame for a first method paper: upstream
 gene/copy homology is supplied by tools or curation, INSIPHY infers
 gene-internal homologous segment groups from genome sequence and annotation, and
 then analyzes structural characters on a species tree. The remaining gap is
-evidence strength, not the project concept. The method needs larger real-case
+evidence strength and benchmark scale. The method needs larger real-case
 evaluation, simulation-based statistical calibration and clearer branch-history
 posteriors before manuscript-level claims.
 
@@ -41,8 +41,7 @@ Missing or under-modeled:
 - gene conversion or concerted evolution among close paralogs;
 - isoform-specific alternative-splicing turnover;
 - uncertainty in species tree topology and branch lengths;
-- foreground/background branch-rate tests for user-defined evolutionary
-  hypotheses.
+- larger conserved-control sets for user-defined evolutionary hypotheses.
 
 ## Statistical Status
 
@@ -57,11 +56,9 @@ Implemented:
 
 Needed before publication:
 
-- parametric bootstrap for empirical LRT P values;
-- stochastic character mapping or a clearly labeled approximation for branch
-  histories;
-- foreground/background two-rate CTMC tests;
-- posterior/event summaries aggregated across correlated characters;
+- larger calibration sets for empirical LRT P values;
+- calibration plots for stochastic character mapping branch histories;
+- posterior/event summaries across correlated structural characters;
 - calibration plots showing false positive rate and power under simulation;
 - sensitivity to annotation dropout, branch lengths, thresholds and paralogy
   ambiguity.
@@ -100,7 +97,7 @@ outside the user-facing method definition.
 
 ## Immediate Next Work
 
-1. Add stochastic-map or bootstrap-calibrated branch event support.
+1. Run accession-level `jingwei`, `Sdic` and RpL32 control analyses end to end.
 2. Expand the simulator to generate event-specific truth sets across many
    trees, rates and annotation dropout patterns.
 3. Add real-case manifests for at least one more curated duplicated/chimeric

@@ -1,4 +1,4 @@
-"""Fixed-tree structural inference for duplicated/chimeric gene demos."""
+"""Fixed-tree structural inference for intragenic structural evolution."""
 
 from collections import defaultdict
 
@@ -285,6 +285,110 @@ def classify_branch_event(layer, change):
     return "structural_state_change"
 
 
+def completion_event_class(call, inferred_event=""):
+    if inferred_event in {"te_associated_exonization", "transposable_element_exonization"}:
+        return "te_associated_exonization"
+    if inferred_event in {"introner_insertion", "te_intron_gain"}:
+        return "introner_or_te_intron_gain"
+    return {
+        "hidden_segment_candidate": "sequence_supported_annotation_gap",
+        "shifted_splice_site_candidate": "splice_boundary_shift",
+        "joined_exon_candidate": "segment_fusion_or_new_adjacency",
+        "hidden_segment_with_frame_disruption": "pseudogenization_or_frame_disruption",
+    }.get(call, "annotation_or_alignment_evidence")
+
+
+def add_q_values(rows):
+    numeric = []
+    for idx, row in enumerate(rows):
+        p_value = to_float(row.get("p_value"), None)
+        if p_value is not None:
+            numeric.append((idx, p_value))
+    for row in rows:
+        row["q_value"] = "NA"
+        row["q_value_method"] = "NA"
+    if not numeric:
+        return rows
+    numeric.sort(key=lambda item: item[1])
+    m = len(numeric)
+    adjusted = {}
+    running = 1.0
+    for rank, (idx, p_value) in reversed(list(enumerate(numeric, start=1))):
+        running = min(running, p_value * m / rank)
+        adjusted[idx] = min(1.0, running)
+    for idx, q_value in adjusted.items():
+        rows[idx]["q_value"] = f"{q_value:.6g}"
+        rows[idx]["q_value_method"] = "benjamini_hochberg"
+    return rows
+
+
+def event_support_summary(event_rows, hypothesis_rows, bootstrap_rows, stochastic_rows):
+    tests = {(row.get("layer"), row.get("object_id")): row for row in hypothesis_rows}
+    boot = {(row.get("layer"), row.get("object_id")): row for row in bootstrap_rows}
+    histories = {}
+    for row in stochastic_rows:
+        scope = f"{row.get('parent_label')}->{row.get('child_label')}"
+        histories[(row.get("layer"), row.get("object_id"), scope)] = row
+    out = []
+    for event in event_rows:
+        key = (event.get("evidence_layer"), event.get("object_id"))
+        test = tests.get(key, {})
+        bootstrap = boot.get(key, {})
+        history = histories.get((event.get("evidence_layer"), event.get("object_id"), event.get("branch_scope")), {})
+        p_value = to_float(test.get("p_value"), None)
+        q_value = to_float(test.get("q_value"), None)
+        empirical = to_float(bootstrap.get("empirical_p_value"), None)
+        ctmc = to_float(event.get("ctmc_change_probability"), None)
+        stochastic = to_float(history.get("posterior_pr_any_change"), None)
+        event_probability = to_float(event.get("event_probability"), None)
+        tier = "qualitative"
+        if any(value is not None and value >= 0.8 for value in [ctmc, stochastic]) or (empirical is not None and empirical <= 0.05) or (q_value is not None and q_value <= 0.10):
+            tier = "high"
+        elif any(value is not None and value >= 0.5 for value in [ctmc, stochastic, event_probability]) or (p_value is not None and p_value <= 0.10):
+            tier = "moderate"
+        evidence_count = 1 + sum(value is not None for value in [p_value, q_value, empirical, ctmc, stochastic, event_probability])
+        out.append(
+            {
+                "family_id": event.get("family_id", "NA"),
+                "event_class": event.get("event_class", "NA"),
+                "object_id": event.get("object_id", "NA"),
+                "branch_scope": event.get("branch_scope", "NA"),
+                "evidence_layer": event.get("evidence_layer", "NA"),
+                "support_tier": tier,
+                "lrt_p_value": test.get("p_value", "NA"),
+                "lrt_q_value": test.get("q_value", "NA"),
+                "empirical_p_value": bootstrap.get("empirical_p_value", "NA"),
+                "fitted_rate": test.get("fitted_rate", "NA"),
+                "ctmc_change_probability": event.get("ctmc_change_probability", "NA"),
+                "stochastic_pr_any_change": history.get("posterior_pr_any_change", "NA"),
+                "evidence_count": evidence_count,
+                "alternative_explanation": event.get("alternative_explanation", "NA"),
+            }
+        )
+    return out
+
+
+def best_branch_support(branch_rows):
+    out = {}
+    for row in branch_rows:
+        if row.get("status") != "change_required":
+            continue
+        key = (row.get("layer"), row.get("object_id"))
+        score = to_float(row.get("ctmc_change_probability"), None)
+        if score is None:
+            score = to_float(row.get("event_probability"), 0.0)
+        current = out.get(key)
+        if current is None or score > current["score"]:
+            out[key] = {
+                "branch_scope": f"{row.get('parent_label')}->{row.get('child_label')}",
+                "event_probability": row.get("event_probability", "NA"),
+                "ctmc_change_probability": row.get("ctmc_change_probability", "NA"),
+                "change": row.get("change", "NA"),
+                "score": score,
+            }
+    return out
+
+
 def read_foreground_edges(path, tree):
     if not path:
         return set()
@@ -315,7 +419,8 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
     foreground_edges = read_foreground_edges(foreground_branches, tree)
     copy_context = read_tsv(f"{input_dir}/copy_context.tsv", ["family_id", "species", "gene_copy_id", "copy_class"], optional=True)
     copy_relationships = read_tsv(f"{input_dir}/copy_relationships.tsv", ["family_id", "species", "query_copy_id", "subject_copy_id", "relationship_class"], optional=True)
-    annotation_candidates = read_tsv(f"{output_dir}/annotation_completion_candidates.tsv", ["evidence_id", "completion_call"], optional=True)
+    segment_matches = read_tsv(f"{input_dir}/segment_matches.tsv", optional=True)
+    annotation_candidates = read_tsv(f"{output_dir}/annotation_completion_candidates.tsv", optional=True)
 
     occ_by_id = {row["occurrence_id"]: row for row in occurrences}
     hsg_by_occ = defaultdict(list)
@@ -435,6 +540,7 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
             row["delta_vs_best"] = f"{to_float(row['score']) - best:.6g}"
 
     event_rows = []
+    branch_support = best_branch_support(branch_rows)
     for row in branch_rows:
         if row["status"] == "change_required":
             event_rows.append(
@@ -453,16 +559,18 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
             )
     for edge in graph_edges:
         if edge["adjacency_status"] == "present" and edge["left_source_labels"] != "NA" and edge["right_source_labels"] != "NA" and edge["left_source_labels"] != edge["right_source_labels"]:
+            pair_id = f"{edge['left_hsg']}__{edge['right_hsg']}"
+            support = branch_support.get(("adjacency_state", pair_id), {})
             event_rows.append(
                 {
                     "family_id": edge["family_id"],
                     "event_type": "source_join_candidate",
                     "event_class": "chimeric_source_join_candidate",
-                    "evidence_layer": "intragenic_adjacency_graph",
-                    "object_id": edge["edge_id"],
-                    "branch_scope": "estimated_from_adjacency_state_history",
-                    "event_probability": "NA",
-                    "ctmc_change_probability": "NA",
+                    "evidence_layer": "adjacency_state",
+                    "object_id": pair_id,
+                    "branch_scope": support.get("branch_scope", "estimated_from_adjacency_state_history"),
+                    "event_probability": support.get("event_probability", "NA"),
+                    "ctmc_change_probability": support.get("ctmc_change_probability", "NA"),
                     "change": f"{edge['left_source_labels']}->{edge['right_source_labels']}",
                     "alternative_explanation": "paralogy_or_homology_assignment_error_if_low_support",
                 }
@@ -471,24 +579,69 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
         rel = row.get("relationship_class", "")
         if rel in {"tandem_duplication_candidate", "same_contig_duplication_candidate", "dispersed_or_retrocopy_candidate"}:
             event_class = "retrocopy_or_dispersed_duplication_candidate" if rel == "dispersed_or_retrocopy_candidate" else "copy_duplication_or_expansion"
+            support = branch_support.get(("copy_multiplicity", row["family_id"]), {})
             event_rows.append(
                 {
                     "family_id": row["family_id"],
                     "event_type": rel,
                     "event_class": event_class,
-                    "evidence_layer": "copy_relationship_graph",
-                    "object_id": f"{row['species']}:{row['query_copy_id']}--{row['subject_copy_id']}",
-                    "branch_scope": "tip_copy_relationship_requires_phylogenetic_placement",
+                    "evidence_layer": "copy_multiplicity",
+                    "object_id": row["family_id"],
+                    "branch_scope": support.get("branch_scope", "tip_copy_relationship_requires_phylogenetic_placement"),
                     "event_probability": row.get("synteny_score", "NA"),
-                    "ctmc_change_probability": "NA",
-                    "change": rel,
+                    "ctmc_change_probability": support.get("ctmc_change_probability", "NA"),
+                    "change": f"{row['species']}:{row['query_copy_id']}--{row['subject_copy_id']}:{rel}",
                     "alternative_explanation": "assembly_fragmentation_or_unresolved_paralogy_if_low_support",
                 }
             )
 
-    demo_summary = []
+    for row in annotation_candidates:
+        call = row.get("completion_call", "")
+        if call in {"hidden_segment_candidate", "shifted_splice_site_candidate", "joined_exon_candidate", "hidden_segment_with_frame_disruption"}:
+            event_rows.append(
+                {
+                    "family_id": row.get("family_id", "NA"),
+                    "event_type": call,
+                    "event_class": completion_event_class(call, row.get("inferred_event", "")),
+                    "evidence_layer": "annotation_completion",
+                    "object_id": row.get("evidence_id", "NA"),
+                    "branch_scope": "tip_or_alignment_evidence_requires_phylogenetic_context",
+                    "event_probability": row.get("support_score", "NA"),
+                    "ctmc_change_probability": "NA",
+                    "change": row.get("inferred_event", call),
+                    "alternative_explanation": "annotation_dropout_or_shifted_boundary_if_sequence_support_is_partial",
+                }
+            )
+
+    for row in segment_matches:
+        if row.get("match_status") != "mapped":
+            continue
+        score = to_float(row.get("total_score"), 0.0)
+        if score < 0.90:
+            continue
+        left = occ_by_id.get(row.get("query_occurrence_id"))
+        right = occ_by_id.get(row.get("subject_occurrence_id"))
+        if not left or not right:
+            continue
+        if left["species"] == right["species"] and left["gene_copy_id"] != right["gene_copy_id"]:
+            event_rows.append(
+                {
+                    "family_id": left.get("family_id", "NA"),
+                    "event_type": "high_identity_paralogous_segment_match",
+                    "event_class": "gene_conversion_candidate",
+                    "evidence_layer": "segment_correspondence_graph",
+                    "object_id": row.get("match_id", "NA"),
+                    "branch_scope": "tip_paralogous_similarity_requires_phylogenetic_context",
+                    "event_probability": row.get("total_score", "NA"),
+                    "ctmc_change_probability": "NA",
+                    "change": f"{left['gene_copy_id']}<->{right['gene_copy_id']}",
+                    "alternative_explanation": "recent_duplication_or_unresolved_paralogy_if_context_support_low",
+                }
+            )
+
+    case_summary = []
     for family in sorted({row["family_id"] for row in occurrences}):
-        demo_summary.append(
+        case_summary.append(
             {
                 "family_id": family,
                 "hidden_segment_candidates": hidden_count,
@@ -502,14 +655,18 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
 
     write_tsv(f"{output_dir}/ancestral_state_probabilities.tsv", state_rows, ["layer", "object_id", "score", "node_id", "node_label", "state", "probability", "is_parsimony_best"])
     write_tsv(f"{output_dir}/branch_event_probabilities.tsv", branch_rows, ["layer", "object_id", "event_type", "parent_node", "child_node", "parent_label", "child_label", "branch_length", "status", "change", "event_probability", "ctmc_change_probability", "ctmc_most_likely_change", "ctmc_most_likely_change_probability"])
+    add_q_values(hypothesis_rows)
+    add_q_values(foreground_rows)
+    support_rows = event_support_summary(event_rows, hypothesis_rows, bootstrap_rows, stochastic_rows)
     write_tsv(f"{output_dir}/character_model_scores.tsv", model_score_rows, ["layer", "object_id", "model", "parsimony_score", "log_likelihood", "state_count", "observed_tip_count", "fitted_rate", "aic", "bic"])
     write_tsv(f"{output_dir}/model_fit.tsv", model_fit_rows, ["layer", "object_id", "model", "fitted_rate", "log_likelihood", "aic", "bic", "observed_tip_count"])
-    write_tsv(f"{output_dir}/hypothesis_tests.tsv", hypothesis_rows, ["layer", "object_id", "test_id", "null_model", "alternative_model", "null_log_likelihood", "alternative_log_likelihood", "lrt_statistic", "df", "p_value", "p_value_method", "fitted_rate", "null_aic", "alternative_aic", "null_bic", "alternative_bic", "observed_tip_count", "tip_error"])
+    write_tsv(f"{output_dir}/hypothesis_tests.tsv", hypothesis_rows, ["layer", "object_id", "test_id", "null_model", "alternative_model", "null_log_likelihood", "alternative_log_likelihood", "lrt_statistic", "df", "p_value", "p_value_method", "q_value", "q_value_method", "fitted_rate", "null_aic", "alternative_aic", "null_bic", "alternative_bic", "observed_tip_count", "tip_error"])
     write_tsv(f"{output_dir}/hypothesis_bootstrap.tsv", bootstrap_rows, ["layer", "object_id", "test_id", "observed_lrt", "bootstrap_replicates", "empirical_p_value", "monte_carlo_se", "null_lrt_mean", "null_lrt_q025", "null_lrt_q500", "null_lrt_q975", "seed", "tip_error"])
     write_tsv(f"{output_dir}/branch_history_posteriors.tsv", stochastic_rows, ["layer", "object_id", "parent_node", "child_node", "parent_label", "child_label", "map_sample_count", "posterior_pr_any_change", "posterior_expected_change_count", "posterior_change_count_low", "posterior_change_count_high", "posterior_most_frequent_transition", "posterior_transition_probability"])
-    write_tsv(f"{output_dir}/foreground_tests.tsv", foreground_rows, ["layer", "object_id", "test_id", "null_model", "alternative_model", "null_log_likelihood", "alternative_log_likelihood", "lrt_statistic", "df", "p_value", "p_value_method", "background_rate", "foreground_rate", "rate_ratio", "null_aic", "alternative_aic", "null_bic", "alternative_bic", "observed_tip_count"])
+    write_tsv(f"{output_dir}/foreground_tests.tsv", foreground_rows, ["layer", "object_id", "test_id", "null_model", "alternative_model", "null_log_likelihood", "alternative_log_likelihood", "lrt_statistic", "df", "p_value", "p_value_method", "q_value", "q_value_method", "background_rate", "foreground_rate", "rate_ratio", "null_aic", "alternative_aic", "null_bic", "alternative_bic", "observed_tip_count"])
     write_tsv(f"{output_dir}/candidate_structural_events.tsv", event_rows, ["family_id", "event_type", "event_class", "evidence_layer", "object_id", "branch_scope", "event_probability", "ctmc_change_probability", "change", "alternative_explanation"])
+    write_tsv(f"{output_dir}/event_support_summary.tsv", support_rows, ["family_id", "event_class", "object_id", "branch_scope", "evidence_layer", "support_tier", "lrt_p_value", "lrt_q_value", "empirical_p_value", "fitted_rate", "ctmc_change_probability", "stochastic_pr_any_change", "evidence_count", "alternative_explanation"])
     write_tsv(f"{output_dir}/model_comparison.tsv", model_rows, ["comparison_id", "model", "score", "delta_vs_best", "interpretation"])
     write_tsv(f"{output_dir}/intragenic_graph_edges.tsv", graph_edges, ["family_id", "species", "gene_copy_id", "edge_id", "left_hsg", "right_hsg", "left_occurrence_id", "right_occurrence_id", "adjacency_status", "left_source_labels", "right_source_labels"])
-    write_tsv(f"{output_dir}/demo_summary.tsv", demo_summary, ["family_id", "hidden_segment_candidates", "source_join_candidates", "multi_source_tip_count", "branch_event_candidates", "best_annotation_model", "best_compound_model"])
+    write_tsv(f"{output_dir}/case_summary.tsv", case_summary, ["family_id", "hidden_segment_candidates", "source_join_candidates", "multi_source_tip_count", "branch_event_candidates", "best_annotation_model", "best_compound_model"])
     return state_rows, branch_rows, event_rows, model_rows

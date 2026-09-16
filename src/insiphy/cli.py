@@ -12,6 +12,7 @@ from .correspondence import infer_correspondence
 from .phylogeny import infer_phylogeny
 from .preprocess import derive_tables, extract_gene
 from .simulate import simulate_dataset
+from .visualize import visualize_results
 
 
 def run_all(input_dir, output_dir, bootstrap_replicates=0, stochastic_maps=0, seed=7, foreground_branches=None):
@@ -52,11 +53,16 @@ def main(argv=None):
     sim = sub.add_parser("simulate")
     sim.add_argument("--output-dir", required=True)
     sim.add_argument("--seed", type=int, default=7)
-    sim.add_argument("--scenario", choices=["compound", "exonization", "source_join", "tandem_duplication", "segment_split_fusion", "negative_control", "annotation_dropout"], default="compound")
+    sim.add_argument("--scenario", choices=["compound", "exonization", "source_join", "tandem_duplication", "segment_split_fusion", "splice_boundary_shift", "te_exonization", "gene_conversion", "negative_control", "annotation_dropout"], default="compound")
 
     bench = sub.add_parser("benchmark")
     bench.add_argument("--input-dir", required=True)
     bench.add_argument("--output-dir", required=True)
+
+    viz = sub.add_parser("visualize")
+    viz.add_argument("--input-dir", required=True)
+    viz.add_argument("--result-dir", required=True)
+    viz.add_argument("--output-dir", required=True)
 
     sub.add_parser("inspect-aligners")
 
@@ -95,7 +101,7 @@ def main(argv=None):
         cmd = sub.add_parser(name)
         cmd.add_argument("--input-dir", required=True)
         cmd.add_argument("--output-dir", required=True)
-    for name in ["infer-phylogeny", "run", "run-demo"]:
+    for name in ["infer-phylogeny", "run"]:
         cmd = sub.add_parser(name)
         cmd.add_argument("--input-dir", required=True)
         cmd.add_argument("--output-dir", required=True)
@@ -113,6 +119,8 @@ def main(argv=None):
         simulate_dataset(args.output_dir, args.seed, args.scenario)
     elif args.command == "benchmark":
         benchmark_events(args.input_dir, args.output_dir)
+    elif args.command == "visualize":
+        visualize_results(args.input_dir, args.result_dir, args.output_dir)
     elif args.command == "inspect-aligners":
         for row in available_alignment_backends():
             print(f"{row['aligner']}\t{row['available']}\t{row['notes']}")
@@ -134,7 +142,7 @@ def main(argv=None):
     elif args.command == "compare-baselines":
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         evaluate_baselines(args.input_dir, args.output_dir)
-    elif args.command in {"run", "run-demo"}:
+    elif args.command == "run":
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         run_all(args.input_dir, args.output_dir, args.bootstrap_replicates, args.stochastic_maps, args.seed, args.foreground_branches)
 

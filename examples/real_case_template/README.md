@@ -10,10 +10,10 @@ inside the GitHub repository.
 The expected workflow is:
 
 1. curate species, assembly version, annotation version and target gene IDs;
-2. run `insiphy extract-gene` once per species/copy;
-3. run `insiphy derive-tables`;
-4. add or review `species_tree.tsv`;
-5. run `insiphy run`;
-6. review `candidate_structural_events.tsv`, `model_comparison.tsv`,
-   `baseline_comparison.tsv` and `benchmark_summary.tsv` if simulated truth is
-   available.
+2. add or review `species_tree.tsv`;
+3. run `insiphy build-case --manifest manifest.tsv --species-tree species_tree.tsv`;
+4. run `insiphy run` with bootstrap, stochastic maps and foreground branches
+   when needed;
+5. run `insiphy visualize`;
+6. review `candidate_structural_events.tsv`, `event_support_summary.tsv`,
+   `case_summary.tsv` and `baseline_comparison.tsv`.

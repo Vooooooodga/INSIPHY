@@ -8,33 +8,48 @@ from insiphy.benchmark import benchmark_events
 from insiphy.case import build_case, inspect_annotation, scan_hidden_segments
 from insiphy.preprocess import derive_tables, extract_gene
 from insiphy.simulate import simulate_dataset
+from insiphy.visualize import visualize_results
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class DemoTests(unittest.TestCase):
-    def test_jingwei_demo_summary(self):
+class FixtureTests(unittest.TestCase):
+    def test_jingwei_case_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_all(ROOT / "demos" / "jingwei", tmp)
-            rows = read_tsv(Path(tmp) / "demo_summary.tsv")
+            rows = read_tsv(Path(tmp) / "case_summary.tsv")
             scores = read_tsv(Path(tmp) / "character_model_scores.tsv")
             tests = read_tsv(Path(tmp) / "hypothesis_tests.tsv")
             baselines = read_tsv(Path(tmp) / "baseline_comparison.tsv")
+            progressive = read_tsv(Path(tmp) / "progressive_correspondence.tsv")
             self.assertEqual(rows[0]["family_id"], "jingwei")
             self.assertEqual(rows[0]["hidden_segment_candidates"], "1")
             self.assertEqual(rows[0]["best_compound_model"], "compound_chimeric_or_copy_event")
             self.assertTrue(scores)
             self.assertIn("p_value", tests[0])
+            self.assertIn("q_value", tests[0])
+            self.assertTrue(progressive)
             self.assertEqual({row["baseline_model"] for row in baselines}, {"annotation_only", "sequence_only", "synteny_aware_phylogenetic"})
 
-    def test_sdic_demo_summary(self):
+    def test_sdic_case_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_all(ROOT / "demos" / "sdic", tmp)
-            rows = read_tsv(Path(tmp) / "demo_summary.tsv")
+            rows = read_tsv(Path(tmp) / "case_summary.tsv")
             self.assertEqual(rows[0]["family_id"], "sdic")
             self.assertEqual(rows[0]["hidden_segment_candidates"], "1")
             self.assertEqual(rows[0]["best_annotation_model"], "annotation_error")
+
+    def test_visualize_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            out = tmp / "out"
+            fig = tmp / "fig"
+            run_all(ROOT / "demos" / "jingwei", out, bootstrap_replicates=2, stochastic_maps=2)
+            visualize_results(ROOT / "demos" / "jingwei", out, fig)
+            manifest = read_tsv(fig / "visualization_manifest.tsv")
+            self.assertEqual({row["description"] for row in manifest}, {"Gene-internal synteny by species and copy", "Species-tree structural event map"})
+            self.assertIn("<pattern", (fig / "intragenic_synteny.svg").read_text())
 
 
 class PreprocessTests(unittest.TestCase):
