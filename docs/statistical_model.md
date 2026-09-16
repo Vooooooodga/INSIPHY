@@ -120,10 +120,9 @@ invariant sites.
 
 ## 7. Node and branch posteriors
 
-After model selection by AIC, inside-outside messages give marginal empirical-
-Bayes probabilities conditional on maximum-likelihood parameters
-probabilities for every node and the joint endpoint posterior for every
-branch:
+After model selection by AIC, inside-outside messages give marginal
+empirical-Bayes probabilities for every node and joint endpoint probabilities
+for every branch, conditional on maximum-likelihood parameter estimates:
 
 ```text
 P(X_parent=a, X_child=b | tip states, fitted model).

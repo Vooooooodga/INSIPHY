@@ -182,7 +182,9 @@ insiphy visualize \
 Jingwei 和 Sdic 的多拷贝材料保留为实验性开发案例，当前版本不将它们作为正式
 单拷贝方法的性能证据。
 
-本次运行的小型结果表和 SVG 图保存在 `demo_results/rpl32_control`。
+两组正式真实数据运行的结果和 SVG 图位于服务器的
+`/data/projects/intragenic_structure/results/20260916_145605_insiphy`；参数、
+统计结果与尚不能推断的部分见 `docs/real_data_benchmark.md`。
 
 ## 文档
 
