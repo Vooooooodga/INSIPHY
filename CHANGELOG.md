@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.2 - 2026-09-16
+
+- Read the first optimal Biopython alignment by iteration, avoiding integer
+  overflow when low-complexity exons admit more optimal paths than can be
+  counted in a 64-bit integer.
+
 ## 0.12.1 - 2026-09-16
 
 - Preserve literal pipe characters in GFF/GTF feature identifiers and parent

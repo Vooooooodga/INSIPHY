@@ -334,9 +334,9 @@ def _pairwise_aligner_stats(seq_a: str, seq_b: str, mode: str) -> AlignmentStats
     aligner.open_gap_score = -2.0
     aligner.extend_gap_score = -0.5
     alignments = aligner.align(seq_a, seq_b)
-    if len(alignments) == 0:
+    alignment = next(iter(alignments), None)
+    if alignment is None:
         return AlignmentStats(0.0, 0.0, 0.0)
-    alignment = alignments[0]
     coordinates = alignment.coordinates
     operations = []
     matches = 0

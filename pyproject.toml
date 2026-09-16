@@ -1,6 +1,6 @@
 [project]
 name = "insiphy"
-version = "0.12.1"
+version = "0.12.2"
 description = "Intragenic synteny phylogenetics from genome sequence and annotation"
 requires-python = ">=3.9"
 dependencies = [

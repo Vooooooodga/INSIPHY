@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from insiphy.alignment import AlignmentBackendError, global_alignment_stats, phase_compatibility
 from insiphy.cli import run_all
@@ -319,6 +320,29 @@ class PreprocessTests(unittest.TestCase):
         self.assertEqual(stats.backend, "internal")
         self.assertEqual(stats.identity, 1.0)
         self.assertEqual(stats.coverage, 1.0)
+
+    def test_internal_alignment_does_not_count_all_optimal_paths(self):
+        import numpy as np
+
+        class Alignment:
+            coordinates = np.array([[0, 4], [0, 4]])
+            score = 8.0
+
+        class Alignments:
+            def __len__(self):
+                raise OverflowError("too many optimal alignments")
+
+            def __iter__(self):
+                yield Alignment()
+
+        class Aligner:
+            def align(self, _left, _right):
+                return Alignments()
+
+        with patch("Bio.Align.PairwiseAligner", return_value=Aligner()):
+            stats = global_alignment_stats("ACGT", "ACGT")
+        self.assertEqual(stats.identity, 1.0)
+        self.assertEqual(stats.aligned_pairs, 4)
 
     def test_internal_alignment_refuses_oversized_dynamic_program(self):
         with self.assertRaises(AlignmentBackendError):
