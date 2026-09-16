@@ -11,12 +11,13 @@ The compared gene/copy set is supplied by an upstream homology workflow or a
 curated case definition. INSIPHY starts from that set and analyzes structure
 inside the homologous genes.
 
-The key biological unit in interpretation is the exon-like structural element.
-HSG labels in intermediate files are evidence-graph components used to assemble
-correspondence; they are not the named biological unit in figures or manuscript
-claims. This distinction matters for introns: an intronic interval can support
-splice-boundary conservation, phase compatibility or exonization evidence, but
-it is not promoted to a displayed homologous block without role-shift support.
+The key biological unit in interpretation is the exon-like structural element
+(`EG_*`). Internal homology components (`HC_*`) assemble correspondence
+evidence, while figures and manuscript-facing event calls are expressed through
+EGs, splice boundaries, adjacencies and source/copy context. This distinction
+matters for introns: an intronic interval can support splice-boundary
+conservation, phase compatibility or exonization evidence, and it becomes a
+displayed homologous block only with role-shift support.
 
 ## Evidence Layers
 
@@ -28,12 +29,13 @@ it is not promoted to a displayed homologous block without role-shift support.
    compatibility, intron phase, splice motif, strand, flanking context and
    local order are combined into graph-based evidence clusters. These clusters
    are promoted to EGs when they correspond to exons, CDS/UTR intervals or
-   sequence-supported candidate exonized source intervals. HSG identifiers are
-   internal graph labels. Biological interpretation is made through EGs, splice
-   boundaries, adjacencies and source-copy context.
-4. **Tree-guided progressive interpretation**: segment support is summarized by
+   sequence-supported candidate exonized source intervals. Internal component
+   identifiers are graph labels. Biological interpretation is made through EGs,
+   splice boundaries, adjacencies and source-copy context.
+4. **Tree-guided progressive correspondence**: segment support is summarized by
    species-tree distance. Close-species support, within-clade support and
-   deep-tree support are kept visible in `progressive_correspondence.tsv`.
+   deep-tree support are kept visible in `progressive_correspondence.tsv` and
+   `progressive_element_correspondence.tsv`.
 5. **Intragenic synteny graph**: ordered exon-like elements and their
    adjacencies describe the internal synteny of each gene copy. Introns
    contribute boundary and phase evidence without becoming default homologous
@@ -62,13 +64,14 @@ change on the relevant phylogenetic tree:
   outside support for mechanism-level interpretation;
 - annotation gap supported by local sequence evidence.
 
-Candidate events are reported with both low-level state changes and biological
-`structural_pattern` labels, such as `exonization_candidate`,
+Candidate events are reported with low-level state changes and observable
+`structural_change_type` labels, such as `exonization_candidate`,
 `segment_fusion_or_new_adjacency`, `chimeric_source_join_candidate`,
 `copy_duplication_or_expansion` or `ambiguous_paralogous_similarity`.
-`mechanism_hypothesis` stores the possible biological explanation, and
 `call_scope` separates core structural events from copy-context and ambiguous
-evidence.
+evidence. Possible biological readings are written only to
+`interpretation_hints.tsv`; those hints are outside the formal statistical
+test.
 
 ## Three-Layer Translation
 
@@ -98,16 +101,17 @@ INSIPHY makes the biological-to-statistical translation explicit.
    stochastic mapping calibrate and place the event; foreground/background
    tests ask whether selected branches have elevated structural-change rate.
 
-The real-case outputs keep these layers linked: `candidate_structural_events.tsv`
-names the observed structural pattern and mechanism hypothesis, `object_id`
-points back to the structural character, and `event_support_summary.tsv` joins
-that event to p values, q values, bootstrap evidence and branch-history support
-where available.
+The real-case outputs keep these layers linked:
+`candidate_structural_events.tsv` names the observed structural change,
+`object_id` points back to the structural character, and
+`event_support_summary.tsv` joins that event to p values, q values, bootstrap
+evidence and branch-history support where available.
 
 `element_correspondence.tsv` and `element_phylogenetic_coverage.tsv` are the
-main correspondence and tree-coverage tables. `hsg_phylogenetic_coverage.tsv`
-remains an internal evidence-coverage table. Figures label displayed exon-like
-correspondence groups as `EG_*` and draw introns as gray context spans.
+main correspondence and tree-coverage tables.
+`internal_homology_phylogenetic_coverage.tsv` remains an internal
+evidence-coverage table. Figures label displayed exon-like correspondence
+groups as `EG_*` and draw introns as gray context spans.
 
 ## Statistical Mapping
 
@@ -129,6 +133,10 @@ INSIPHY adapts discrete-character phylogenetic models to intragenic structure:
   branches and reports posterior summaries for event placement.
 - **Foreground/background rate testing** asks whether user-selected branches
   show elevated structural-change rates compared with background branches.
+- **Simulation calibration** estimates operating characteristics under known
+  simulated histories, including false positive rate, power and branch
+  placement accuracy. These summaries describe method behavior and do not alter
+  real-data calls.
 
 The first publication version focuses on real Drosophila duplicated and
 chimeric gene cases plus a conserved negative control. Large-scale calibration

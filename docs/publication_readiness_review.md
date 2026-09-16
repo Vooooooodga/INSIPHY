@@ -93,9 +93,8 @@ insiphy run --input-dir case --output-dir results
 insiphy benchmark --input-dir case --output-dir results
 ```
 
-Nextflow and Slurm are appropriate for server-side formal runs and large
-project records on R730. They should stay outside the distributed package and
-outside the user-facing method definition.
+Cluster-scale execution records can be maintained outside the distributed
+package. The user-facing method definition remains the CLI/Python API above.
 
 ## Immediate Next Work
 

@@ -15,6 +15,7 @@ Example:
 PYTHONPATH=src python3 -m insiphy.cli build-case \
   --manifest examples/real_cases/jingwei/manifest.tsv \
   --species-tree examples/real_cases/jingwei/species_tree.tsv \
+  --copy-tree examples/real_cases/jingwei/copy_tree.tsv \
   --output-dir work/jingwei_case \
   --aligner minimap2 \
   --threads 4

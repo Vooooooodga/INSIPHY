@@ -66,9 +66,62 @@ For each case, report:
 - alternative explanations: annotation dropout, fragmented assembly, paralogy
   ambiguity, high-similarity paralogous segments or weak sequence support.
 
-## Acceptance For v0.7 Real Run
+## v0.10 Demo Run
 
-A v0.7 real run is acceptable when it can:
+The current package was exercised on real local Drosophila inputs under:
+
+```text
+/scratch/projects/intragenic_structure/insiphy_v010_real_demo
+```
+
+Settings:
+
+- `build-case` from accession-level genome FASTA/GFF manifests.
+- `--threads 2` with the internal aligner, because minimap2/miniprot were not
+  available on `PATH` in this environment.
+- `run` with `--bootstrap-replicates 10`, `--stochastic-maps 10` and foreground
+  branch files for positive cases.
+- `visualize` with default color encoding; RpL32 was also rendered with
+  pattern encoding.
+- `benchmark` against curated truth tables for jingwei and Sdic.
+
+Observed results:
+
+- **RpL32 control**: no hidden-segment candidates, no source-join candidates,
+  no multi-source tips, no branch-event candidates and no copy-context
+  candidates. This is the desired conserved-control behavior.
+- **jingwei**: structural characters used `copy_tree.tsv`; one core event was
+  called, `chimeric_origin_or_source_mixing`, on
+  `adh_yak_dup->Drosophila_yakuba:Dyak_jgw`. The LRT p value was
+  `8.43996e-06`, BH q value `0.000118159`, CTMC branch-change probability
+  `0.973651`, and stochastic-map `Pr(any change)` was `1` with 10 maps.
+  Benchmark against the copy-tree truth table gave precision, recall and branch
+  accuracy of `1`.
+- **Sdic**: structural characters used `copy_tree.tsv`; the expected
+  `chimeric_origin_or_source_mixing` event was called on
+  `sdic_root->sdic_cluster` with branch accuracy `1`. One additional
+  `coding_or_exonic_role_loss` core call was made on an AnxB10 lineage, so core
+  benchmark precision was `0.5` and recall was `1`. This extra call is retained
+  as an unresolved real-data signal requiring closer annotation and orthology
+  review.
+- **Calibration smoke run**: two replicates each of `negative_control`,
+  `exonization` and `source_join` completed. The negative control had
+  false-positive rate `0`; exonization and source-join scenarios had
+  mean precision/recall/F1 of `1` in this tiny smoke run. These values show
+  command behavior, not final publication calibration.
+
+Important limitations:
+
+- The internal aligner is a fallback; publication runs should use minimap2 or
+  another documented local aligner for scalable segment matching.
+- Only 10 bootstrap/stochastic-map replicates were used for the real demo.
+  Empirical p values therefore have coarse Monte Carlo resolution.
+- The Sdic extra role-loss call shows that curated truth tables must separate
+  expected focal events from additional lineage-specific structural variation.
+
+## Acceptance For v0.10 Real Run
+
+A v0.10 real run is acceptable when it can:
 
 - run from accession-level genome FASTA/GFF plus a manifest and species tree;
 - recover expected qualitative event classes for `jingwei` and `Sdic`;

@@ -56,7 +56,7 @@ def tip_label_for_group(tree, species, copy):
 
 def pattern_defs(styles):
     body = ["<defs>"]
-    for hsg, style in styles.items():
+    for _element_id, style in styles.items():
         if style.get("encoding") != "pattern":
             continue
         pid = style["pattern_id"]
@@ -107,7 +107,7 @@ def fallback_element_correspondence(input_dir, occurrences):
     return rows
 
 
-def segment_styles(input_dir, result_dir, occurrences=None, hsg_encoding="color"):
+def segment_styles(input_dir, result_dir, occurrences=None, correspondence_encoding="color"):
     occurrences = occurrences or []
     element_rows = read_tsv(Path(result_dir) / "element_correspondence.tsv", optional=True)
     if not element_rows:
@@ -123,7 +123,7 @@ def segment_styles(input_dir, result_dir, occurrences=None, hsg_encoding="color"
     styles = {}
     for idx, element_id in enumerate(sorted(set(by_occ.values()))):
         dash = "none" if idx % 3 == 0 else "4 2" if idx % 3 == 1 else "1.5 2"
-        if hsg_encoding == "color":
+        if correspondence_encoding == "color":
             styles[element_id] = {
                 "encoding": "color",
                 "fill": PALETTE[idx % len(PALETTE)],
@@ -187,11 +187,11 @@ def draw_segment_box(body, x, ybox, w, hbox, label, style, unit_class="exon_like
         body.append(svg_text(x + w / 2, ybox + hbox + 11, label, 8, anchor="middle", fill="#333"))
 
 
-def draw_synteny(input_dir, result_dir, output_dir, hsg_encoding="color"):
+def draw_synteny(input_dir, result_dir, output_dir, correspondence_encoding="color"):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
     occurrences = read_tsv(input_dir / "segment_occurrences.tsv", optional=True)
-    occ_to_element, styles, class_by_occ = segment_styles(input_dir, result_dir, occurrences, hsg_encoding)
+    occ_to_element, styles, class_by_occ = segment_styles(input_dir, result_dir, occurrences, correspondence_encoding)
     grouped = defaultdict(list)
     for row in occurrences:
         grouped[(row.get("species", "NA"), row.get("gene_copy_id", "NA"))].append(row)
@@ -244,7 +244,7 @@ def draw_synteny(input_dir, result_dir, output_dir, hsg_encoding="color"):
     for args in pending_boxes:
         draw_segment_box(body, *args)
     legend_y = height - 58
-    if hsg_encoding == "color":
+    if correspondence_encoding == "color":
         legend = "Color and label mark exon-like correspondence groups"
     else:
         legend = "Texture, line style, labels and links mark exon-like correspondence groups; gray spans mark introns/context"
@@ -345,7 +345,7 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
     return path
 
 
-def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encoding="color"):
+def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, correspondence_encoding="color"):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
     tree_rows, tree_file = structural_tree_rows(input_dir, result_dir)
@@ -357,7 +357,7 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encodin
         return path
 
     tree = SpeciesTree(tree_rows)
-    occ_to_element, styles, class_by_occ = segment_styles(input_dir, result_dir, occurrences, hsg_encoding)
+    occ_to_element, styles, class_by_occ = segment_styles(input_dir, result_dir, occurrences, correspondence_encoding)
     grouped = defaultdict(list)
     for row in occurrences:
         grouped[(row.get("species", "NA"), row.get("gene_copy_id", "NA"))].append(row)
@@ -469,12 +469,12 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encodin
     return path
 
 
-def visualize_results(input_dir, result_dir, output_dir, hsg_encoding="color"):
+def visualize_results(input_dir, result_dir, output_dir, correspondence_encoding="color"):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    synteny = draw_synteny(input_dir, result_dir, output_dir, hsg_encoding)
+    synteny = draw_synteny(input_dir, result_dir, output_dir, correspondence_encoding)
     phylogeny = draw_phylogeny(input_dir, result_dir, output_dir)
-    integrated = draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encoding)
+    integrated = draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, correspondence_encoding)
     rows = [
         {"path": str(synteny), "type": "svg", "description": "Exon-like gene-internal synteny by species and copy"},
         {"path": str(phylogeny), "type": "svg", "description": "Phylogenetic structural event map"},

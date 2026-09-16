@@ -1,2 +1,3 @@
 branch_scope	notes
 mel_sim->Drosophila_melanogaster	expected lineage containing Sdic-derived copies
+sdic_root->sdic_cluster	copy-tree branch leading to the melanogaster Sdic tandem-copy cluster

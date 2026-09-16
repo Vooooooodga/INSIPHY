@@ -4,11 +4,11 @@ INSIPHY currently separates biological evidence from phylogenetic interpretation
 
 ## Current Statistical Layers
 
-1. **Evidence scoring for internal correspondence clusters**: sequence identity, coverage, splice motif,
+1. **Evidence scoring for internal correspondence components**: sequence identity, coverage, splice motif,
    intron phase, strand, boundary class and local order are combined into
    correspondence scores. These scores describe support for exon-like elements,
-   candidate non-exonic source intervals and their local context. HSG labels in
-   intermediate tables are graph IDs, not final biological event units.
+   candidate non-exonic source intervals and their local context. `HC_*` labels
+   in internal tables are graph IDs, not final biological event units.
 2. **Weighted Sankoff reconstruction**: EG presence, EG role state,
    intragenic adjacency and source mixture are reconstructed on the supplied
    copy/gene tree when available. Single-copy cases use the species tree.
@@ -42,7 +42,7 @@ INSIPHY currently separates biological evidence from phylogenetic interpretation
 10. **EG phylogenetic coverage**: each user-facing exon-like group is
    summarized as tree-spanning, partial or tip-specific in
    `element_phylogenetic_coverage.tsv`. Internal evidence clusters remain
-   available in `hsg_phylogenetic_coverage.tsv`.
+   available in `internal_homology_phylogenetic_coverage.tsv`.
 
 Annotation dropout is represented as evidence uncertainty and hidden-segment
 support. A missing annotation alone is not treated as biological segment loss.
@@ -57,9 +57,10 @@ Two lightweight comparisons are reported:
 
 These scores are first-pass evidence summaries. The formal phylogenetic
 statistics are in `model_fit.tsv`, `character_model_scores.tsv` and
-`hypothesis_tests.tsv`. Event tables add `structural_pattern`,
-`mechanism_hypothesis` and `call_scope`; only `core_structural_event` calls are
-used by default for event-level precision and recall.
+`hypothesis_tests.tsv`. Event tables add `structural_change_type`,
+`structural_pattern` and `call_scope`; only `core_structural_event` calls are
+used by default for event-level precision and recall. Possible biological
+readings are isolated in `interpretation_hints.tsv`.
 
 ## Hypotheses
 
@@ -72,9 +73,10 @@ The default hypothesis test is:
 
 The LRT uses a boundary-rate chi-square mixture approximation,
 `0.5 * chi-square(df=1)`, because the invariant model fixes the transition rate
-at zero. With only a few closely related species, the p value is best read as a
-calibrated-looking evidence statistic that still needs simulation-based
-calibration before publication-level claims.
+at zero. With only a few closely related species, the p value is an approximate
+model-based tail probability. Publication-level claims should report
+simulation-based operating characteristics for the same tree sizes, missing
+annotation rates and event classes.
 
 If fewer than two terminal taxa have observed non-unknown states for a
 character, INSIPHY reports `insufficient_observed_tips` and sets the p value to
@@ -112,18 +114,20 @@ biological event class. For example, a `source_mixture` shift to `multi_source`
 and an intragenic adjacency joining two source labels on the same branch should
 increase confidence in one compound chimeric event.
 
-## Publication Calibration
+## Simulation Calibration
 
-Asymptotic LRT p values should be calibrated by parametric bootstrap before
-being used as manuscript-level significance claims. The implemented calibration
-does the following:
+Asymptotic LRT p values and branch posterior summaries should be evaluated by
+simulation before being used as manuscript-level significance claims. The
+implemented calibration does the following:
 
 1. fit the observed invariant-versus-CTMC test;
 2. simulate many structural datasets on the same species tree;
 3. rerun the same INSIPHY inference;
 4. compute the empirical tail probability of the observed LRT statistic;
 5. report the empirical P value, Monte Carlo standard error and simulation
-   settings.
+   settings;
+6. summarize false positive rate, power, precision/recall and branch placement
+   accuracy across named simulated scenarios with `insiphy calibrate`.
 
 This is especially important for small trees, sparse observations, missing
 annotation and boundary tests where asymptotic chi-square approximations can be
@@ -144,8 +148,10 @@ optimistic.
 - `branch_history_posteriors.tsv`: stochastic character mapping posterior
   summaries when requested.
 - `foreground_tests.tsv`: optional foreground/background structural-rate tests.
-- `event_support_summary.tsv`: structural pattern, mechanism hypothesis, call
-  scope, branch scope, support tier and linked statistical evidence.
+- `event_support_summary.tsv`: structural change type, call scope, branch
+  scope, support tier and linked statistical evidence.
+- `interpretation_hints.tsv`: possible biological readings and caveats for
+  manual interpretation; this table is not used by the formal tests.
 - `element_correspondence.tsv`: user-facing EG membership table linking
   occurrence ids, internal homology ids, element class, display role and source
   label.
@@ -155,9 +161,16 @@ optimistic.
   when multi-copy structural histories are evaluated with species-tree fallback.
 - `progressive_correspondence.tsv`: tree-distance-aware segment support summary
   inside the supplied homologous gene set.
-- `hsg_phylogenetic_coverage.tsv`: internal evidence-cluster coverage class,
+- `progressive_element_correspondence.tsv`: tree-distance-aware EG support
+  summary.
+- `ancestral_element_graph.tsv`: EG coverage, MRCA and present copy summary.
+- `ancestral_intragenic_paths.tsv`: observed extant copy paths and simple
+  family consensus paths.
+- `internal_homology_phylogenetic_coverage.tsv`: internal evidence-component coverage class,
   MRCA and present species on the supplied tree.
 - `benchmark_summary.tsv` and `benchmark_detailed.tsv`: event-level and
   branch-aware benchmark summaries for core structural calls, with separate
   counts for copy-context and ambiguous evidence.
 - `benchmark_calibration.tsv`: bootstrap p-value summary across characters.
+- `calibration_operating_characteristics.tsv`: scenario-level operating
+  characteristics from `insiphy calibrate`.

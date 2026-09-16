@@ -1,2 +1,2 @@
 family_id	event_class	branch_scope	object_id	notes
-jingwei	chimeric_source_join_candidate	yak_tei_ere->yak_tei	curated_jingwei_source_join	expected Adh and ymp source joining in the derived lineage
+jingwei	chimeric_origin_or_source_mixing	adh_yak_dup->Drosophila_yakuba:Dyak_jgw	jingwei	expected Adh/Ymp source mixture in the derived jingwei copy lineage

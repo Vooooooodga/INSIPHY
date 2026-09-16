@@ -1,0 +1,8 @@
+layer	object_id	test_id	observed_lrt	bootstrap_replicates	empirical_p_value	monte_carlo_se	null_lrt_mean	null_lrt_q025	null_lrt_q500	null_lrt_q975	seed	tip_error
+element_presence	EG_Adh_A	ctmc_vs_invariant_parametric_bootstrap	0	5	1	0	0	0	0	0	7	1e-06
+element_role_state	EG_Adh_A	ctmc_vs_invariant_parametric_bootstrap	0	5	1	0	0	0	0	0	7	1e-06
+element_presence	EG_yande_Y	ctmc_vs_invariant_parametric_bootstrap	0	5	1	0	0	0	0	0	7	1e-06
+element_role_state	EG_yande_Y	ctmc_vs_invariant_parametric_bootstrap	46.9772	5	0.166667	0.152145	0	0	0	0	7	1e-06
+element_adjacency_state	EG_yande_Y__EG_Adh_A	ctmc_vs_invariant_parametric_bootstrap	49.8851	5	0.166667	0.152145	0	0	0	0	7	1e-06
+source_mixture	jingwei	ctmc_vs_invariant_parametric_bootstrap	46.8516	5	0.166667	0.152145	0	0	0	0	7	1e-06
+copy_multiplicity	jingwei	ctmc_vs_invariant_parametric_bootstrap	0	5	1	0	0	0	0	0	7	1e-06

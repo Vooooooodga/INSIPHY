@@ -1,8 +1,8 @@
 layer	object_id	model	parsimony_score	log_likelihood	state_count	observed_tip_count	fitted_rate	aic	bic
-segment_presence	H_Adh_A	likelihood_like_discrete_character	0	-1.93318	2	5	0.005	3.46644	3.07588
-role_state	H_Adh_A	likelihood_like_discrete_character	0	-2.89681	5	5	0.005	5.29906	4.9085
-segment_presence	H_yande_Y	likelihood_like_discrete_character	0	-1.93318	2	5	0.005	3.46644	3.07588
-role_state	H_yande_Y	likelihood_like_discrete_character	1	-5.67462	5	5	0.18	13.3825	12.9919
-adjacency_state	H_yande_Y__H_Adh_A	likelihood_like_discrete_character	2	-3.24967	2	5	1	4.19995	3.80939
+element_presence	EG_Adh_A	likelihood_like_discrete_character	0	-1.93318	2	5	0.005	3.46644	3.07588
+element_role_state	EG_Adh_A	likelihood_like_discrete_character	0	-2.89681	5	5	0.005	5.29906	4.9085
+element_presence	EG_yande_Y	likelihood_like_discrete_character	0	-1.93318	2	5	0.005	3.46644	3.07588
+element_role_state	EG_yande_Y	likelihood_like_discrete_character	1	-5.67462	5	5	0.18	13.3825	12.9919
+element_adjacency_state	EG_yande_Y__EG_Adh_A	likelihood_like_discrete_character	2	-4.22039	3	5	1	9.12787	8.73731
 source_mixture	jingwei	likelihood_like_discrete_character	2	-5.10556	3	5	0.18	12.1614	11.7708
 copy_multiplicity	jingwei	likelihood_like_discrete_character	0	-3.08452	6	5	0.005	5.66371	5.27315

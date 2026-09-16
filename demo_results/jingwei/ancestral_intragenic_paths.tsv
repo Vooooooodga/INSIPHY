@@ -1,0 +1,10 @@
+family_id	path_scope	node_label	species	gene_copy_id	path_type	element_path	context_count	path_support
+jingwei	extant_copy	Dere:Adh_source_copy	Dere	Adh_source_copy	observed	EG_Adh_A	0	1
+jingwei	extant_copy	Dere:yande_source_copy	Dere	yande_source_copy	observed	EG_yande_Y	0	1
+jingwei	extant_copy	Dmel:Adh_source_copy	Dmel	Adh_source_copy	observed	EG_Adh_A	0	1
+jingwei	extant_copy	Dmel:yande_source_copy	Dmel	yande_source_copy	observed	EG_yande_Y	0	1
+jingwei	extant_copy	Dsim:Adh_source_copy	Dsim	Adh_source_copy	observed	EG_Adh_A	0	1
+jingwei	extant_copy	Dsim:yande_source_copy	Dsim	yande_source_copy	observed	EG_yande_Y	0	1
+jingwei	extant_copy	Dtei:jgw_copy	Dtei	jgw_copy	observed	EG_yande_Y>EG_Adh_A	0	1
+jingwei	extant_copy	Dyak:jgw_copy	Dyak	jgw_copy	observed	EG_yande_Y>EG_Adh_A	0	1
+jingwei	family_consensus	jingwei	NA	NA	majority_observed_path	EG_Adh_A	NA	3/8

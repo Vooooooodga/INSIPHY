@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.10.0 - 2026-09-16
+
+- Moved possible biological readings out of core event/support tables into
+  `interpretation_hints.tsv`; core statistics now report observable structural
+  changes and support only.
+- Added `progressive_element_correspondence.tsv`,
+  `ancestral_element_graph.tsv` and `ancestral_intragenic_paths.tsv`.
+- Renamed newly generated internal correspondence components to `HC_*` and
+  public internal tables to `internal_homology_*`.
+- Added `build-case --copy-tree/--gene-tree` so upstream gene/copy trees can be
+  carried into real-case analyses.
+- Added real Drosophila demo records for RpL32, jingwei and Sdic, including
+  copy-tree positive cases and a conserved-control negative case.
+- Tightened internal aligner candidate filtering so intron-intron pairs remain
+  context evidence and large internal alignments use a fast approximation.
+- Added `insiphy calibrate` for simulation-based operating characteristics:
+  false positive rate, power, precision/recall, branch placement accuracy and
+  bootstrap behavior.
+- Updated documentation to frame simulation calibration as method evaluation,
+  separate from real-data event calls.
+
 ## 0.9.1 - 2026-09-16
 
 - Changed the default synteny correspondence encoding to color, with
@@ -21,8 +42,8 @@
 - Promoted exon-like groups (EGs) from display labels to the main public
   correspondence and phylogenetic-statistical objects.
 - Added `element_correspondence.tsv` and
-  `element_phylogenetic_coverage.tsv`; retained `hsg_*` tables as internal
-  evidence-graph records.
+  `element_phylogenetic_coverage.tsv`; retained internal homology component
+  tables as evidence-graph records.
 - Switched primary structural layers to `element_presence`,
   `element_role_state` and `element_adjacency_state`.
 - Updated event object ids, synteny graph edges and visual links to use EG ids.
@@ -30,32 +51,32 @@
   exonization, splice-boundary shift, split/fusion, source joining, tandem
   duplication, dispersed processed-copy context, annotation dropout, negative
   control and ambiguous paralogous similarity.
-- Added a formal real+simulation demo workflow for server-side Nextflow/Slurm
-  runs while keeping the package itself CLI-first.
+- Added documented real+simulation demo commands while keeping the package
+  CLI-first.
 
 ## 0.8.0 - 2026-09-16
 
 - Reworked SVG synteny figures around exon-like biological units instead of
-  exposing raw HSG graph IDs as primary visual objects.
+  exposing raw internal graph IDs as primary visual objects.
 - Added link/ribbon-style correspondence between exon-like blocks across
   species/copy tracks.
 - Rendered introns and other non-exonic intervals as gray context spans, with
   dashed candidate-source boxes only when connected to exon-like evidence.
-- Clarified that HSGs are internal correspondence-evidence clusters, while
-  biological modeling and figures should be read through exon-like elements,
-  splice boundaries, adjacencies and event tables.
+- Clarified that internal homology components are correspondence-evidence
+  clusters, while biological modeling and figures should be read through
+  exon-like elements, splice boundaries, adjacencies and event tables.
 
 ## 0.7.0 - 2026-09-16
 
-- Split event reporting into observable `structural_pattern`,
-  `mechanism_hypothesis` and `call_scope` fields.
+- Split event reporting into observable structural-pattern and call-scope
+  fields.
 - Reclassified high-identity paralogous segment matches as ambiguous evidence
   instead of core gene-conversion event calls.
-- Added `hsg_phylogenetic_coverage.tsv` to summarize tree-spanning, partial
-  and tip-specific HSG support.
+- Added internal homology phylogenetic coverage to summarize tree-spanning,
+  partial and tip-specific component support.
 - Updated benchmark summaries so core structural precision/recall exclude
   copy-context and ambiguous evidence calls.
-- Added pattern-only HSG visualization by default and an integrated
+- Added pattern-only correspondence visualization by default and an integrated
   species-tree plus gene-internal synteny SVG.
 
 ## 0.6.0 - 2026-09-16
@@ -91,11 +112,11 @@
 
 - Added manifest-level `role_hint`, `source_label` and `copy_role` support for
   source/background/derived copy sets supplied by upstream homology workflows.
-- Propagated source labels into extracted `segment_occurrences.tsv` and HSG
+- Propagated source labels into extracted `segment_occurrences.tsv` and
   `segment_homology.tsv` rows.
 - Added source-label inference for derived-copy segments from strongest
-  source-copy HSG matches, enabling chimeric source mixture calls for cases
-  such as jingwei and Sdic.
+  source-copy internal homology matches, enabling chimeric source mixture calls
+  for cases such as jingwei and Sdic.
 - Documented that INSIPHY starts from a supplied homologous gene/copy set and
   does not perform whole-genome orthogroup inference.
 
@@ -105,7 +126,7 @@
   p values, fitted CTMC/Mk rates and null/alternative AIC/BIC values.
 - Added CTMC branch-change probability columns to
   `branch_event_probabilities.tsv` and `candidate_structural_events.tsv`.
-- Tightened HSG clustering with role-compatible sequence support and a
+- Tightened internal homology clustering with role-compatible sequence support and a
   one-segment-per-gene-copy component constraint to reduce transitive
   over-merging on real locus inputs.
 - Added `insufficient_observed_tips` reporting for phylogenetic tests with
@@ -120,8 +141,8 @@
   `intron_sites.tsv`.
 - Added gapped local alignment helpers, splice motif scoring and frame-status
   reporting for hidden-segment scans.
-- Added graph-based HSG correspondence, reciprocal-best calls, membership
-  scores and `hsg_graph_edges.tsv`.
+- Added graph-based internal homology correspondence, reciprocal-best calls,
+  membership scores and internal graph-edge output.
 - Added copy relationship calls for tandem, same-contig and dispersed/retrocopy
   candidates.
 - Added branch-length-aware CTMC/Mk model fitting with rate, AIC and BIC
@@ -133,7 +154,8 @@
 
 - Added the INSIPHY package scaffold and CLI.
 - Added genome FASTA/GFF extraction for single-gene copies.
-- Added first-pass HSG, correspondence, adjacency and copy-context builders.
+- Added first-pass internal homology, correspondence, adjacency and
+  copy-context builders.
 - Added fixed-tree structural inference for intragenic segment evolution.
 - Added jingwei and Sdic curated internal fixtures.
 - Added literature review, publication-gap notes, likelihood-like character

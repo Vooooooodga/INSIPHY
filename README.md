@@ -24,15 +24,15 @@ multiplicity 保留在物种树上解释。
 1. 在上游已确定同源关系的基因集合内，推断外显子、CDS、UTR、候选外显子化来源片段
    和相邻结构之间的同源性、保守性与局部 synteny。内含子默认作为间隔、
    splice boundary、phase 和 motif 背景证据处理。
-2. 在系统发育框架下，判断演化事件是否涉及基因内部结构变化，并解释这些变化如何
-   支持 gene duplication、source joining、exonization、splice-boundary shift、
-   segment split/fusion 或 copy-context 解释。单拷贝集合使用物种树；多拷贝集合
-   推荐使用 gene/copy tree。高相似 paralog 片段会作为机制待定证据报告，单靠本方法
-   不直接判定 gene conversion。
+2. 在系统发育框架下，量化每个 gene-internal structural character 是否支持
+   branch-level 结构变化、变化最可能落在哪条分支、统计支持有多强。INSIPHY
+   报告可观测结构变化和统计证据；gene duplication、source joining、
+   exonization、splice-boundary shift、segment split/fusion、gene conversion
+   等机制解释由用户结合基因树、基因组位置、重复序列、表达或实验资料完成。
 
 ## Method Frame
 
-INSIPHY implements four linked stages:
+INSIPHY implements five linked stages:
 
 1. **Annotation completion**: genome sequence is checked against annotation to
    identify hidden segments, shifted splice boundaries and joined-segment
@@ -44,24 +44,26 @@ INSIPHY implements four linked stages:
    sequence-supported candidate exonized source intervals. User-facing event
    calls and figures are organized around exon-like structural elements,
    splice boundaries and adjacency.
-3. **Tree-guided progressive interpretation**: pairwise segment support is
-   summarized by species-tree distance, so close-species support and deep-tree
-   support can be interpreted separately inside the supplied gene set.
+3. **Tree-guided progressive correspondence**: pairwise support is summarized
+   by tree distance, promoted to element-level correspondence summaries, and
+   reported as observed copy paths plus ancestral coverage summaries.
 4. **Phylogenetic structural inference**: EG presence, EG role state,
    adjacency and source mixture are reconstructed on a supplied copy/gene tree
    when available, with species-tree fallback for single-copy cases. Copy
    multiplicity is reconstructed on the fixed species tree.
+5. **Simulation calibration**: optional simulated truth sets summarize false
+   positive rate, power, precision/recall, branch placement accuracy and
+   bootstrap behavior. Calibration is kept separate from real-data event calls.
 
-The package is a CLI/library. It does not require Nextflow, Snakemake or a
-workflow engine. On the R730 server, formal project runs can still be recorded
-with external Nextflow/Slurm workflows according to local project standards.
+The package is a CLI/library. Workflow orchestration, cluster scheduling and
+large project execution records stay outside the package.
 
 Terminology boundary:
 
 - **EG / exon-like group**: the user-facing visual and biological correspondence
   unit for exons, CDS intervals, UTRs and candidate exonized source intervals.
-- **HSG**: an internal evidence-graph identifier retained in TSV outputs for
-  reproducibility and downstream debugging. It should not be read as a final
+- **Internal homology component (`HC_*`)**: an implementation-level graph
+  component retained for reproducibility and debugging. It is not a displayed
   biological unit.
 - **Intron/context span**: an intronic or non-exonic interval used as splice
   boundary, phase, motif or source-context evidence. It is drawn as background
@@ -82,6 +84,7 @@ Build a real case from genome FASTA and GFF/GTF:
 PYTHONPATH=src python3 -m insiphy.cli build-case \
   --manifest examples/real_cases/jingwei/manifest.tsv \
   --species-tree examples/real_cases/jingwei/species_tree.tsv \
+  --copy-tree examples/real_cases/jingwei/copy_tree.tsv \
   --output-dir work/jingwei_case \
   --aligner minimap2 \
   --threads 4
@@ -118,18 +121,33 @@ Check available local alignment backends:
 PYTHONPATH=src python3 -m insiphy.cli inspect-aligners
 ```
 
+Summarize operating characteristics on simulated truth sets:
+
+```bash
+PYTHONPATH=src python3 -m insiphy.cli calibrate \
+  --output-dir results/calibration \
+  --scenario negative_control \
+  --scenario exonization \
+  --replicates 20 \
+  --bootstrap-replicates 100 \
+  --seed 101
+```
+
 ## Main Outputs
 
 - `case_summary.tsv`
 - `annotation_completion_candidates.tsv`
 - `element_correspondence.tsv`
 - `element_phylogenetic_coverage.tsv`
-- `hsg_assignments.tsv`
-- `hsg_graph_edges.tsv`
+- `internal_homology_assignments.tsv`
+- `internal_homology_graph_edges.tsv`
 - `segment_conservation.tsv`
 - `segment_correspondence.tsv`
 - `progressive_correspondence.tsv`
-- `hsg_phylogenetic_coverage.tsv`
+- `progressive_element_correspondence.tsv`
+- `ancestral_element_graph.tsv`
+- `ancestral_intragenic_paths.tsv`
+- `internal_homology_phylogenetic_coverage.tsv`
 - `transcript_paths.tsv`
 - `intron_sites.tsv`
 - `copy_relationships.tsv`
@@ -137,6 +155,7 @@ PYTHONPATH=src python3 -m insiphy.cli inspect-aligners
 - `branch_event_probabilities.tsv`
 - `candidate_structural_events.tsv`
 - `event_support_summary.tsv`
+- `interpretation_hints.tsv`
 - `character_model_scores.tsv`
 - `model_fit.tsv`
 - `hypothesis_tests.tsv`
@@ -147,6 +166,8 @@ PYTHONPATH=src python3 -m insiphy.cli inspect-aligners
 - `baseline_comparison.tsv`
 - `intragenic_graph_edges.tsv`
 - `alignment_backend_report.tsv`
+- `calibration_operating_characteristics.tsv` from `calibrate`
+- `calibration_replicates.tsv` from `calibrate`
 
 `hypothesis_tests.tsv` reports the invariant/no-change null model versus a
 one-rate CTMC/Mk model on the active tree for that character, including
@@ -158,14 +179,18 @@ likelihoods, LRT statistic, p value, BH q value, fitted rate, AIC and BIC.
 contains empirical p values when bootstrap is requested.
 `branch_history_posteriors.tsv` contains stochastic-map summaries for event
 placement along branches. `candidate_structural_events.tsv` and
-`event_support_summary.tsv` report `structural_pattern`,
-`mechanism_hypothesis` and `call_scope`, so core structural events,
-copy-context evidence and ambiguous paralogous-similarity evidence remain
-separable.
+`event_support_summary.tsv` report `structural_change_type`,
+`structural_pattern` and `call_scope`, so core structural events, copy-context
+evidence and ambiguous paralogous-similarity evidence remain separable.
+`interpretation_hints.tsv` is a non-statistical helper table with possible
+biological readings and caveats; it is not used for p values, q values,
+support tiers or benchmark scores.
 
 `element_correspondence.tsv` and `element_phylogenetic_coverage.tsv` are the
-primary biological correspondence tables. Tables beginning with `hsg_` expose
-the internal evidence graph for reproducibility and debugging.
+primary biological correspondence tables. `progressive_element_correspondence.tsv`
+summarizes near-species, within-clade and deep-tree support for each EG.
+`internal_homology_*` tables expose implementation-level graph components for
+reproducibility and debugging.
 
 Visualization outputs:
 

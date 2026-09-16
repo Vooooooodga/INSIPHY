@@ -1,0 +1,4 @@
+family_id	homology_id	present_species_count	tree_tip_count	coverage_ratio	mrca_node	mrca_label	coverage_class	present_species	present_copy_count	present_copies
+sdic	H_Anx_A	3	3	1	root	root	tree_spanning	Dmel;Dsim;Dyak	5	Dmel:AnxB10_source;Dmel:Sdic_copy1;Dmel:Sdic_copy2;Dsim:AnxB10_source;Dyak:AnxB10_source
+sdic	H_sdic_I	1	3	0.333333	mel	Dmel	tip_specific	Dmel	1	Dmel:Sdic_copy1
+sdic	H_sw_S	3	3	1	root	root	tree_spanning	Dmel;Dsim;Dyak	5	Dmel:Sdic_copy1;Dmel:Sdic_copy2;Dmel:sw_source;Dsim:sw_source;Dyak:sw_source

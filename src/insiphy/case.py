@@ -163,7 +163,27 @@ def write_provenance(manifest_rows, output_dir):
     write_tsv(Path(output_dir) / "case_provenance.tsv", rows, fields)
 
 
-def build_case(manifest, output_dir, identity_threshold=0.7, species_tree=None, transcript_policy="canonical", canonical_rule="longest_cds", aligner="internal", threads=1, min_size_ratio=0.25):
+def copy_optional_tree(tree_path, output_dir, output_name):
+    if not tree_path:
+        return
+    path = Path(tree_path)
+    if path.exists():
+        (Path(output_dir) / output_name).write_text(path.read_text())
+
+
+def build_case(
+    manifest,
+    output_dir,
+    identity_threshold=0.7,
+    species_tree=None,
+    transcript_policy="canonical",
+    canonical_rule="longest_cds",
+    aligner="internal",
+    threads=1,
+    min_size_ratio=0.25,
+    copy_tree=None,
+    gene_tree=None,
+):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     rows = read_tsv(manifest, ["case_id", "species", "family_id", "gene_id", "gene_copy_id", "genome_fasta", "annotation_file"])
@@ -204,10 +224,9 @@ def build_case(manifest, output_dir, identity_threshold=0.7, species_tree=None, 
                 "message": "ok",
             }
         )
-    if species_tree:
-        tree_path = Path(species_tree)
-        if tree_path.exists():
-            (output_dir / "species_tree.tsv").write_text(tree_path.read_text())
+    copy_optional_tree(species_tree, output_dir, "species_tree.tsv")
+    copy_optional_tree(copy_tree, output_dir, "copy_tree.tsv")
+    copy_optional_tree(gene_tree, output_dir, "gene_tree.tsv")
     if appended:
         derive_tables(output_dir, output_dir, identity_threshold, aligner=aligner, threads=threads, min_size_ratio=min_size_ratio)
     write_tsv(output_dir / "case_build_report.tsv", report, ["case_id", "species", "gene_id", "gene_copy_id", "status", "segment_count", "message"])

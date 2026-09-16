@@ -65,6 +65,16 @@ For multi-copy homologous sets, provide one of these rooted trees:
 - `copy_tree.tsv`
 - `gene_tree.tsv`
 
+`build-case` can copy these upstream trees into the case directory:
+
+```bash
+insiphy build-case \
+  --manifest manifest.tsv \
+  --species-tree species_tree.tsv \
+  --copy-tree copy_tree.tsv \
+  --output-dir case_dir
+```
+
 The required fields are `node_id`, `parent_id` and `label`; optional
 `branch_length` is used by the CTMC/Mk likelihood. Leaf labels should match
 `species:gene_copy_id`, for example `Dyak:jingwei` or `Sp3:copy1`. If labels
@@ -141,13 +151,19 @@ local intervals or flank windows.
 
 ## Event Output Conventions
 
-Event tables use three linked labels:
+Core event tables use observable structural labels:
 
+- `structural_change_type`: the event vocabulary used for statistical
+  summaries and benchmark matching.
 - `structural_pattern`: the observable gene-internal structure pattern.
-- `mechanism_hypothesis`: the possible biological mechanism.
 - `call_scope`: `core_structural_event`, `copy_context`, `annotation_evidence`
   or `ambiguous_evidence`.
 
-The compatibility field `event_class` mirrors `structural_pattern`.
+The compatibility field `event_class` mirrors `structural_change_type`.
 `gene_conversion_candidate` is not emitted as a core event; high-identity
 paralogous segment matches are reported as `ambiguous_paralogous_similarity`.
+
+`interpretation_hints.tsv` contains optional possible biological readings and
+caveats for each structural change. It is a helper table for reporting and
+manual interpretation; it is not used by the statistical tests, p values,
+q values, support tiers or benchmarks.

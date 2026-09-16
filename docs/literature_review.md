@@ -46,11 +46,14 @@ layer.
 
 ## Phylogenetic Structural Inference
 
-INSIPHY treats intragenic structural states as discrete phylogenetic
-characters. The likelihood calculation follows the Felsenstein pruning logic on
-the active tree recorded for each layer. Structural states evolve under
-Mk-style CTMC models, and branch histories are summarized with stochastic
-character mapping when requested.
+INSIPHY treats intragenic structural observations as phylogenetic structural
+characters. Here "character" means a coded observable variable on tree tips,
+such as EG presence, EG role, EG adjacency, source mixture or copy
+multiplicity. It is not a claim that an exon is a classical phenotype by
+itself. The likelihood calculation follows the Felsenstein pruning logic on the
+active tree recorded for each layer. Structural states evolve under Mk-style
+CTMC models, and branch histories are summarized with stochastic character
+mapping when requested.
 
 The implemented statistics answer different questions:
 
@@ -80,7 +83,7 @@ The benchmark and event vocabulary should cover:
 - high-similarity paralogous segments with mechanism ambiguity;
 - annotation dropout, fragmented assemblies and unresolved paralogy.
 
-INSIPHY v0.9.1 directly models EG presence, EG role state, EG adjacency state,
+INSIPHY v0.10.0 directly models EG presence, EG role state, EG adjacency state,
 source mixture and copy multiplicity. It reports splice-boundary shifts,
 segment fusion and TE-associated exonization as candidate structural patterns.
 High-identity paralogous segment matches are reported as ambiguous evidence
@@ -130,3 +133,22 @@ available as a single resource. INSIPHY therefore needs a composite benchmark:
 - annotation-dropout perturbations of real or simulated annotations;
 - ablation baselines: annotation-only, sequence-only, exon-position-only and
   source-label-free models.
+
+## Reference Anchors
+
+- Carmel, Rogozin, Wolf and Koonin developed probabilistic intron gain/loss
+  models with branch, gene and site variation, supporting the choice to model
+  gene-internal structures as tree-indexed discrete observations:
+  https://link.springer.com/article/10.1186/1471-2148-7-192
+- Csűrös, Rogozin and Koonin compared MCMC, maximum-likelihood and Dollo
+  parsimony reconstructions for intron histories, supporting the need to report
+  model-based uncertainty rather than only a parsimony scenario:
+  https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1002150
+- Progressive Cactus validates the general idea of a phylogeny-guided
+  progressive alignment strategy for genome-scale homology, but INSIPHY applies
+  the idea only inside a supplied gene/copy set:
+  https://www.nature.com/articles/s41586-020-2871-y
+- Standard synteny visualization tools show homologous units as linked blocks
+  across ordered tracks. INSIPHY adapts this grammar to exon-like internal gene
+  elements:
+  https://www.dveltri.com/

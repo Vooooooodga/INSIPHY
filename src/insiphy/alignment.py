@@ -14,6 +14,7 @@ from pathlib import Path
 
 
 DNA_COMPLEMENT = str.maketrans("ACGTNacgtn", "TGCANtgcan")
+MAX_INTERNAL_DP_CELLS = 250_000
 
 
 @dataclass
@@ -51,7 +52,7 @@ def _fallback_global(seq_a: str, seq_b: str, match=2, mismatch=-1, gap=-2) -> Al
     m, n = len(seq_a), len(seq_b)
     if not m or not n:
         return AlignmentStats(0.0, 0.0, 0.0, query_end=m, target_end=n)
-    if m * n > 2_000_000:
+    if m * n > MAX_INTERNAL_DP_CELLS:
         identity = ungapped_identity(seq_a, seq_b)
         coverage = min(m, n) / max(1, max(m, n))
         return AlignmentStats(identity, coverage, identity * coverage, query_end=m, target_end=n, cigar=f"{min(m, n)}M")
@@ -257,7 +258,7 @@ def global_alignment_stats(seq_a: str, seq_b: str, backend: str = "internal", th
         seq_b = (seq_b or "").upper()
         if not seq_a or not seq_b:
             return AlignmentStats(0.0, 0.0, 0.0, query_end=len(seq_a), target_end=len(seq_b))
-        if len(seq_a) * len(seq_b) > 2_000_000:
+        if len(seq_a) * len(seq_b) > MAX_INTERNAL_DP_CELLS:
             return _fallback_global(seq_a, seq_b)
         aln = pairwise2.align.globalms(seq_a, seq_b, 2, -1, -2, -0.5, one_alignment_only=True)[0]
         a, b, score, _, _ = aln
@@ -287,7 +288,7 @@ def _fallback_local(query: str, target: str, match=2, mismatch=-1, gap=-2) -> Al
     m, n = len(query), len(target)
     if not m or not n:
         return AlignmentStats(0.0, 0.0, 0.0)
-    if m * n > 2_000_000:
+    if m * n > MAX_INTERNAL_DP_CELLS:
         return best_ungapped_hit(query, target)
 
     score = [[0] * (n + 1) for _ in range(m + 1)]
@@ -355,7 +356,7 @@ def local_alignment_stats(query: str, target: str, backend: str = "internal", th
         target = (target or "").upper()
         if not query or not target:
             return AlignmentStats(0.0, 0.0, 0.0)
-        if len(query) * len(target) > 2_000_000:
+        if len(query) * len(target) > MAX_INTERNAL_DP_CELLS:
             return best_ungapped_hit(query, target)
         aln = pairwise2.align.localms(query, target, 2, -1, -2, -0.5, one_alignment_only=True)[0]
         a, b, score, start, end = aln

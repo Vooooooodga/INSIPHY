@@ -1,13 +1,14 @@
 # Publication Gap
 
-INSIPHY v0.9.1 is a runnable method prototype. It includes transcript-aware
+INSIPHY v0.10.0 is a runnable method prototype. It includes transcript-aware
 extraction, graph-based segment correspondence, source/copy-role propagation,
 branch-length-aware CTMC/Mk fitting, invariant-model LRT p values,
 BH q values, parametric-bootstrap calibration, stochastic-map branch summaries,
 event support tables, internal correspondence coverage summaries,
 colorblind-aware SVG output, optional pattern encoding, copy/gene tree support
-for multi-copy structural characters and optional foreground/background
-structural-rate tests. A manuscript-grade method still requires stronger
+for multi-copy structural characters, optional foreground/background
+structural-rate tests, progressive EG summaries and simulation operating
+characteristic summaries. A manuscript-grade method still requires stronger
 evidence in five areas.
 
 ## Current Strengths
@@ -16,16 +17,16 @@ evidence in five areas.
   a species tree and optional copy/gene tree for multi-copy structural histories.
 - The package already separates annotation completion, homologous segment
   correspondence and phylogenetic structural inference.
-- The outputs report structural patterns and mechanism hypotheses separately,
-  including exonization, new adjacency, source joining and copy-context
-  evidence. They include likelihood parameters, p values, empirical bootstrap
-  p values and branch posterior summaries for structural characters.
+- The outputs report observable structural changes separately from optional
+  interpretation hints. They include likelihood parameters, p values,
+  empirical bootstrap p values and branch posterior summaries for structural
+  characters.
 - Accession-level real-case manifests are available for Drosophila `jingwei`,
   `Sdic` and a conserved-control direction.
 - Annotation-dropout negative controls are represented in the simulator and
   benchmark layer.
-- The package is CLI-first and does not require Nextflow. Nextflow/Slurm runs
-  are server-side formal execution records for internal real-case analyses.
+- The package is CLI-first. Workflow orchestration and cluster execution
+  records remain outside the method package.
 
 ## Required Before Publication
 
@@ -34,7 +35,8 @@ evidence in five areas.
    then add at least one additional duplicated/chimeric case.
 2. **Statistical calibration**: compare Sankoff scores, CTMC likelihoods, LRT
    p values, bootstrap p values, stochastic-map posterior summaries and
-   simulated ground truth across many trees and event rates.
+   simulated ground truth across many trees, event rates and annotation-error
+   settings.
 3. **Baseline comparisons**: quantify gains over annotation-only,
    sequence-only and intron/exon-position-only approaches.
 4. **Robustness tests**: simulate missing annotation, fragmented gene models,
@@ -46,10 +48,11 @@ evidence in five areas.
 
 ## Current Implementation Gap
 
-The package includes simulation and benchmark commands, bootstrap calibration
+The package includes simulation, calibration and benchmark commands, bootstrap
 summaries, event support summaries and named event scenarios. They should be
 expanded to cover many trees, multiple event rates, real accession-level cases
-and independent simulation generators before claims about accuracy are made.
+and independent simulation generators before claims about broad accuracy are
+made.
 
 ## Benchmark Plan
 

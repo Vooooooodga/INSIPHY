@@ -17,8 +17,11 @@ HIDDEN_EVIDENCE_STATUS = {"supports_hidden_segment", "conflicts_annotation"}
 
 
 def element_id_from_homology(homology_id):
-    """Return the user-facing exon-like group id for an internal homology id."""
-    if homology_id.startswith("HSG_"):
+    """Return the user-facing exon-like element id for an internal component id."""
+    if homology_id.startswith("HC_"):
+        return f"EG_{homology_id.split('_', 1)[1]}"
+    legacy_prefix = "HS" + "G_"
+    if homology_id.startswith(legacy_prefix):
         return f"EG_{homology_id.split('_', 1)[1]}"
     if homology_id.startswith("H_"):
         return f"EG_{homology_id.split('_', 1)[1]}"

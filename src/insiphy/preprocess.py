@@ -874,9 +874,16 @@ def should_align_pair(left, right, seqs, min_size_ratio=0.25):
         return False, "different_family"
     if occurrence_copy_key(left) == occurrence_copy_key(right):
         return False, "same_copy_excluded"
+    left_role = left.get("role", "")
+    right_role = right.get("role", "")
+    if left_role in NONCODING_ROLES and right_role in NONCODING_ROLES:
+        return False, "context_only_pair"
     size_ratio = min(segment_length(left), segment_length(right)) / max(segment_length(left), segment_length(right))
     if size_ratio < min_size_ratio:
         return False, "length_ratio_prefilter"
+    role_shift_pair = ({left_role, right_role} & EXON_LIKE_ROLES) and ({left_role, right_role} & NONCODING_ROLES)
+    if role_shift_pair and size_ratio < max(0.35, min_size_ratio):
+        return False, "role_shift_length_prefilter"
     if not seqs.get(left["occurrence_id"]) or not seqs.get(right["occurrence_id"]):
         return False, "missing_sequence"
     return True, "aligned_candidate"
@@ -962,13 +969,13 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
     components = graph_components(nodes, accepted_edges, occurrence_by_id)
     homology = []
     for idx, occ_ids in enumerate(sorted(components, key=lambda vals: vals[0]), start=1):
-        hsg = f"HSG_{idx:04d}"
+        component_id = f"HC_{idx:04d}"
         for occ_id in occ_ids:
             scores = score_by_occ.get(occ_id, [])
             confidence = sum(scores) / len(scores) if scores else 0.5
             homology.append(
                 {
-                    "homology_id": hsg,
+                    "homology_id": component_id,
                     "occurrence_id": occ_id,
                     "support_type": "sequence_boundary_context_graph",
                     "confidence": f"{confidence:.6g}",

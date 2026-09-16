@@ -1,45 +1,33 @@
-layer	object_id	event_type	parent_node	child_node	parent_label	child_label	branch_length	status	change	event_probability
-segment_presence	H_Anx_A	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0
-segment_presence	H_Anx_A	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0
-segment_presence	H_Anx_A	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0
-segment_presence	H_Anx_A	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0
-role_state	H_Anx_A	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0
-role_state	H_Anx_A	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0
-role_state	H_Anx_A	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0
-role_state	H_Anx_A	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0
-segment_presence	H_sdic_I	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0
-segment_presence	H_sdic_I	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0
-segment_presence	H_sdic_I	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0
-segment_presence	H_sdic_I	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0
-role_state	H_sdic_I	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0
-role_state	H_sdic_I	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0
-role_state	H_sdic_I	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0
-role_state	H_sdic_I	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0
-segment_presence	H_sw_S	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0
-segment_presence	H_sw_S	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0
-segment_presence	H_sw_S	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0
-segment_presence	H_sw_S	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0
-role_state	H_sw_S	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0
-role_state	H_sw_S	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0
-role_state	H_sw_S	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0
-role_state	H_sw_S	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0
-adjacency_state	H_Anx_A__H_sdic_I	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0
-adjacency_state	H_Anx_A__H_sdic_I	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0
-adjacency_state	H_Anx_A__H_sdic_I	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0
-adjacency_state	H_Anx_A__H_sdic_I	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0
-adjacency_state	H_Anx_A__H_sw_S	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0
-adjacency_state	H_Anx_A__H_sw_S	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0
-adjacency_state	H_Anx_A__H_sw_S	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0
-adjacency_state	H_Anx_A__H_sw_S	adjacency_state_change	root	mel	root	Dmel	1	change_required	absent->present	1
-adjacency_state	H_sdic_I__H_sw_S	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0
-adjacency_state	H_sdic_I__H_sw_S	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0
-adjacency_state	H_sdic_I__H_sw_S	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0
-adjacency_state	H_sdic_I__H_sw_S	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0
-source_mixture	sdic	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0
-source_mixture	sdic	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0
-source_mixture	sdic	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0
-source_mixture	sdic	source_mixture_change	root	mel	root	Dmel	1	change_required	single_source->multi_source	1
-copy_multiplicity	sdic	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0
-copy_multiplicity	sdic	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0
-copy_multiplicity	sdic	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0
-copy_multiplicity	sdic	copy_multiplicity_change	root	mel	root	Dmel	1	change_required	single_copy->tandem_multi_copy	1
+layer	object_id	event_type	parent_node	child_node	parent_label	child_label	branch_length	status	change	event_probability	ctmc_change_probability	ctmc_most_likely_change	ctmc_most_likely_change_probability
+element_presence	EG_Anx_A	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0	2.58882e-07	present->present	1
+element_presence	EG_Anx_A	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0	2.53832e-05	present->present	0.999974
+element_presence	EG_Anx_A	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0	2.53832e-05	present->present	0.999975
+element_presence	EG_Anx_A	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0	2.58882e-07	present->present	1
+element_role_state	EG_Anx_A	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0	2.52017e-08	CDS->CDS	1
+element_role_state	EG_Anx_A	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0	7.38163e-06	CDS->CDS	0.999993
+element_role_state	EG_Anx_A	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0	7.38163e-06	CDS->CDS	0.999993
+element_role_state	EG_Anx_A	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0	2.52017e-08	CDS->CDS	1
+element_role_state	EG_sdic_I	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0	0.95	non_exonic_source->CDS	0.0697515
+element_role_state	EG_sdic_I	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0	0.953183	exon_or_UTR->CDS	0.0737152
+element_role_state	EG_sdic_I	element_role_state_change	mel_sim	Dsim	mel_sim	Dsim	1	change_required	CDS->absent	1	0.953183	CDS->absent	0.275719
+element_role_state	EG_sdic_I	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0	0.956168	non_exonic_source->CDS	0.247279
+element_presence	EG_sw_S	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0	2.58882e-07	present->present	1
+element_presence	EG_sw_S	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0	2.53832e-05	present->present	0.999974
+element_presence	EG_sw_S	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0	2.53832e-05	present->present	0.999975
+element_presence	EG_sw_S	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0	2.58882e-07	present->present	1
+element_role_state	EG_sw_S	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0	2.52017e-08	CDS->CDS	1
+element_role_state	EG_sw_S	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0	7.38163e-06	CDS->CDS	0.999993
+element_role_state	EG_sw_S	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0	7.38163e-06	CDS->CDS	0.999993
+element_role_state	EG_sw_S	state_change	root	mel	root	Dmel	1	unchanged_or_ambiguous	NA	0	2.52017e-08	CDS->CDS	1
+element_adjacency_state	EG_Anx_A__EG_sw_S	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0	0.652956	present->absent	0.402353
+element_adjacency_state	EG_Anx_A__EG_sw_S	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0	0.645776	present->absent	0.171828
+element_adjacency_state	EG_Anx_A__EG_sw_S	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0	0.645776	present->absent	0.442285
+element_adjacency_state	EG_Anx_A__EG_sw_S	element_adjacency_state_change	root	mel	root	Dmel	1	change_required	absent->present	1	0.597647	present->present	0.402353
+source_mixture	sdic	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0	0.753568	multi_source->single_source	0.431935
+source_mixture	sdic	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0	0.659487	multi_source->unknown	0.174653
+source_mixture	sdic	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0	0.659487	unknown->single_source	0.449365
+source_mixture	sdic	source_mixture_change	root	mel	root	Dmel	1	change_required	single_source->multi_source	1	0.568065	multi_source->multi_source	0.431935
+copy_multiplicity	sdic	state_change	root	outgroup	root	Dyak	1	unchanged_or_ambiguous	NA	0	0.322331	single_copy->single_copy	0.677669
+copy_multiplicity	sdic	state_change	root	mel_sim	root	mel_sim	1	unchanged_or_ambiguous	NA	0	0.250415	single_copy->single_copy	0.622349
+copy_multiplicity	sdic	state_change	mel_sim	Dsim	mel_sim	Dsim	1	unchanged_or_ambiguous	NA	0	0.250415	single_copy->single_copy	0.749585
+copy_multiplicity	sdic	copy_multiplicity_change	root	mel	root	Dmel	1	change_required	single_copy->tandem_multi_copy	1	0.789783	single_copy->tandem_multi_copy	0.677667

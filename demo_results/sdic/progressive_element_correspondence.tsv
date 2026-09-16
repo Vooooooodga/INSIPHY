@@ -1,0 +1,4 @@
+element_id	family_id	homology_ids	member_count	species_count	copy_count	exon_like_members	candidate_source_members	nearest_species_support	within_clade_support	deep_tree_support	best_pair_score	mean_pair_score	progressive_call
+EG_Anx_A	sdic	H_Anx_A	5	3	5	5	0	2	0	0	0.793	0.744	progressive_supported
+EG_sdic_I	sdic	H_sdic_I	2	2	2	1	1	0	1	0	0.7635	0.7635	progressive_supported
+EG_sw_S	sdic	H_sw_S	5	3	5	5	0	2	0	0	0.7925	0.73975	progressive_supported

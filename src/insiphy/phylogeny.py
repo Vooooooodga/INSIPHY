@@ -63,7 +63,7 @@ def informative_source_labels(labels):
     return out
 
 
-def mechanism_for_pattern(pattern, inferred_event=""):
+def interpretation_hint_for_pattern(pattern, inferred_event=""):
     if inferred_event in {"te_associated_exonization", "transposable_element_exonization"}:
         return "transposable_element_associated_exonization"
     if inferred_event in {"introner_insertion", "te_intron_gain"}:
@@ -90,6 +90,15 @@ def mechanism_for_pattern(pattern, inferred_event=""):
     }.get(pattern, "unresolved_structural_mechanism")
 
 
+def interpretation_caveat_for_scope(call_scope):
+    return {
+        "core_structural_event": "structural evidence only; mechanism requires external biological evidence",
+        "copy_context": "copy-number context; copy origin requires gene-tree and locus-level evidence",
+        "annotation_evidence": "sequence-supported annotation evidence; expression or transcript evidence is not used",
+        "ambiguous_evidence": "ambiguous correspondence evidence; do not assign a mechanism from this table alone",
+    }.get(call_scope, "interpret as structural evidence with unresolved biological mechanism")
+
+
 def make_event(
     family_id,
     event_type,
@@ -101,17 +110,15 @@ def make_event(
     ctmc_change_probability,
     change,
     alternative_explanation,
-    mechanism_hypothesis=None,
     call_scope=None,
 ):
-    mechanism_hypothesis = mechanism_hypothesis or mechanism_for_pattern(structural_pattern)
     call_scope = call_scope or call_scope_for_pattern(structural_pattern)
     return {
         "family_id": family_id,
         "event_type": event_type,
         "event_class": structural_pattern,
+        "structural_change_type": structural_pattern,
         "structural_pattern": structural_pattern,
-        "mechanism_hypothesis": mechanism_hypothesis,
         "call_scope": call_scope,
         "evidence_layer": evidence_layer,
         "object_id": object_id,
@@ -121,6 +128,26 @@ def make_event(
         "change": change,
         "alternative_explanation": alternative_explanation,
     }
+
+
+def interpretation_hints(event_rows):
+    rows = []
+    for event in event_rows:
+        pattern = event.get("structural_change_type") or event.get("structural_pattern") or event.get("event_class", "NA")
+        call_scope = event.get("call_scope", "core_structural_event")
+        rows.append(
+            {
+                "family_id": event.get("family_id", "NA"),
+                "object_id": event.get("object_id", "NA"),
+                "branch_scope": event.get("branch_scope", "NA"),
+                "evidence_layer": event.get("evidence_layer", "NA"),
+                "structural_change_type": pattern,
+                "possible_interpretation": interpretation_hint_for_pattern(pattern, event.get("event_type", "")),
+                "interpretation_caveat": interpretation_caveat_for_scope(call_scope),
+                "call_scope": call_scope,
+            }
+        )
+    return rows
 
 
 def state_from_occurrences(rows):
@@ -449,8 +476,8 @@ def event_support_summary(event_rows, hypothesis_rows, bootstrap_rows, stochasti
             {
                 "family_id": event.get("family_id", "NA"),
                 "event_class": event.get("event_class", "NA"),
+                "structural_change_type": event.get("structural_change_type", event.get("structural_pattern", event.get("event_class", "NA"))),
                 "structural_pattern": event.get("structural_pattern", event.get("event_class", "NA")),
-                "mechanism_hypothesis": event.get("mechanism_hypothesis", "NA"),
                 "call_scope": event.get("call_scope", "core_structural_event"),
                 "object_id": event.get("object_id", "NA"),
                 "branch_scope": event.get("branch_scope", "NA"),
@@ -634,8 +661,8 @@ def phylogenetic_coverage(tree, occ_by_object, occ_by_id, object_field):
     return rows
 
 
-def hsg_phylogenetic_coverage(tree, occ_by_hsg, occ_by_id):
-    return phylogenetic_coverage(tree, occ_by_hsg, occ_by_id, "homology_id")
+def internal_homology_phylogenetic_coverage(tree, occ_by_homology, occ_by_id):
+    return phylogenetic_coverage(tree, occ_by_homology, occ_by_id, "homology_id")
 
 
 def element_phylogenetic_coverage(tree, occ_by_element, occ_by_id):
@@ -716,12 +743,12 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
     annotation_candidates = read_tsv(f"{output_dir}/annotation_completion_candidates.tsv", optional=True)
 
     occ_by_id = {row["occurrence_id"]: row for row in occurrences}
-    hsg_by_occ = defaultdict(list)
-    occ_by_hsg = defaultdict(list)
+    homology_by_occ = defaultdict(list)
+    occ_by_homology = defaultdict(list)
     source_by_occ = defaultdict(set)
     for row in homology:
-        hsg_by_occ[row["occurrence_id"]].append(row["homology_id"])
-        occ_by_hsg[row["homology_id"]].append(row["occurrence_id"])
+        homology_by_occ[row["occurrence_id"]].append(row["homology_id"])
+        occ_by_homology[row["homology_id"]].append(row["occurrence_id"])
         if row.get("source_label"):
             source_by_occ[row["occurrence_id"]].add(row["source_label"])
     element_rows = fallback_element_rows(homology, occurrences, input_dir, output_dir)
@@ -887,7 +914,6 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
                     support.get("ctmc_change_probability", "NA"),
                     f"{edge['left_source_labels']}->{edge['right_source_labels']}",
                     "paralogy_or_homology_assignment_error_if_low_support",
-                    mechanism_hypothesis="source_joining_or_chimeric_gene_structure",
                     call_scope="core_structural_event",
                 )
             )
@@ -929,7 +955,6 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
                     "NA",
                     row.get("inferred_event", call),
                     "annotation_dropout_or_shifted_boundary_if_sequence_support_is_partial",
-                    mechanism_hypothesis=mechanism_for_pattern(pattern, row.get("inferred_event", "")),
                 )
             )
 
@@ -956,7 +981,6 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
                     "NA",
                     f"{left['gene_copy_id']}<->{right['gene_copy_id']}",
                     "recent_duplication_or_unresolved_paralogy_if_context_support_low",
-                    mechanism_hypothesis="gene_conversion_or_recent_duplication_or_unresolved_paralogy",
                     call_scope="ambiguous_evidence",
                 )
             )
@@ -983,7 +1007,8 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
     add_q_values(hypothesis_rows)
     add_q_values(foreground_rows)
     support_rows = event_support_summary(event_rows, hypothesis_rows, bootstrap_rows, stochastic_rows)
-    hsg_coverage_rows = hsg_phylogenetic_coverage(species_tree, occ_by_hsg, occ_by_id)
+    hint_rows = interpretation_hints(event_rows)
+    homology_coverage_rows = internal_homology_phylogenetic_coverage(species_tree, occ_by_homology, occ_by_id)
     element_coverage_rows = element_phylogenetic_coverage(species_tree, occ_by_element, occ_by_id)
     write_tsv(f"{output_dir}/character_model_scores.tsv", model_score_rows, ["layer", "object_id", "model", "parsimony_score", "log_likelihood", "state_count", "observed_tip_count", "fitted_rate", "aic", "bic"])
     write_tsv(f"{output_dir}/model_fit.tsv", model_fit_rows, ["layer", "object_id", "model", "fitted_rate", "log_likelihood", "aic", "bic", "observed_tip_count"])
@@ -991,10 +1016,11 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
     write_tsv(f"{output_dir}/hypothesis_bootstrap.tsv", bootstrap_rows, ["layer", "object_id", "test_id", "observed_lrt", "bootstrap_replicates", "empirical_p_value", "monte_carlo_se", "null_lrt_mean", "null_lrt_q025", "null_lrt_q500", "null_lrt_q975", "seed", "tip_error"])
     write_tsv(f"{output_dir}/branch_history_posteriors.tsv", stochastic_rows, ["layer", "object_id", "parent_node", "child_node", "parent_label", "child_label", "map_sample_count", "posterior_pr_any_change", "posterior_expected_change_count", "posterior_change_count_low", "posterior_change_count_high", "posterior_most_frequent_transition", "posterior_transition_probability"])
     write_tsv(f"{output_dir}/foreground_tests.tsv", foreground_rows, ["layer", "object_id", "test_id", "null_model", "alternative_model", "null_log_likelihood", "alternative_log_likelihood", "lrt_statistic", "df", "p_value", "p_value_method", "q_value", "q_value_method", "background_rate", "foreground_rate", "rate_ratio", "null_aic", "alternative_aic", "null_bic", "alternative_bic", "observed_tip_count"])
-    write_tsv(f"{output_dir}/candidate_structural_events.tsv", event_rows, ["family_id", "event_type", "event_class", "structural_pattern", "mechanism_hypothesis", "call_scope", "evidence_layer", "object_id", "branch_scope", "event_probability", "ctmc_change_probability", "change", "alternative_explanation"])
-    write_tsv(f"{output_dir}/event_support_summary.tsv", support_rows, ["family_id", "event_class", "structural_pattern", "mechanism_hypothesis", "call_scope", "object_id", "branch_scope", "evidence_layer", "support_tier", "lrt_p_value", "lrt_q_value", "empirical_p_value", "fitted_rate", "ctmc_change_probability", "stochastic_pr_any_change", "evidence_count", "alternative_explanation"])
+    write_tsv(f"{output_dir}/candidate_structural_events.tsv", event_rows, ["family_id", "event_type", "event_class", "structural_change_type", "structural_pattern", "call_scope", "evidence_layer", "object_id", "branch_scope", "event_probability", "ctmc_change_probability", "change", "alternative_explanation"])
+    write_tsv(f"{output_dir}/event_support_summary.tsv", support_rows, ["family_id", "event_class", "structural_change_type", "structural_pattern", "call_scope", "object_id", "branch_scope", "evidence_layer", "support_tier", "lrt_p_value", "lrt_q_value", "empirical_p_value", "fitted_rate", "ctmc_change_probability", "stochastic_pr_any_change", "evidence_count", "alternative_explanation"])
+    write_tsv(f"{output_dir}/interpretation_hints.tsv", hint_rows, ["family_id", "object_id", "branch_scope", "evidence_layer", "structural_change_type", "possible_interpretation", "interpretation_caveat", "call_scope"])
     write_tsv(f"{output_dir}/element_phylogenetic_coverage.tsv", element_coverage_rows, ["family_id", "element_id", "present_species_count", "tree_tip_count", "coverage_ratio", "mrca_node", "mrca_label", "coverage_class", "present_species", "present_copy_count", "present_copies"])
-    write_tsv(f"{output_dir}/hsg_phylogenetic_coverage.tsv", hsg_coverage_rows, ["family_id", "homology_id", "present_species_count", "tree_tip_count", "coverage_ratio", "mrca_node", "mrca_label", "coverage_class", "present_species", "present_copy_count", "present_copies"])
+    write_tsv(f"{output_dir}/internal_homology_phylogenetic_coverage.tsv", homology_coverage_rows, ["family_id", "homology_id", "present_species_count", "tree_tip_count", "coverage_ratio", "mrca_node", "mrca_label", "coverage_class", "present_species", "present_copy_count", "present_copies"])
     write_tsv(f"{output_dir}/phylogeny_scope.tsv", phylogeny_scope_rows, ["scope", "tree_file", "tree_scope", "layers", "note"])
     write_tsv(f"{output_dir}/model_comparison.tsv", model_rows, ["comparison_id", "model", "score", "delta_vs_best", "interpretation"])
     write_tsv(f"{output_dir}/intragenic_graph_edges.tsv", graph_edges, ["family_id", "species", "gene_copy_id", "edge_id", "left_element_id", "right_element_id", "left_occurrence_id", "right_occurrence_id", "adjacency_status", "left_source_labels", "right_source_labels"])

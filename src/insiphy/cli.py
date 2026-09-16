@@ -7,6 +7,7 @@ from .alignment import available_alignment_backends
 from .annotation import complete_annotation
 from .baseline import evaluate_baselines
 from .benchmark import benchmark_events
+from .calibration import DEFAULT_SCENARIOS, calibrate_simulations
 from .case import build_case, inspect_annotation, scan_hidden_segments
 from .correspondence import infer_correspondence
 from .phylogeny import infer_phylogeny
@@ -77,12 +78,19 @@ def main(argv=None):
     bench.add_argument("--input-dir", required=True)
     bench.add_argument("--output-dir", required=True)
 
+    cal = sub.add_parser("calibrate")
+    cal.add_argument("--output-dir", required=True)
+    cal.add_argument("--scenario", action="append", choices=DEFAULT_SCENARIOS)
+    cal.add_argument("--replicates", type=int, default=10)
+    cal.add_argument("--bootstrap-replicates", type=int, default=0)
+    cal.add_argument("--stochastic-maps", type=int, default=0)
+    cal.add_argument("--seed", type=int, default=101)
+
     viz = sub.add_parser("visualize")
     viz.add_argument("--input-dir", required=True)
     viz.add_argument("--result-dir", required=True)
     viz.add_argument("--output-dir", required=True)
     viz.add_argument("--correspondence-encoding", choices=["pattern", "color"], default=None)
-    viz.add_argument("--hsg-encoding", choices=["pattern", "color"], default=None, help=argparse.SUPPRESS)
 
     sub.add_parser("inspect-aligners")
 
@@ -99,6 +107,8 @@ def main(argv=None):
     case.add_argument("--output-dir", required=True)
     case.add_argument("--identity-threshold", type=float, default=0.7)
     case.add_argument("--species-tree")
+    case.add_argument("--copy-tree")
+    case.add_argument("--gene-tree")
     case.add_argument("--transcript-policy", choices=["canonical", "all"], default="canonical")
     case.add_argument("--canonical-rule", choices=["longest_cds", "longest_span"], default="longest_cds")
     case.add_argument("--aligner", choices=["internal", "minimap2", "miniprot"], default="internal")
@@ -139,8 +149,10 @@ def main(argv=None):
         simulate_dataset(args.output_dir, args.seed, args.scenario)
     elif args.command == "benchmark":
         benchmark_events(args.input_dir, args.output_dir)
+    elif args.command == "calibrate":
+        calibrate_simulations(args.output_dir, args.scenario, args.replicates, args.bootstrap_replicates, args.stochastic_maps, args.seed)
     elif args.command == "visualize":
-        encoding = args.correspondence_encoding or args.hsg_encoding or "color"
+        encoding = args.correspondence_encoding or "color"
         visualize_results(args.input_dir, args.result_dir, args.output_dir, encoding)
     elif args.command == "inspect-aligners":
         for row in available_alignment_backends():
@@ -148,7 +160,7 @@ def main(argv=None):
     elif args.command == "inspect-annotation":
         inspect_annotation(args.annotation, args.output_dir, args.query, args.alias_file, args.species, args.case_id)
     elif args.command == "build-case":
-        build_case(args.manifest, args.output_dir, args.identity_threshold, args.species_tree, args.transcript_policy, args.canonical_rule, args.aligner, args.threads, args.min_size_ratio)
+        build_case(args.manifest, args.output_dir, args.identity_threshold, args.species_tree, args.transcript_policy, args.canonical_rule, args.aligner, args.threads, args.min_size_ratio, args.copy_tree, args.gene_tree)
     elif args.command == "scan-hidden-segments":
         scan_hidden_segments(args.source_fasta, args.target_fasta, args.output_dir, args.family_id, args.species, args.gene_copy_id, args.min_identity, args.min_coverage, args.aligner, args.threads)
     elif args.command == "complete-annotation":
