@@ -39,6 +39,23 @@ def _locus_key(header):
     return tuple(parts[:2]) if len(parts) >= 2 else ("NA", header)
 
 
+def _overlaps_annotated_exon(start, end, locus_header, occurrences):
+    locus = locus_header.split("|", 2)[2]
+    contig, interval = locus.rsplit(":", 1)[0].rsplit(":", 1)
+    lower, upper = (int(value) for value in interval.split("-", 1))
+    if locus.endswith(":-"):
+        hit_start, hit_end = upper - end + 1, upper - start + 1
+    else:
+        hit_start, hit_end = lower + start - 1, lower + end - 1
+    return any(
+        row.get("role") in {"exon", "CDS", "UTR", "noncoding_exon"}
+        and row.get("contig") == contig
+        and int(row["start"]) <= hit_end
+        and int(row["end"]) >= hit_start
+        for row in occurrences
+    )
+
+
 def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_coverage=0.60):
     """Search missing homologous exon sequences inside supplied homologous gene loci."""
     input_dir = Path(input_dir)
@@ -46,7 +63,8 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
     occurrences = read_tsv(input_dir / "segment_occurrences.tsv")
     elements = read_tsv(result_dir / "element_correspondence.tsv", optional=True)
     sequences = parse_fasta(input_dir / "segment_sequences.fasta")
-    loci = {_locus_key(name): sequence for name, sequence in parse_fasta(input_dir / "gene_loci.fasta").items()}
+    locus_records = parse_fasta(input_dir / "gene_loci.fasta")
+    loci = {_locus_key(name): (name, sequence) for name, sequence in locus_records.items()}
     if not elements or not loci:
         return []
 
@@ -54,11 +72,13 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
     element_by_occ = {row["occurrence_id"]: row["element_id"] for row in elements}
     rows_by_element = defaultdict(list)
     copies_by_family_species = defaultdict(set)
+    occurrences_by_copy = defaultdict(list)
     present_elements = defaultdict(set)
     order_by_copy = defaultdict(list)
     for occurrence in occurrences:
         key = (occurrence["family_id"], occurrence["species"])
         copies_by_family_species[key].add(occurrence["gene_copy_id"])
+        occurrences_by_copy[(occurrence["family_id"], occurrence["species"], occurrence["gene_copy_id"])].append(occurrence)
         element = element_by_occ.get(occurrence["occurrence_id"])
         if element and occurrence.get("role") != "intron":
             present_elements[(occurrence["family_id"], occurrence["species"], occurrence["gene_copy_id"])].add(element)
@@ -90,7 +110,7 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
             copy_key = (family, species, gene_copy)
             if element in present_elements[copy_key]:
                 continue
-            locus = loci.get((species, gene_copy), "")
+            locus_header, locus = loci.get((species, gene_copy), ("", ""))
             if not locus:
                 continue
             backend = "internal" if len(query) * len(locus) <= 250_000 else "minimap2"
@@ -109,7 +129,15 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
             )
             assembly_complete = locus.count("N") / max(1, len(locus)) <= 0.05
             supported = alignment is not None and identity >= min_identity and coverage >= min_coverage
-            if supported:
+            overlaps_exon = supported and _overlaps_annotated_exon(
+                alignment.target_start, alignment.target_end,
+                locus_header, occurrences_by_copy[copy_key],
+            )
+            if overlaps_exon:
+                status = "ambiguous"
+                annotation_status = "alignment_overlaps_annotated_exon"
+                start, end = alignment.target_start, alignment.target_end
+            elif supported:
                 status = "supports_hidden_segment"
                 annotation_status = "unannotated_homologous_sequence"
                 start, end = alignment.target_start, alignment.target_end

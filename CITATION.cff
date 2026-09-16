@@ -2,7 +2,7 @@ cff-version: 1.2.0
 title: "INSIPHY: intragenic synteny phylogenetics"
 message: "If you use INSIPHY, please cite the repository and the associated paper when available."
 type: software
-version: 0.12.3
+version: 0.12.4
 authors:
   - name: "INSIPHY contributors"
 date-released: 2026-09-16

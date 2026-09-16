@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from insiphy.alignment import AlignmentBackendError, AlignmentStats, global_alignment_stats, phase_compatibility
+from insiphy.annotation import _overlaps_annotated_exon
 from insiphy.cli import run_all
 from insiphy.correspondence import simple_identity
 from insiphy.io import read_tsv
@@ -351,6 +352,14 @@ class PreprocessTests(unittest.TestCase):
             identity = simple_identity("ACGT", "ACGA")
         self.assertEqual(identity, 0.8)
         align.assert_called_once_with("ACGT", "ACGA", backend="auto")
+
+    def test_locus_hit_on_annotated_exon_is_not_hidden_exon_evidence(self):
+        plus = [{"role": "exon", "contig": "chr1", "start": "120", "end": "150"}]
+        minus = [{"role": "exon", "contig": "chr1", "start": "250", "end": "280"}]
+        self.assertTrue(_overlaps_annotated_exon(20, 50, "Sp|gene|chr1:101-300:+", plus))
+        self.assertFalse(_overlaps_annotated_exon(60, 80, "Sp|gene|chr1:101-300:+", plus))
+        self.assertTrue(_overlaps_annotated_exon(20, 50, "Sp|gene|chr1:101-300:-", minus))
+        self.assertFalse(_overlaps_annotated_exon(60, 80, "Sp|gene|chr1:101-300:-", minus))
 
     def test_internal_alignment_refuses_oversized_dynamic_program(self):
         with self.assertRaises(AlignmentBackendError):

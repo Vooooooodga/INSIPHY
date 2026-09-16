@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.4 - 2026-09-16
+
+- Convert gene-locus hit coordinates to genomic coordinates on both strands.
+  Hits overlapping already annotated exons are marked ambiguous and do not
+  create hidden exon observations in the phylogenetic matrices.
+
 ## 0.12.3 - 2026-09-16
 
 - Apply the same length-aware alignment policy when calculating within-group
