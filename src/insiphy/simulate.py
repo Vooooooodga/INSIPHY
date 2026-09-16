@@ -18,6 +18,38 @@ def mutate(seq, rng, rate=0.05):
     return "".join(out)
 
 
+def simulated_copy_tree(copy_map):
+    multi_copy = any(len(copies) > 1 for copies in copy_map.values())
+    rows = [{"node_id": "copy_root", "parent_id": "", "label": "root", "branch_length": "1.0"}]
+    rows.extend(
+        [
+            {"node_id": "sp1_copy1", "parent_id": "copy_root", "label": "Sp1:copy1", "branch_length": "1.0"},
+            {"node_id": "sp2_copy1", "parent_id": "copy_root", "label": "Sp2:copy1", "branch_length": "1.0"},
+        ]
+    )
+    if multi_copy:
+        rows.extend(
+            [
+                {"node_id": "clade34_dup", "parent_id": "copy_root", "label": "clade34_dup", "branch_length": "1.0"},
+                {"node_id": "clade34_copy1", "parent_id": "clade34_dup", "label": "clade34_copy1", "branch_length": "1.0"},
+                {"node_id": "clade34_copy2", "parent_id": "clade34_dup", "label": "clade34_copy2", "branch_length": "1.0"},
+                {"node_id": "sp3_copy1", "parent_id": "clade34_copy1", "label": "Sp3:copy1", "branch_length": "1.0"},
+                {"node_id": "sp4_copy1", "parent_id": "clade34_copy1", "label": "Sp4:copy1", "branch_length": "1.0"},
+                {"node_id": "sp3_copy2", "parent_id": "clade34_copy2", "label": "Sp3:copy2", "branch_length": "1.0"},
+                {"node_id": "sp4_copy2", "parent_id": "clade34_copy2", "label": "Sp4:copy2", "branch_length": "1.0"},
+            ]
+        )
+    else:
+        rows.extend(
+            [
+                {"node_id": "clade34", "parent_id": "copy_root", "label": "clade34", "branch_length": "1.0"},
+                {"node_id": "sp3_copy1", "parent_id": "clade34", "label": "Sp3:copy1", "branch_length": "1.0"},
+                {"node_id": "sp4_copy1", "parent_id": "clade34", "label": "Sp4:copy1", "branch_length": "1.0"},
+            ]
+        )
+    return rows
+
+
 def simulate_negative_dataset(output_dir, seed=7, hidden_dropout=False):
     rng = random.Random(seed)
     output_dir = Path(output_dir)
@@ -42,6 +74,7 @@ def simulate_negative_dataset(output_dir, seed=7, hidden_dropout=False):
     evidence = []
     matches = []
     family = "sim_negative"
+    copy_map = {"Sp1": ["copy1"], "Sp2": ["copy1"], "Sp3": ["copy1"], "Sp4": ["copy1"]}
     for species in ["Sp1", "Sp2", "Sp3", "Sp4"]:
         copy_context.append({"family_id": family, "species": species, "gene_copy_id": "copy1", "copy_class": "single_copy", "copy_subclass": "single_copy", "copy_span": f"{species}_chr1:100-232"})
         prev = None
@@ -122,6 +155,7 @@ def simulate_negative_dataset(output_dir, seed=7, hidden_dropout=False):
                     }
                 )
     write_tsv(output_dir / "species_tree.tsv", species_tree, ["node_id", "parent_id", "label", "branch_length"])
+    write_tsv(output_dir / "copy_tree.tsv", simulated_copy_tree(copy_map), ["node_id", "parent_id", "label", "branch_length"])
     write_tsv(output_dir / "segment_occurrences.tsv", rows, ["occurrence_id", "family_id", "species", "gene_copy_id", "transcript_id", "role", "role_set", "presence_status", "contig", "start", "end", "strand", "phase", "source_feature_id", "boundary_class", "splice_motif_score", "splice_donor", "splice_acceptor", "frame_status"])
     write_tsv(output_dir / "segment_homology.tsv", homology, ["homology_id", "occurrence_id", "support_type", "confidence", "source_label"])
     write_tsv(output_dir / "physical_adjacencies.tsv", adj, ["adjacency_id", "family_id", "species", "gene_copy_id", "left_occurrence_id", "right_occurrence_id", "adjacency_status"])
@@ -260,7 +294,7 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
                 prev = seg
             if add_c_segment and species in {"Sp3", "Sp4"} and copy == "copy1":
                 adj.append({"adjacency_id": f"{species}_{copy}_A_B_absent", "family_id": family, "species": species, "gene_copy_id": copy, "left_occurrence_id": f"{species}_{copy}_A", "right_occurrence_id": f"{species}_{copy}_B", "adjacency_status": "absent"})
-            if add_c_segment and species in {"Sp1", "Sp2"} and copy == "copy1":
+            if add_c_segment and not (species in {"Sp3", "Sp4"} and copy == "copy1"):
                 occ_id = f"{species}_{copy}_C_absent"
                 rows.append(
                     {
@@ -311,20 +345,21 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
                     }
                 )
     truth = []
+    structural_branch = "clade34_dup->clade34_copy1" if multi_copy else "root->clade34"
     if add_c_segment:
         truth.extend(
             [
-                {"family_id": family, "event_class": "segment_gain", "branch_scope": "root->clade34", "object_id": "EG_sim_C", "notes": "simulated derived EG C appears in clade34"},
-                {"family_id": family, "event_class": "exonization_candidate", "branch_scope": "root->clade34", "object_id": "EG_sim_C", "notes": "simulated hidden source segment becomes CDS"},
-                {"family_id": family, "event_class": "segment_fusion_or_new_adjacency", "branch_scope": "root->clade34", "object_id": "EG_sim_A__EG_sim_C", "notes": "simulated new internal adjacency"},
-                {"family_id": family, "event_class": "segment_split_or_adjacency_loss", "branch_scope": "root->clade34", "object_id": "EG_sim_A__EG_sim_B", "notes": "simulated ancestral A-B adjacency is split by a derived internal segment"},
+                {"family_id": family, "event_class": "segment_gain", "branch_scope": structural_branch, "object_id": "EG_sim_C", "notes": "simulated derived EG C appears in the derived copy lineage"},
+                {"family_id": family, "event_class": "exonization_candidate", "branch_scope": structural_branch, "object_id": "EG_sim_C", "notes": "simulated hidden source segment becomes CDS"},
+                {"family_id": family, "event_class": "segment_fusion_or_new_adjacency", "branch_scope": structural_branch, "object_id": "EG_sim_A__EG_sim_C", "notes": "simulated new internal adjacency"},
+                {"family_id": family, "event_class": "segment_split_or_adjacency_loss", "branch_scope": structural_branch, "object_id": "EG_sim_A__EG_sim_B", "notes": "simulated ancestral A-B adjacency is split by a derived internal segment"},
             ]
         )
     if scenario in {"source_join", "compound"}:
         truth.extend(
             [
-                {"family_id": family, "event_class": "chimeric_source_join_candidate", "branch_scope": "root->clade34", "object_id": "EG_sim_A__EG_sim_C", "notes": "simulated derived adjacency joins different informative source labels"},
-                {"family_id": family, "event_class": "chimeric_origin_or_source_mixing", "branch_scope": "root->clade34", "object_id": family, "notes": "simulated derived copy contains multiple informative source labels"},
+                {"family_id": family, "event_class": "chimeric_source_join_candidate", "branch_scope": structural_branch, "object_id": "EG_sim_A__EG_sim_C", "notes": "simulated derived adjacency joins different informative source labels"},
+                {"family_id": family, "event_class": "chimeric_origin_or_source_mixing", "branch_scope": structural_branch, "object_id": family, "notes": "simulated derived copy contains multiple informative source labels"},
             ]
         )
     if scenario in {"compound", "tandem_duplication"}:
@@ -338,6 +373,7 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
     elif scenario == "gene_conversion":
         truth = [{"family_id": family, "event_class": "ambiguous_paralogous_similarity", "branch_scope": "root->clade34", "object_id": "EG_sim_A", "notes": "simulated paralogous copies are unusually similar; mechanism remains ambiguous"}]
     write_tsv(output_dir / "species_tree.tsv", species_tree, ["node_id", "parent_id", "label"])
+    write_tsv(output_dir / "copy_tree.tsv", simulated_copy_tree(copy_map), ["node_id", "parent_id", "label", "branch_length"])
     write_tsv(output_dir / "segment_occurrences.tsv", rows, ["occurrence_id", "family_id", "species", "gene_copy_id", "transcript_id", "role", "role_set", "presence_status", "contig", "start", "end", "strand", "phase", "source_feature_id", "boundary_class", "splice_motif_score", "splice_donor", "splice_acceptor", "frame_status"])
     write_tsv(output_dir / "segment_homology.tsv", homology, ["homology_id", "occurrence_id", "support_type", "confidence", "source_label"])
     write_tsv(output_dir / "physical_adjacencies.tsv", adj, ["adjacency_id", "family_id", "species", "gene_copy_id", "left_occurrence_id", "right_occurrence_id", "adjacency_status"])

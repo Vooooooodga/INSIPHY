@@ -56,14 +56,17 @@ class FixtureTests(unittest.TestCase):
             run_all(ROOT / "demos" / "jingwei", out, bootstrap_replicates=2, stochastic_maps=2)
             visualize_results(ROOT / "demos" / "jingwei", out, fig)
             manifest = read_tsv(fig / "visualization_manifest.tsv")
-            self.assertEqual({row["description"] for row in manifest}, {"Exon-like gene-internal synteny by species and copy", "Species-tree structural event map", "Integrated species-tree and exon-like synteny map"})
+            self.assertEqual({row["description"] for row in manifest}, {"Exon-like gene-internal synteny by species and copy", "Phylogenetic structural event map", "Integrated phylogenetic and exon-like synteny map"})
             synteny_svg = (fig / "intragenic_synteny.svg").read_text()
-            self.assertIn("<pattern", synteny_svg)
-            self.assertIn('stroke-dasharray="2 2"', synteny_svg)
             self.assertIn("EG_", synteny_svg)
             self.assertNotIn("HSG_", synteny_svg)
-            self.assertNotIn("#0072B2", synteny_svg)
+            self.assertIn("#0072B2", synteny_svg)
             self.assertTrue((fig / "integrated_phylo_synteny.svg").exists())
+            fig_pattern = tmp / "fig_pattern"
+            visualize_results(ROOT / "demos" / "jingwei", out, fig_pattern, hsg_encoding="pattern")
+            synteny_pattern_svg = (fig_pattern / "intragenic_synteny.svg").read_text()
+            self.assertIn("<pattern", synteny_pattern_svg)
+            self.assertIn('stroke-dasharray="2 2"', synteny_pattern_svg)
 
 
 class PreprocessTests(unittest.TestCase):
@@ -151,6 +154,48 @@ class SimulationBenchmarkTests(unittest.TestCase):
                 self.assertTrue(read_tsv(out / "element_correspondence.tsv"))
                 self.assertTrue(read_tsv(out / "candidate_structural_events.tsv", optional=True) or scenario in {"negative_control", "annotation_dropout"})
                 self.assertTrue(read_tsv(out / "benchmark_summary.tsv"))
+
+    def test_multicopy_structural_characters_use_copy_tree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            sim = tmp / "sim_compound"
+            out = tmp / "out_compound"
+            simulate_dataset(sim, seed=23, scenario="compound")
+            run_all(sim, out)
+            benchmark_events(sim, out)
+            fig = tmp / "fig_compound"
+            visualize_results(sim, out, fig)
+            scope = read_tsv(out / "phylogeny_scope.tsv")
+            branches = read_tsv(out / "branch_event_probabilities.tsv")
+            bench = read_tsv(out / "benchmark_summary.tsv")
+            integrated_svg = (fig / "integrated_phylo_synteny.svg").read_text()
+            self.assertEqual(bench[0]["precision"], "1")
+            self.assertEqual(bench[0]["recall"], "1")
+            self.assertEqual(bench[0]["branch_accuracy"], "1")
+            self.assertEqual(
+                [row for row in scope if row["scope"] == "structural_characters"][0]["tree_scope"],
+                "copy_tree",
+            )
+            self.assertIn("copy_tree.tsv", integrated_svg)
+            self.assertIn("clade34_copy1", integrated_svg)
+            self.assertTrue(
+                any(
+                    row["layer"] == "element_presence"
+                    and row["object_id"] == "EG_sim_C"
+                    and row["parent_label"] == "clade34_copy1"
+                    and row["child_label"] in {"Sp3:copy1", "Sp4:copy1"}
+                    for row in branches
+                )
+            )
+            self.assertTrue(
+                any(
+                    row["layer"] == "element_presence"
+                    and row["object_id"] == "EG_sim_C"
+                    and row["parent_label"] == "clade34_dup"
+                    and row["child_label"] == "clade34_copy2"
+                    for row in branches
+                )
+            )
 
     def test_bootstrap_and_stochastic_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:

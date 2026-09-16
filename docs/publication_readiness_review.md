@@ -1,16 +1,18 @@
 # Publication Readiness Review
 
-Date: 2026-09-15
+Date: 2026-09-16
 
 ## Conclusion
 
-INSIPHY v0.7.0 has the correct core frame for a first method paper: upstream
+INSIPHY v0.9.1 has the correct core frame for a first method paper: upstream
 gene/copy homology is supplied by tools or curation, INSIPHY infers
 gene-internal exon-like structural correspondence from genome sequence and annotation, and
-then analyzes structural characters on a species tree. The remaining gap is
-evidence strength and benchmark scale. The method needs larger real-case
-evaluation, simulation-based statistical calibration and clearer branch-history
-posteriors before manuscript-level claims.
+then analyzes structural characters on the relevant phylogenetic tree. Single-copy
+families can use the species tree; multi-copy structural characters use a
+copy/gene tree when provided, while copy multiplicity remains species-level.
+The remaining gap is evidence strength and benchmark scale. The method needs
+larger real-case evaluation, simulation-based statistical calibration and
+clearer branch-history posteriors before manuscript-level claims.
 
 ## Biological Coverage Check
 
@@ -40,7 +42,7 @@ Missing or under-modeled:
 - transposable-element origin of exonized sequence;
 - high-similarity paralogous segments with mechanism ambiguity;
 - isoform-specific alternative-splicing turnover;
-- uncertainty in species tree topology and branch lengths;
+- uncertainty in species tree, copy/gene tree topology and branch lengths;
 - larger conserved-control sets for user-defined evolutionary hypotheses.
 
 ## Statistical Status

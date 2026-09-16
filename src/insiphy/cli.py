@@ -140,7 +140,7 @@ def main(argv=None):
     elif args.command == "benchmark":
         benchmark_events(args.input_dir, args.output_dir)
     elif args.command == "visualize":
-        encoding = args.correspondence_encoding or args.hsg_encoding or "pattern"
+        encoding = args.correspondence_encoding or args.hsg_encoding or "color"
         visualize_results(args.input_dir, args.result_dir, args.output_dir, encoding)
     elif args.command == "inspect-aligners":
         for row in available_alignment_backends():

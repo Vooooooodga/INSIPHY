@@ -2,14 +2,17 @@
 
 **INSIPHY** means **IN**tragenic **SI**nteny **PHY**logenetics. It is a
 Python method package for reconstructing gene-internal structural evolution
-from genome sequence, genome annotation and a fixed species tree.
+from genome sequence, genome annotation and fixed phylogenetic trees.
 
 ## 中文介绍
 
 INSIPHY 面向近缘物种之间的单基因或小型重复基因家族比较。上游流程先给出
 同源基因或候选同源拷贝集合，推荐来源是 OrthoFinder、OMA、OrthoDB 或人工
 整理的 duplication clade。INSIPHY 从这些已给定的 gene/copy 开始，分析每个
-基因内部的 segment 同源关系、局部顺序、邻接关系和系统发育结构事件。
+基因内部的 segment 同源关系、局部顺序、邻接关系和系统发育结构事件。多拷贝
+同源集合可以额外提供 `copy_tree.tsv` 或 `gene_tree.tsv`；EG presence、EG
+role、EG adjacency 和 source mixture 会在这棵 gene/copy tree 上推断，copy
+multiplicity 保留在物种树上解释。
 
 本项目只使用 genome FASTA、GFF/GTF annotation、gene/copy manifest 和物种树。
 已有注释可能不完整，因此软件会结合基因组序列、剪接边界、phase、局部顺序、
@@ -21,10 +24,11 @@ INSIPHY 面向近缘物种之间的单基因或小型重复基因家族比较。
 1. 在上游已确定同源关系的基因集合内，推断外显子、CDS、UTR、候选外显子化来源片段
    和相邻结构之间的同源性、保守性与局部 synteny。内含子默认作为间隔、
    splice boundary、phase 和 motif 背景证据处理。
-2. 在物种树框架下，判断演化事件是否涉及基因内部结构变化，并解释这些变化如何
+2. 在系统发育框架下，判断演化事件是否涉及基因内部结构变化，并解释这些变化如何
    支持 gene duplication、source joining、exonization、splice-boundary shift、
-   segment split/fusion 或 copy-context 解释。高相似 paralog 片段会作为
-   机制待定证据报告，单靠本方法不直接判定 gene conversion。
+   segment split/fusion 或 copy-context 解释。单拷贝集合使用物种树；多拷贝集合
+   推荐使用 gene/copy tree。高相似 paralog 片段会作为机制待定证据报告，单靠本方法
+   不直接判定 gene conversion。
 
 ## Method Frame
 
@@ -44,8 +48,9 @@ INSIPHY implements four linked stages:
    summarized by species-tree distance, so close-species support and deep-tree
    support can be interpreted separately inside the supplied gene set.
 4. **Phylogenetic structural inference**: EG presence, EG role state,
-   adjacency, source mixture and copy multiplicity are reconstructed on the
-   fixed species tree.
+   adjacency and source mixture are reconstructed on a supplied copy/gene tree
+   when available, with species-tree fallback for single-copy cases. Copy
+   multiplicity is reconstructed on the fixed species tree.
 
 The package is a CLI/library. It does not require Nextflow, Snakemake or a
 workflow engine. On the R730 server, formal project runs can still be recorded
@@ -100,9 +105,12 @@ Generate colorblind-friendly SVG figures:
 PYTHONPATH=src python3 -m insiphy.cli visualize \
   --input-dir work/jingwei_case \
   --result-dir results/jingwei \
-  --output-dir results/jingwei_figures \
-  --correspondence-encoding pattern
+  --output-dir results/jingwei_figures
 ```
+
+The default correspondence encoding is color. Use
+`--correspondence-encoding pattern` for texture/line-style encoding when a
+color-independent figure is needed.
 
 Check available local alignment backends:
 
@@ -135,13 +143,16 @@ PYTHONPATH=src python3 -m insiphy.cli inspect-aligners
 - `hypothesis_bootstrap.tsv`
 - `branch_history_posteriors.tsv`
 - `foreground_tests.tsv`
+- `phylogeny_scope.tsv`
 - `baseline_comparison.tsv`
 - `intragenic_graph_edges.tsv`
 - `alignment_backend_report.tsv`
 
 `hypothesis_tests.tsv` reports the invariant/no-change null model versus a
-one-rate CTMC/Mk model on the species tree, including likelihoods, LRT statistic,
-p value, BH q value, fitted rate, AIC and BIC. The main layers are
+one-rate CTMC/Mk model on the active tree for that character, including
+likelihoods, LRT statistic, p value, BH q value, fitted rate, AIC and BIC.
+`phylogeny_scope.tsv` records whether each layer used `copy_tree.tsv`,
+`gene_tree.tsv` or `species_tree.tsv`. The main layers are
 `element_presence`, `element_role_state`, `element_adjacency_state`,
 `source_mixture` and `copy_multiplicity`. `hypothesis_bootstrap.tsv`
 contains empirical p values when bootstrap is requested.
@@ -161,12 +172,12 @@ Visualization outputs:
 - `intragenic_synteny.svg`: gene-internal exon-like structure by species/copy.
   EG labels mark exon-like correspondence groups, gray spans mark introns or
   other context, and links/ribbons connect corresponding blocks across tracks.
-  The default encoding uses texture, line style and labels;
-  `--correspondence-encoding color` switches to color.
-- `phylogenetic_event_map.svg`: species tree with structural-event markers and
-  support summaries.
-- `integrated_phylo_synteny.svg`: species tree and exon-like synteny tracks in
-  one figure.
+  The default encoding uses a colorblind-aware palette plus labels;
+  `--correspondence-encoding pattern` switches to texture, line style and labels.
+- `phylogenetic_event_map.svg`: active phylogenetic tree with structural-event
+  markers and support summaries.
+- `integrated_phylo_synteny.svg`: active phylogenetic tree and exon-like
+  synteny tracks in one figure.
 - `visualization_manifest.tsv`: figure inventory.
 
 ## Documentation

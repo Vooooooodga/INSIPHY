@@ -7,8 +7,11 @@ completion, gene-structure comparison and discrete-character phylogenetics.
 
 The method direction is biologically defensible: gene-internal segment homology
 should be inferred from genome sequence plus annotation context, and the
-resulting structural characters should be interpreted on a species tree. The
-main remaining biological risk is event ambiguity. Exonization, intron
+resulting structural characters should be interpreted on the relevant
+phylogenetic tree. Single-copy characters can use the species tree; multi-copy
+structural characters require a copy/gene tree to avoid collapsing paralogs
+within one species. The main remaining biological risk is event ambiguity.
+Exonization, intron
 gain/loss, splice-boundary drift, tandem exon duplication, gene conversion,
 processed-copy insertion and assembly/annotation artifacts can create
 overlapping evidence patterns in one observed gene copy. INSIPHY reports these
@@ -38,15 +41,16 @@ Genome annotation can miss short exons, shifted splice sites, noncanonical
 transcripts or fragmented gene models. INSIPHY therefore separates observed
 annotation from sequence-supported evidence. Hidden-segment candidates,
 shifted-splice-site candidates and joined-segment candidates are retained as
-evidence classes and then interpreted on the species tree.
+evidence classes and then interpreted on the active tree for the structural
+layer.
 
 ## Phylogenetic Structural Inference
 
 INSIPHY treats intragenic structural states as discrete phylogenetic
 characters. The likelihood calculation follows the Felsenstein pruning logic on
-a fixed species tree. Structural states evolve under Mk-style CTMC models, and
-branch histories are summarized with stochastic character mapping when
-requested.
+the active tree recorded for each layer. Structural states evolve under
+Mk-style CTMC models, and branch histories are summarized with stochastic
+character mapping when requested.
 
 The implemented statistics answer different questions:
 
@@ -76,7 +80,7 @@ The benchmark and event vocabulary should cover:
 - high-similarity paralogous segments with mechanism ambiguity;
 - annotation dropout, fragmented assemblies and unresolved paralogy.
 
-INSIPHY v0.7.0 directly models segment presence, role state, adjacency state,
+INSIPHY v0.9.1 directly models EG presence, EG role state, EG adjacency state,
 source mixture and copy multiplicity. It reports splice-boundary shifts,
 segment fusion and TE-associated exonization as candidate structural patterns.
 High-identity paralogous segment matches are reported as ambiguous evidence
@@ -98,7 +102,7 @@ alignment. INSIPHY does not require Cactus output as input.
 ## Visualization Principles
 
 Gene-structure figures should show exon/intron organization, homologous segment
-blocks and event placement on the species tree. Current exon-homology and
+blocks and event placement on the relevant phylogenetic tree. Current exon-homology and
 gene-structure tools usually promote exon/CDS/UTR units, splice junctions,
 intron positions or protein-domain context as the plotted biological objects;
 intronic intervals are drawn as separators or boundary evidence unless they
@@ -107,11 +111,10 @@ INSIPHY therefore generates:
 
 - a gene-internal synteny map by species and copy, with exon-like blocks linked
   across homologous tracks;
-- a species-tree event map with structural-event support summaries.
+- a phylogenetic event map with structural-event support summaries.
 
-The figures use texture, labels, line styles and shapes before color, so the
-main interpretation remains available to colorblind readers and in black-white
-printing.
+The default figures use a colorblind-aware palette plus labels. A pattern mode
+uses texture, line styles and shapes when a color-independent figure is needed.
 
 ## Benchmark Availability
 

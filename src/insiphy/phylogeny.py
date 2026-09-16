@@ -512,6 +512,55 @@ def read_foreground_edges(path, tree):
     return out
 
 
+def copy_tip_label(occ):
+    return f"{occ.get('species', 'NA')}:{occ.get('gene_copy_id', 'NA')}"
+
+
+def copy_tip_label_from_adjacency(row):
+    return f"{row.get('species', 'NA')}:{row.get('gene_copy_id', 'NA')}"
+
+
+def tree_tip_label_for_occ(occ, tree, tree_scope):
+    if tree_scope == "species_tree":
+        return occ.get("species", "NA")
+    preferred = copy_tip_label(occ)
+    if preferred in tree.leaf_by_label:
+        return preferred
+    copy_id = occ.get("gene_copy_id", "NA")
+    if copy_id in tree.leaf_by_label:
+        return copy_id
+    return preferred
+
+
+def tree_tip_label_for_adjacency(row, tree, tree_scope):
+    if tree_scope == "species_tree":
+        return row.get("species", "NA")
+    preferred = copy_tip_label_from_adjacency(row)
+    if preferred in tree.leaf_by_label:
+        return preferred
+    copy_id = row.get("gene_copy_id", "NA")
+    if copy_id in tree.leaf_by_label:
+        return copy_id
+    return preferred
+
+
+def read_structural_tree(input_dir, species_tree):
+    copy_rows = read_tsv(f"{input_dir}/copy_tree.tsv", ["node_id", "parent_id", "label"], optional=True)
+    if copy_rows:
+        return SpeciesTree(copy_rows), "copy_tree", "copy_tree.tsv"
+    gene_rows = read_tsv(f"{input_dir}/gene_tree.tsv", ["node_id", "parent_id", "label"], optional=True)
+    if gene_rows:
+        return SpeciesTree(gene_rows), "gene_tree", "gene_tree.tsv"
+    return species_tree, "species_tree", "species_tree.tsv"
+
+
+def has_multicopy_species(occurrences):
+    copies_by_family_species = defaultdict(set)
+    for row in occurrences:
+        copies_by_family_species[(row.get("family_id", "NA"), row.get("species", "NA"))].add(row.get("gene_copy_id", "NA"))
+    return any(len(copies) > 1 for copies in copies_by_family_species.values())
+
+
 def tree_depths(tree):
     depths = {tree.root: 0}
     for node in tree.preorder():
@@ -631,8 +680,36 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
     occurrences = read_tsv(f"{input_dir}/segment_occurrences.tsv", ["occurrence_id", "family_id", "species", "gene_copy_id", "role", "presence_status"])
     homology = read_tsv(f"{input_dir}/segment_homology.tsv", ["homology_id", "occurrence_id", "support_type", "confidence"])
     adjacencies = read_tsv(f"{input_dir}/physical_adjacencies.tsv", ["adjacency_id", "family_id", "species", "gene_copy_id", "left_occurrence_id", "right_occurrence_id", "adjacency_status"])
-    tree = SpeciesTree(read_tsv(f"{input_dir}/species_tree.tsv", ["node_id", "parent_id", "label"]))
-    foreground_edges = read_foreground_edges(foreground_branches, tree)
+    species_tree = SpeciesTree(read_tsv(f"{input_dir}/species_tree.tsv", ["node_id", "parent_id", "label"]))
+    structural_tree, structural_tree_scope, structural_tree_file = read_structural_tree(input_dir, species_tree)
+    phylogeny_scope_rows = [
+        {
+            "scope": "structural_characters",
+            "tree_file": structural_tree_file,
+            "tree_scope": structural_tree_scope,
+            "layers": "element_presence;element_role_state;element_adjacency_state;source_mixture",
+            "note": "EG structural characters are evaluated on copy_tree.tsv or gene_tree.tsv when supplied; species_tree.tsv is the fallback for single-copy cases.",
+        },
+        {
+            "scope": "copy_multiplicity",
+            "tree_file": "species_tree.tsv",
+            "tree_scope": "species_tree",
+            "layers": "copy_multiplicity",
+            "note": "Copy multiplicity is a species-level character and remains evaluated on species_tree.tsv.",
+        },
+    ]
+    if structural_tree_scope == "species_tree" and has_multicopy_species(occurrences):
+        phylogeny_scope_rows.append(
+            {
+                "scope": "warning",
+                "tree_file": "species_tree.tsv",
+                "tree_scope": "species_tree_fallback",
+                "layers": "element_presence;element_role_state;element_adjacency_state;source_mixture",
+                "note": "Multiple gene copies occur in at least one species, but no copy_tree.tsv or gene_tree.tsv was supplied; copy-specific structural histories are collapsed to species-level tips.",
+            }
+        )
+    foreground_edges = read_foreground_edges(foreground_branches, structural_tree)
+    species_foreground_edges = read_foreground_edges(foreground_branches, species_tree)
     copy_context = read_tsv(f"{input_dir}/copy_context.tsv", ["family_id", "species", "gene_copy_id", "copy_class"], optional=True)
     copy_relationships = read_tsv(f"{input_dir}/copy_relationships.tsv", ["family_id", "species", "query_copy_id", "subject_copy_id", "relationship_class"], optional=True)
     segment_matches = read_tsv(f"{input_dir}/segment_matches.tsv", optional=True)
@@ -668,16 +745,16 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
     foreground_rows = []
     object_family = {}
     for element_id, occ_ids in sorted(occ_by_element.items()):
-        by_species = defaultdict(list)
+        by_tip = defaultdict(list)
         families = set()
         for occ_id in occ_ids:
             occ = occ_by_id.get(occ_id)
             if occ:
-                by_species[occ["species"]].append(occ)
+                by_tip[tree_tip_label_for_occ(occ, structural_tree, structural_tree_scope)].append(occ)
                 families.add(occ["family_id"])
         object_family[element_id] = ";".join(sorted(families)) if families else element_id
-        add_character(tree, "element_presence", element_id, {sp: state_from_occurrences(rows) for sp, rows in by_species.items()}, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
-        add_character(tree, "element_role_state", element_id, {sp: role_from_occurrences(rows) for sp, rows in by_species.items()}, {"absent", "CDS", "exon_or_UTR", "non_exonic_source", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
+        add_character(structural_tree, "element_presence", element_id, {tip: state_from_occurrences(rows) for tip, rows in by_tip.items()}, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
+        add_character(structural_tree, "element_role_state", element_id, {tip: role_from_occurrences(rows) for tip, rows in by_tip.items()}, {"absent", "CDS", "exon_or_UTR", "non_exonic_source", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
 
     graph_edges = []
     adj_by_pair = defaultdict(lambda: defaultdict(list))
@@ -688,7 +765,7 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
         if not left_elements or not right_elements:
             continue
         pair_id = "|".join(left_elements) + "__" + "|".join(right_elements)
-        adj_by_pair[pair_id][row["species"]].append(row["adjacency_status"])
+        adj_by_pair[pair_id][tree_tip_label_for_adjacency(row, structural_tree, structural_tree_scope)].append(row["adjacency_status"])
         pair_family[pair_id].add(row["family_id"])
         left_sources = informative_source_labels(source_by_occ.get(row["left_occurrence_id"], set()))
         right_sources = informative_source_labels(source_by_occ.get(row["right_occurrence_id"], set()))
@@ -707,33 +784,34 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
                 "right_source_labels": ";".join(sorted(right_sources)) or "NA",
             }
         )
-    for pair_id, by_species in sorted(adj_by_pair.items()):
+    for pair_id, by_tip in sorted(adj_by_pair.items()):
         object_family[pair_id] = ";".join(sorted(pair_family[pair_id]))
         tips = {}
-        for species, vals in by_species.items():
+        for tip_label, vals in by_tip.items():
             vals = [norm_state(value) for value in vals]
             if "present" in vals and "absent" in vals:
-                tips[species] = "copy_variable"
+                tips[tip_label] = "copy_variable"
             elif "present" in vals:
-                tips[species] = "present"
+                tips[tip_label] = "present"
             elif vals and all(value == "absent" for value in vals):
-                tips[species] = "absent"
+                tips[tip_label] = "absent"
             else:
-                tips[species] = "unknown"
-        add_character(tree, "element_adjacency_state", pair_id, tips, {"present", "absent", "copy_variable"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
+                tips[tip_label] = "unknown"
+        add_character(structural_tree, "element_adjacency_state", pair_id, tips, {"present", "absent", "copy_variable"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
 
-    source_states_by_family_species = defaultdict(list)
+    source_states_by_family_tip = defaultdict(list)
     for key in sorted({(row["family_id"], row["species"], row["gene_copy_id"]) for row in occurrences}):
         family, species, copy = key
         rows = [row for row in occurrences if (row["family_id"], row["species"], row["gene_copy_id"]) == key and norm_state(row["presence_status"]) == "present"]
         sources = informative_source_labels(source for row in rows for source in source_by_occ.get(row["occurrence_id"], set()))
-        source_states_by_family_species[(family, species)].append("multi_source" if len(sources) > 1 else "single_source" if len(sources) == 1 else "unknown")
+        tip_label = tree_tip_label_for_occ({"species": species, "gene_copy_id": copy}, structural_tree, structural_tree_scope)
+        source_states_by_family_tip[(family, tip_label)].append("multi_source" if len(sources) > 1 else "single_source" if len(sources) == 1 else "unknown")
     source_tips = defaultdict(dict)
-    for (family, species), states in source_states_by_family_species.items():
-        source_tips[family][species] = "multi_source" if "multi_source" in states else "single_source" if "single_source" in states else "unknown"
+    for (family, tip_label), states in source_states_by_family_tip.items():
+        source_tips[family][tip_label] = "multi_source" if "multi_source" in states else "single_source" if "single_source" in states else "unknown"
     for family, tips in sorted(source_tips.items()):
         object_family[family] = family
-        add_character(tree, "source_mixture", family, tips, {"single_source", "multi_source", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
+        add_character(structural_tree, "source_mixture", family, tips, {"single_source", "multi_source", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
 
     copy_states_by_family_species = defaultdict(list)
     for row in copy_context:
@@ -754,7 +832,7 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
             copy_tips[family][species] = "unknown"
     for family, tips in sorted(copy_tips.items()):
         object_family[family] = family
-        add_character(tree, "copy_multiplicity", family, tips, {"single_copy", "tandem_multi_copy", "same_contig_multi_copy", "dispersed_multi_copy", "unresolved", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
+        add_character(species_tree, "copy_multiplicity", family, tips, {"single_copy", "tandem_multi_copy", "same_contig_multi_copy", "dispersed_multi_copy", "unresolved", "unknown"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, species_foreground_edges)
 
     hidden_calls = {"hidden_segment_candidate", "shifted_splice_site_candidate", "joined_exon_candidate", "hidden_segment_with_frame_disruption"}
     hidden_support = sum(to_float(row.get("support_score")) for row in annotation_candidates if row.get("completion_call") in hidden_calls)
@@ -905,8 +983,8 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
     add_q_values(hypothesis_rows)
     add_q_values(foreground_rows)
     support_rows = event_support_summary(event_rows, hypothesis_rows, bootstrap_rows, stochastic_rows)
-    hsg_coverage_rows = hsg_phylogenetic_coverage(tree, occ_by_hsg, occ_by_id)
-    element_coverage_rows = element_phylogenetic_coverage(tree, occ_by_element, occ_by_id)
+    hsg_coverage_rows = hsg_phylogenetic_coverage(species_tree, occ_by_hsg, occ_by_id)
+    element_coverage_rows = element_phylogenetic_coverage(species_tree, occ_by_element, occ_by_id)
     write_tsv(f"{output_dir}/character_model_scores.tsv", model_score_rows, ["layer", "object_id", "model", "parsimony_score", "log_likelihood", "state_count", "observed_tip_count", "fitted_rate", "aic", "bic"])
     write_tsv(f"{output_dir}/model_fit.tsv", model_fit_rows, ["layer", "object_id", "model", "fitted_rate", "log_likelihood", "aic", "bic", "observed_tip_count"])
     write_tsv(f"{output_dir}/hypothesis_tests.tsv", hypothesis_rows, ["layer", "object_id", "test_id", "null_model", "alternative_model", "null_log_likelihood", "alternative_log_likelihood", "lrt_statistic", "df", "p_value", "p_value_method", "q_value", "q_value_method", "fitted_rate", "null_aic", "alternative_aic", "null_bic", "alternative_bic", "observed_tip_count", "tip_error"])
@@ -917,6 +995,7 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
     write_tsv(f"{output_dir}/event_support_summary.tsv", support_rows, ["family_id", "event_class", "structural_pattern", "mechanism_hypothesis", "call_scope", "object_id", "branch_scope", "evidence_layer", "support_tier", "lrt_p_value", "lrt_q_value", "empirical_p_value", "fitted_rate", "ctmc_change_probability", "stochastic_pr_any_change", "evidence_count", "alternative_explanation"])
     write_tsv(f"{output_dir}/element_phylogenetic_coverage.tsv", element_coverage_rows, ["family_id", "element_id", "present_species_count", "tree_tip_count", "coverage_ratio", "mrca_node", "mrca_label", "coverage_class", "present_species", "present_copy_count", "present_copies"])
     write_tsv(f"{output_dir}/hsg_phylogenetic_coverage.tsv", hsg_coverage_rows, ["family_id", "homology_id", "present_species_count", "tree_tip_count", "coverage_ratio", "mrca_node", "mrca_label", "coverage_class", "present_species", "present_copy_count", "present_copies"])
+    write_tsv(f"{output_dir}/phylogeny_scope.tsv", phylogeny_scope_rows, ["scope", "tree_file", "tree_scope", "layers", "note"])
     write_tsv(f"{output_dir}/model_comparison.tsv", model_rows, ["comparison_id", "model", "score", "delta_vs_best", "interpretation"])
     write_tsv(f"{output_dir}/intragenic_graph_edges.tsv", graph_edges, ["family_id", "species", "gene_copy_id", "edge_id", "left_element_id", "right_element_id", "left_occurrence_id", "right_occurrence_id", "adjacency_status", "left_source_labels", "right_source_labels"])
     write_tsv(f"{output_dir}/case_summary.tsv", case_summary, ["family_id", "hidden_segment_candidates", "source_join_candidates", "multi_source_tip_count", "branch_event_candidates", "copy_context_candidates", "ambiguous_evidence_candidates", "best_annotation_model", "best_compound_model"])

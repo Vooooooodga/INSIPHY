@@ -27,6 +27,33 @@ def svg_text(x, y, text, size=11, anchor="start", weight="normal", fill="#222"):
     return f'<text x="{x}" y="{y}" font-family="Arial, sans-serif" font-size="{size}" text-anchor="{anchor}" font-weight="{weight}" fill="{fill}">{escape(str(text))}</text>'
 
 
+def structural_tree_rows(input_dir, result_dir):
+    input_dir = Path(input_dir)
+    result_dir = Path(result_dir)
+    tree_file = "species_tree.tsv"
+    scope_rows = read_tsv(result_dir / "phylogeny_scope.tsv", optional=True)
+    for row in scope_rows:
+        if row.get("scope") == "structural_characters" and row.get("tree_file"):
+            tree_file = row["tree_file"]
+            break
+    rows = read_tsv(input_dir / tree_file, optional=True)
+    if rows:
+        return rows, tree_file
+    for fallback in ["copy_tree.tsv", "gene_tree.tsv", "species_tree.tsv"]:
+        rows = read_tsv(input_dir / fallback, optional=True)
+        if rows:
+            return rows, fallback
+    return [], tree_file
+
+
+def tip_label_for_group(tree, species, copy):
+    candidates = [f"{species}:{copy}", species, copy]
+    for label in candidates:
+        if label in tree.leaf_by_label:
+            return label
+    return candidates[0]
+
+
 def pattern_defs(styles):
     body = ["<defs>"]
     for hsg, style in styles.items():
@@ -80,7 +107,7 @@ def fallback_element_correspondence(input_dir, occurrences):
     return rows
 
 
-def segment_styles(input_dir, result_dir, occurrences=None, hsg_encoding="pattern"):
+def segment_styles(input_dir, result_dir, occurrences=None, hsg_encoding="color"):
     occurrences = occurrences or []
     element_rows = read_tsv(Path(result_dir) / "element_correspondence.tsv", optional=True)
     if not element_rows:
@@ -160,7 +187,7 @@ def draw_segment_box(body, x, ybox, w, hbox, label, style, unit_class="exon_like
         body.append(svg_text(x + w / 2, ybox + hbox + 11, label, 8, anchor="middle", fill="#333"))
 
 
-def draw_synteny(input_dir, result_dir, output_dir, hsg_encoding="pattern"):
+def draw_synteny(input_dir, result_dir, output_dir, hsg_encoding="color"):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
     occurrences = read_tsv(input_dir / "segment_occurrences.tsv", optional=True)
@@ -252,11 +279,11 @@ def tree_coordinates(tree):
 def draw_phylogeny(input_dir, result_dir, output_dir):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
-    tree_rows = read_tsv(input_dir / "species_tree.tsv", optional=True)
+    tree_rows, tree_file = structural_tree_rows(input_dir, result_dir)
     events = read_tsv(Path(result_dir) / "event_support_summary.tsv", optional=True)
     if not tree_rows:
         path = output_dir / "phylogenetic_event_map.svg"
-        path.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="120"><text x="20" y="40">species_tree.tsv not available</text></svg>\n')
+        path.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="120"><text x="20" y="40">phylogenetic tree not available</text></svg>\n')
         return path
     tree = SpeciesTree(tree_rows)
     x, y = tree_coordinates(tree)
@@ -264,7 +291,7 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
     other_events = []
     for row in events:
         scope = row.get("branch_scope", "")
-        if "->" in scope:
+        if "->" in scope and row.get("call_scope") == "core_structural_event":
             branch_events[scope].append(row)
         else:
             other_events.append(row)
@@ -274,6 +301,7 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         '<rect width="100%" height="100%" fill="white"/>',
         svg_text(24, 28, "INSIPHY phylogenetic structural-event map", 16, weight="bold"),
+        svg_text(24, 46, f"tree: {tree_file}", 10, fill="#555"),
     ]
     for parent, child in tree.edges():
         body.append(f'<line x1="{x[parent]:.2f}" y1="{y[parent]:.2f}" x2="{x[parent]:.2f}" y2="{y[child]:.2f}" stroke="#555" stroke-width="1.2"/>')
@@ -296,6 +324,8 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
             body.append(svg_text(x[node] + 8, y[node] + 4, tree.label[node], 11))
         else:
             body.append(f'<circle cx="{x[node]:.2f}" cy="{y[node]:.2f}" r="3" fill="#333"/>')
+            if node != tree.root:
+                body.append(svg_text(x[node] + 6, y[node] - 5, tree.label[node], 9, fill="#555"))
     aside_x = 720
     body.append(svg_text(aside_x, 58, "Event support summary", 12, weight="bold"))
     for idx, row in enumerate(events[:12]):
@@ -315,15 +345,15 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
     return path
 
 
-def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encoding="pattern"):
+def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encoding="color"):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
-    tree_rows = read_tsv(input_dir / "species_tree.tsv", optional=True)
+    tree_rows, tree_file = structural_tree_rows(input_dir, result_dir)
     occurrences = read_tsv(input_dir / "segment_occurrences.tsv", optional=True)
     events = read_tsv(Path(result_dir) / "event_support_summary.tsv", optional=True)
     path = output_dir / "integrated_phylo_synteny.svg"
     if not tree_rows or not occurrences:
-        path.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="120"><text x="20" y="40">species tree or segment data not available</text></svg>\n')
+        path.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="120"><text x="20" y="40">phylogenetic tree or segment data not available</text></svg>\n')
         return path
 
     tree = SpeciesTree(tree_rows)
@@ -332,7 +362,7 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encodin
     for row in occurrences:
         grouped[(row.get("species", "NA"), row.get("gene_copy_id", "NA"))].append(row)
     leaf_order = {tree.label[node]: idx for idx, node in enumerate(sorted(tree.leaves, key=lambda node: tree.label[node]))}
-    ordered_groups = sorted(grouped.items(), key=lambda item: (leaf_order.get(item[0][0], 10**6), item[0][0], item[0][1]))
+    ordered_groups = sorted(grouped.items(), key=lambda item: (leaf_order.get(tip_label_for_group(tree, item[0][0], item[0][1]), 10**6), item[0][0], item[0][1]))
 
     row_h = 34
     top = 70
@@ -343,13 +373,13 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encodin
     right = 42
     height = top + max(1, len(ordered_groups)) * row_h + 96
     row_y = {key: top + idx * row_h for idx, (key, _rows) in enumerate(ordered_groups)}
-    species_rows = defaultdict(list)
-    for (species, _copy), y in row_y.items():
-        species_rows[species].append(y + 11)
+    tip_rows = defaultdict(list)
+    for (species, copy), y in row_y.items():
+        tip_rows[tip_label_for_group(tree, species, copy)].append(y + 11)
     node_y = {}
     for leaf in tree.leaves:
         label = tree.label[leaf]
-        vals = species_rows.get(label, [top + leaf_order.get(label, 0) * row_h + 11])
+        vals = tip_rows.get(label, [top + leaf_order.get(label, 0) * row_h + 11])
         node_y[leaf] = sum(vals) / len(vals)
 
     def assign_y(node):
@@ -378,6 +408,7 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encodin
         '<rect width="100%" height="100%" fill="white"/>',
         pattern_defs(styles),
         svg_text(24, 30, "INSIPHY integrated phylogenetic intragenic synteny", 16, weight="bold"),
+        svg_text(24, 52, f"tree: {tree_file}", 10, fill="#555"),
         svg_text(left_track, 52, "exon-like gene-internal synteny", 10, fill="#555"),
     ]
     for parent, child in tree.edges():
@@ -393,6 +424,9 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encodin
             body.append(f'<path d="M{cx:.2f},{cy - 7:.2f} L{cx + 7:.2f},{cy:.2f} L{cx:.2f},{cy + 7:.2f} L{cx - 7:.2f},{cy:.2f} Z" fill="{fill}" fill-opacity="0.72" stroke="#111" stroke-width="0.7"/>')
     for leaf in tree.leaves:
         body.append(svg_text(node_x[leaf] + 6, node_y[leaf] + 4, tree.label[leaf], 10))
+    for node in tree.preorder():
+        if node not in tree.leaves and node != tree.root:
+            body.append(svg_text(node_x[node] + 6, node_y[node] - 5, tree.label[node], 9, fill="#555"))
 
     element_boxes = defaultdict(list)
     pending_boxes = []
@@ -435,7 +469,7 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encodin
     return path
 
 
-def visualize_results(input_dir, result_dir, output_dir, hsg_encoding="pattern"):
+def visualize_results(input_dir, result_dir, output_dir, hsg_encoding="color"):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     synteny = draw_synteny(input_dir, result_dir, output_dir, hsg_encoding)
@@ -443,8 +477,8 @@ def visualize_results(input_dir, result_dir, output_dir, hsg_encoding="pattern")
     integrated = draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encoding)
     rows = [
         {"path": str(synteny), "type": "svg", "description": "Exon-like gene-internal synteny by species and copy"},
-        {"path": str(phylogeny), "type": "svg", "description": "Species-tree structural event map"},
-        {"path": str(integrated), "type": "svg", "description": "Integrated species-tree and exon-like synteny map"},
+        {"path": str(phylogeny), "type": "svg", "description": "Phylogenetic structural event map"},
+        {"path": str(integrated), "type": "svg", "description": "Integrated phylogenetic and exon-like synteny map"},
     ]
     write_tsv(output_dir / "visualization_manifest.tsv", rows, ["path", "type", "description"])
     return rows

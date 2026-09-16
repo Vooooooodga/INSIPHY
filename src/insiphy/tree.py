@@ -520,8 +520,32 @@ def sankoff(tree, tips_by_label, states, layer):
                 for child in tree.children[node]
             )
 
+    def choose_state(candidates, preferred=None):
+        if preferred in candidates:
+            return preferred
+        return sorted(candidates)[0]
+
+    chosen_states = {}
+    root_finite = {state: score for state, score in scores[tree.root].items() if math.isfinite(score)}
+    if not root_finite:
+        root_finite = {state: 0.0 for state in states}
+    root_best = min(root_finite.values())
+    chosen_states[tree.root] = choose_state({state for state, score in root_finite.items() if abs(score - root_best) < 1e-9})
+    for parent in tree.preorder():
+        parent_state = chosen_states[parent]
+        for child in tree.children.get(parent, []):
+            child_scores = {
+                child_state: scores[child][child_state] + tree.branch_length(child) * transition_cost(layer, parent_state, child_state)
+                for child_state in states
+                if math.isfinite(scores[child][child_state])
+            }
+            if not child_scores:
+                child_scores = {state: 0.0 for state in states}
+            best = min(child_scores.values())
+            candidates = {state for state, score in child_scores.items() if abs(score - best) < 1e-9}
+            chosen_states[child] = choose_state(candidates, preferred=parent_state)
+
     node_rows = []
-    best_states = {}
     for node in tree.preorder():
         finite = {state: score for state, score in scores[node].items() if math.isfinite(score)}
         if not finite:
@@ -529,8 +553,6 @@ def sankoff(tree, tips_by_label, states, layer):
         best = min(finite.values())
         weights = {state: math.exp(-(score - best)) for state, score in finite.items()}
         total = sum(weights.values()) or 1.0
-        best_set = {state for state, score in finite.items() if abs(score - best) < 1e-9}
-        best_states[node] = best_set
         for state in states:
             node_rows.append(
                 {
@@ -538,26 +560,22 @@ def sankoff(tree, tips_by_label, states, layer):
                     "node_label": tree.label[node],
                     "state": state,
                     "probability": f"{weights.get(state, 0.0) / total:.6g}",
-                    "is_parsimony_best": int(state in best_set),
+                    "is_parsimony_best": int(state == chosen_states[node]),
                 }
             )
 
     edge_rows = []
     for parent, child in tree.edges():
-        parent_states = best_states[parent]
-        child_states = best_states[child]
-        if parent_states & child_states:
+        parent_state = chosen_states[parent]
+        child_state = chosen_states[child]
+        if parent_state == child_state:
             status = "unchanged_or_ambiguous"
             probability = 0.0
             change = "NA"
-        elif len(parent_states) == 1 and len(child_states) == 1:
+        else:
             status = "change_required"
             probability = 1.0
-            change = f"{next(iter(parent_states))}->{next(iter(child_states))}"
-        else:
-            status = "change_possible"
-            probability = 0.5
-            change = f"{'|'.join(sorted(parent_states))}->{'|'.join(sorted(child_states))}"
+            change = f"{parent_state}->{child_state}"
         edge_rows.append(
             {
                 "parent_node": parent,

@@ -1,18 +1,19 @@
 # Publication Gap
 
-INSIPHY v0.7.0 is a runnable method prototype. It includes transcript-aware
+INSIPHY v0.9.1 is a runnable method prototype. It includes transcript-aware
 extraction, graph-based segment correspondence, source/copy-role propagation,
 branch-length-aware CTMC/Mk fitting, invariant-model LRT p values,
 BH q values, parametric-bootstrap calibration, stochastic-map branch summaries,
 event support tables, internal correspondence coverage summaries,
-colorblind-friendly SVG output and optional foreground/background
+colorblind-aware SVG output, optional pattern encoding, copy/gene tree support
+for multi-copy structural characters and optional foreground/background
 structural-rate tests. A manuscript-grade method still requires stronger
 evidence in five areas.
 
 ## Current Strengths
 
-- The input model matches the project aim: genome FASTA, GFF/GTF annotation and
-  a species tree.
+- The input model matches the project aim: genome FASTA, GFF/GTF annotation,
+  a species tree and optional copy/gene tree for multi-copy structural histories.
 - The package already separates annotation completion, homologous segment
   correspondence and phylogenetic structural inference.
 - The outputs report structural patterns and mechanism hypotheses separately,

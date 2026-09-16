@@ -41,15 +41,17 @@ thread per pair to avoid oversubscribing CPU cores.
 
 INSIPHY uses discrete structural characters:
 
-- segment presence;
-- segment role;
-- intragenic adjacency;
+- EG presence;
+- EG role;
+- EG adjacency;
 - source mixture;
 - copy multiplicity.
 
 For each character it runs weighted Sankoff reconstruction, CTMC/Mk likelihood,
 invariant-model LRT, optional parametric bootstrap, optional stochastic
 character mapping and optional foreground/background CTMC rate comparison.
+EG structural characters use `copy_tree.tsv` or `gene_tree.tsv` when supplied;
+copy multiplicity remains a species-tree character.
 
 The stochastic mapping implementation fits a CTMC rate matrix, conditions on
 observed tips, samples endpoint states and samples complete paths by

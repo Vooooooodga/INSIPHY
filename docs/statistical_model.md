@@ -10,13 +10,18 @@ INSIPHY currently separates biological evidence from phylogenetic interpretation
    candidate non-exonic source intervals and their local context. HSG labels in
    intermediate tables are graph IDs, not final biological event units.
 2. **Weighted Sankoff reconstruction**: EG presence, EG role state,
-   intragenic adjacency, source mixture and copy multiplicity are reconstructed
-   on a fixed species tree. Gains, losses and role shifts can have different
-   costs, so the resulting branch calls are interpretable event candidates.
+   intragenic adjacency and source mixture are reconstructed on the supplied
+   copy/gene tree when available. Single-copy cases use the species tree.
+   Copy multiplicity is reconstructed on the species tree. Gains, losses and
+   role shifts can have different costs, so the resulting branch calls are
+   interpretable event candidates. Branch placement uses a global root-to-tip
+   backtrace, so multi-copy events are placed on the selected copy/gene lineage
+   rather than on independent node-local state summaries.
 3. **Branch-length-aware CTMC/Mk likelihood**: each structural character is
-   treated as a discrete structural state evolving on the fixed tree. INSIPHY fits a
-   one-rate continuous-time Markov model by grid search and reports the
-   maximum log likelihood, fitted rate, AIC and BIC.
+   treated as a discrete structural state evolving on its active tree. INSIPHY
+   fits a one-rate continuous-time Markov model by grid search and reports the
+   maximum log likelihood, fitted rate, AIC and BIC. `phylogeny_scope.tsv`
+   records the tree used by each layer.
 4. **Invariant-model LRT**: for each character, INSIPHY compares the fitted
    CTMC/Mk model against a no-change model. The test reports
    `lrt_statistic`, `df`, `p_value`, `p_value_method`, null/alternative
@@ -60,8 +65,8 @@ used by default for event-level precision and recall.
 
 The default hypothesis test is:
 
-- **H0**: the intragenic character is invariant on the supplied species tree,
-  allowing a tiny tip observation error for annotation uncertainty.
+- **H0**: the intragenic character is invariant on the active tree for that
+  layer, allowing a tiny tip observation error for annotation uncertainty.
 - **H1**: the character evolves under a one-rate CTMC/Mk model with transition
   probabilities scaled by branch length.
 
@@ -76,11 +81,13 @@ character, INSIPHY reports `insufficient_observed_tips` and sets the p value to
 `NA`.
 
 Foreground/background tests compare a one-rate model against a two-rate model
-in which a user-specified branch set has its own structural change rate. This
-is the direct structural analogue of branch or branch-site tests used in
-molecular evolution. The user-facing question is whether a specified branch or
-clade shows an elevated rate of intragenic structural change compared with the
-background branches.
+in which a user-specified branch set has its own structural change rate. For
+multi-copy cases, foreground labels should follow the copy/gene tree for EG
+structural layers and the species tree for `copy_multiplicity`. This is the
+direct structural analogue of branch or branch-site tests used in molecular
+evolution. The user-facing question is whether a specified branch or clade shows
+an elevated rate of intragenic structural change compared with the background
+branches.
 
 ## Branch Event Posteriors
 
@@ -133,7 +140,7 @@ optimistic.
   simulated null LRT quantiles when bootstrap is requested.
 - `branch_event_probabilities.tsv`: branch-level change candidates, including
   branch lengths and CTMC endpoint change probabilities when supplied in
-  `species_tree.tsv`.
+  the active tree.
 - `branch_history_posteriors.tsv`: stochastic character mapping posterior
   summaries when requested.
 - `foreground_tests.tsv`: optional foreground/background structural-rate tests.
@@ -144,6 +151,8 @@ optimistic.
   label.
 - `element_phylogenetic_coverage.tsv`: tree coverage, MRCA and copy coverage
   for EGs.
+- `phylogeny_scope.tsv`: tree scope for each statistical layer and warnings
+  when multi-copy structural histories are evaluated with species-tree fallback.
 - `progressive_correspondence.tsv`: tree-distance-aware segment support summary
   inside the supplied homologous gene set.
 - `hsg_phylogenetic_coverage.tsv`: internal evidence-cluster coverage class,

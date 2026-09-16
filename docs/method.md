@@ -38,8 +38,10 @@ it is not promoted to a displayed homologous block without role-shift support.
    adjacencies describe the internal synteny of each gene copy. Introns
    contribute boundary and phase evidence without becoming default homologous
    blocks in the user-facing graph.
-6. **Phylogenetic reconstruction**: EG presence, EG role state, adjacency,
-   source mixture and copy multiplicity are optimized on the species tree.
+6. **Phylogenetic reconstruction**: EG presence, EG role state, adjacency and
+   source mixture are optimized on a copy/gene tree when supplied, with
+   species-tree fallback for single-copy cases. Copy multiplicity is optimized
+   on the species tree.
 
 The sequence layer can use the internal fallback aligner, minimap2 for
 nucleotide segment matching, or miniprot for protein-to-genome style completion
@@ -48,7 +50,7 @@ tests when suitable input is provided.
 ## Evolutionary Questions
 
 INSIPHY asks whether a supplied gene/copy set shows gene-internal structural
-change on the species tree:
+change on the relevant phylogenetic tree:
 
 - gain or loss of a homologous internal segment;
 - exonization of intronic or noncoding sequence;
@@ -86,7 +88,9 @@ INSIPHY makes the biological-to-statistical translation explicit.
    `present/absent/copy_variable`, where `copy_variable` means paralogous
    copies in the same species do not share the same adjacency; source mixture is
    `single_source/multi_source`; copy multiplicity is
-   `single_copy/tandem_multi_copy/dispersed_multi_copy/...`.
+   `single_copy/tandem_multi_copy/dispersed_multi_copy/...`. In multi-copy
+   families, the first four characters use tips such as `species:copy`, while
+   copy multiplicity uses species labels.
 3. **Statistical computation**: each character is analyzed with a discrete
    phylogenetic model. Sankoff reconstruction places low-cost changes on the
    tree; CTMC/Mk likelihood estimates transition rate; the invariant-model LRT
@@ -113,7 +117,8 @@ INSIPHY adapts discrete-character phylogenetic models to intragenic structure:
   for segment presence, role state, adjacency, source mixture and copy
   multiplicity.
 - **Felsenstein pruning / Mk likelihood** fits a branch-length-aware CTMC model
-  for each structural character on the fixed species tree.
+  for each structural character on its active tree, recorded in
+  `phylogeny_scope.tsv`.
 - **Likelihood-ratio testing** compares an invariant no-change model against a
   one-rate CTMC model and reports p value, fitted rate, AIC and BIC.
 - **Benjamini-Hochberg correction** reports q values across structural

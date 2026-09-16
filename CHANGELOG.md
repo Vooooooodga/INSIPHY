@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.1 - 2026-09-16
+
+- Changed the default synteny correspondence encoding to color, with
+  `--correspondence-encoding pattern` retained for color-independent figures.
+- Added `copy_tree.tsv` / `gene_tree.tsv` support for EG presence, EG role,
+  EG adjacency and source-mixture phylogenetic inference in multi-copy gene
+  sets.
+- Kept `copy_multiplicity` on the species tree and added
+  `phylogeny_scope.tsv` so each result records the tree scope used by each
+  statistical layer.
+- Updated Sankoff branch placement to use a global root-to-tip backtrace
+  instead of independent node-local state sets, improving copy-lineage event
+  placement.
+- Updated simulation fixtures to emit copy trees and branch truth for
+  copy-lineage structural events.
+
 ## 0.9.0 - 2026-09-16
 
 - Promoted exon-like groups (EGs) from display labels to the main public
