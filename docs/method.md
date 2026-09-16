@@ -41,14 +41,17 @@ change on the species tree:
 - split or fusion of adjacent internal segments;
 - splice-boundary shift;
 - duplicated-copy divergence and copy expansion;
-- high-identity paralogous segment matches consistent with gene conversion
-  candidates;
+- high-identity paralogous segment matches as ambiguous evidence requiring
+  outside support for mechanism-level interpretation;
 - annotation gap supported by local sequence evidence.
 
 Candidate events are reported with both low-level state changes and biological
-`event_class` labels, such as `exonization_candidate`,
+`structural_pattern` labels, such as `exonization_candidate`,
 `segment_fusion_or_new_adjacency`, `chimeric_source_join_candidate`,
-`copy_duplication_or_expansion` or `gene_conversion_candidate`.
+`copy_duplication_or_expansion` or `ambiguous_paralogous_similarity`.
+`mechanism_hypothesis` stores the possible biological explanation, and
+`call_scope` separates core structural events from copy-context and ambiguous
+evidence.
 
 ## Three-Layer Translation
 
@@ -74,9 +77,14 @@ INSIPHY makes the biological-to-statistical translation explicit.
    tests ask whether selected branches have elevated structural-change rate.
 
 The real-case outputs keep these layers linked: `candidate_structural_events.tsv`
-names the biological event, `object_id` points back to the structural character,
-and `event_support_summary.tsv` joins that event to p values, q values,
-bootstrap evidence and branch-history support where available.
+names the observed structural pattern and mechanism hypothesis, `object_id`
+points back to the structural character, and `event_support_summary.tsv` joins
+that event to p values, q values, bootstrap evidence and branch-history support
+where available.
+
+`hsg_phylogenetic_coverage.tsv` summarizes whether each HSG is tree-spanning,
+partial or tip-specific on the supplied species tree. This gives a tree-aware
+view of conserved and lineage-restricted gene-internal structure.
 
 ## Statistical Mapping
 

@@ -106,3 +106,16 @@ PYTHONPATH=src python3 -m insiphy.cli inspect-annotation \
 against a target gene interval FASTA and reports identity, coverage, CIGAR-like
 alignment, splice motif score and frame status. It is intended for curated
 local intervals or flank windows.
+
+## Event Output Conventions
+
+Event tables use three linked labels:
+
+- `structural_pattern`: the observable gene-internal structure pattern.
+- `mechanism_hypothesis`: the possible biological mechanism.
+- `call_scope`: `core_structural_event`, `copy_context`, `annotation_evidence`
+  or `ambiguous_evidence`.
+
+The compatibility field `event_class` mirrors `structural_pattern`.
+`gene_conversion_candidate` is not emitted as a core event; high-identity
+paralogous segment matches are reported as `ambiguous_paralogous_similarity`.

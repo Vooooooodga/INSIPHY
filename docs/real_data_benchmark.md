@@ -60,14 +60,15 @@ For each case, report:
 - hidden or shifted segments supported by sequence;
 - HSGs conserved, gained or role-shifted;
 - branch with strongest event support;
+- core structural, copy-context and ambiguous-evidence call counts;
 - LRT p value, q value, empirical bootstrap p value and fitted CTMC rate;
 - stochastic-map `Pr(any change)` and expected change count on key branches;
 - alternative explanations: annotation dropout, fragmented assembly, paralogy
-  ambiguity, gene conversion or weak sequence support.
+  ambiguity, high-similarity paralogous segments or weak sequence support.
 
-## Acceptance For v0.6 Real Run
+## Acceptance For v0.7 Real Run
 
-A v0.6 real run is acceptable when it can:
+A v0.7 real run is acceptable when it can:
 
 - run from accession-level genome FASTA/GFF plus a manifest and species tree;
 - recover expected qualitative event classes for `jingwei` and `Sdic`;
@@ -75,7 +76,7 @@ A v0.6 real run is acceptable when it can:
   OrthoFinder-supported conserved control;
 - save all INSIPHY output tables needed for biological interpretation;
 - generate black-and-white-readable, colorblind-friendly synteny and event-map
-  figures;
+  figures with one HSG identity encoding mode per figure;
 - document unresolved uncertainty.
 
 Publication-level claims still require a larger case set and quantified

@@ -4,7 +4,7 @@ Date: 2026-09-15
 
 ## Conclusion
 
-INSIPHY v0.6.0 has the correct core frame for a first method paper: upstream
+INSIPHY v0.7.0 has the correct core frame for a first method paper: upstream
 gene/copy homology is supplied by tools or curation, INSIPHY infers
 gene-internal homologous segment groups from genome sequence and annotation, and
 then analyzes structural characters on a species tree. The remaining gap is
@@ -38,7 +38,7 @@ Missing or under-modeled:
 - intron sliding as a separate event class;
 - tandem exon duplication and partial exon duplication as explicit event types;
 - transposable-element origin of exonized sequence;
-- gene conversion or concerted evolution among close paralogs;
+- high-similarity paralogous segments with mechanism ambiguity;
 - isoform-specific alternative-splicing turnover;
 - uncertainty in species tree topology and branch lengths;
 - larger conserved-control sets for user-defined evolutionary hypotheses.

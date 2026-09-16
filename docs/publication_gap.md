@@ -1,12 +1,13 @@
 # Publication Gap
 
-INSIPHY v0.6.0 is a runnable method prototype. It includes transcript-aware
+INSIPHY v0.7.0 is a runnable method prototype. It includes transcript-aware
 extraction, graph-based segment correspondence, source/copy-role propagation,
 branch-length-aware CTMC/Mk fitting, invariant-model LRT p values,
 BH q values, parametric-bootstrap calibration, stochastic-map branch summaries,
-event support tables, colorblind-friendly SVG output and optional
-foreground/background structural-rate tests. A manuscript-grade method still
-requires stronger evidence in five areas.
+event support tables, HSG phylogenetic coverage summaries,
+colorblind-friendly SVG output and optional foreground/background
+structural-rate tests. A manuscript-grade method still requires stronger
+evidence in five areas.
 
 ## Current Strengths
 
@@ -14,10 +15,10 @@ requires stronger evidence in five areas.
   a species tree.
 - The package already separates annotation completion, homologous segment
   correspondence and phylogenetic structural inference.
-- The outputs report candidate events in biological terms, including
-  exonization, new adjacency, source joining and copy expansion, and they now
-  include likelihood parameters, p values, empirical bootstrap p values and
-  branch posterior summaries for structural characters.
+- The outputs report structural patterns and mechanism hypotheses separately,
+  including exonization, new adjacency, source joining and copy-context
+  evidence. They include likelihood parameters, p values, empirical bootstrap
+  p values and branch posterior summaries for structural characters.
 - Accession-level real-case manifests are available for Drosophila `jingwei`,
   `Sdic` and a conserved-control direction.
 - Annotation-dropout negative controls are represented in the simulator and
@@ -80,7 +81,8 @@ The current event vocabulary should be extended or explicitly labeled for:
 - splice-boundary shifts and intron sliding;
 - tandem exon duplication and partial exon duplication;
 - transposable-element-associated exonization;
-- gene conversion among close paralogs;
+- high-similarity paralogous segments that may reflect gene conversion, recent
+  duplication or unresolved paralogy;
 - isoform-specific alternative-splicing turnover;
 - processed retrocopy evidence from intron loss and insertion context;
 - tree and branch-length uncertainty.

@@ -15,7 +15,7 @@ INSIPHY currently separates biological evidence from phylogenetic interpretation
    on a fixed species tree. Gains, losses and role shifts can have different
    costs, so the resulting branch calls are interpretable event candidates.
 3. **Branch-length-aware CTMC/Mk likelihood**: each structural character is
-   treated as a discrete trait evolving on the fixed tree. INSIPHY fits a
+   treated as a discrete structural state evolving on the fixed tree. INSIPHY fits a
    one-rate continuous-time Markov model by grid search and reports the
    maximum log likelihood, fitted rate, AIC and BIC.
 4. **Invariant-model LRT**: for each character, INSIPHY compares the fitted
@@ -35,6 +35,8 @@ INSIPHY currently separates biological evidence from phylogenetic interpretation
 9. **Foreground/background rate test**: when the user supplies foreground
    branches, INSIPHY compares a one-rate CTMC against a two-rate model with a
    foreground structural-change rate and a background rate.
+10. **HSG phylogenetic coverage**: each HSG is summarized as tree-spanning,
+   partial or tip-specific in `hsg_phylogenetic_coverage.tsv`.
 
 Annotation dropout is represented as evidence uncertainty and hidden-segment
 support. A missing annotation alone is not treated as biological segment loss.
@@ -49,7 +51,9 @@ Two lightweight comparisons are reported:
 
 These scores are first-pass evidence summaries. The formal phylogenetic
 statistics are in `model_fit.tsv`, `character_model_scores.tsv` and
-`hypothesis_tests.tsv`.
+`hypothesis_tests.tsv`. Event tables add `structural_pattern`,
+`mechanism_hypothesis` and `call_scope`; only `core_structural_event` calls are
+used by default for event-level precision and recall.
 
 ## Hypotheses
 
@@ -132,10 +136,13 @@ optimistic.
 - `branch_history_posteriors.tsv`: stochastic character mapping posterior
   summaries when requested.
 - `foreground_tests.tsv`: optional foreground/background structural-rate tests.
-- `event_support_summary.tsv`: biological event class, branch scope, support
-  tier and linked statistical evidence.
+- `event_support_summary.tsv`: structural pattern, mechanism hypothesis, call
+  scope, branch scope, support tier and linked statistical evidence.
 - `progressive_correspondence.tsv`: tree-distance-aware segment support summary
   inside the supplied homologous gene set.
+- `hsg_phylogenetic_coverage.tsv`: HSG coverage class, MRCA and present species
+  on the supplied tree.
 - `benchmark_summary.tsv` and `benchmark_detailed.tsv`: event-level and
-  branch-aware benchmark summaries for simulated truth sets.
+  branch-aware benchmark summaries for core structural calls, with separate
+  counts for copy-context and ambiguous evidence.
 - `benchmark_calibration.tsv`: bootstrap p-value summary across characters.

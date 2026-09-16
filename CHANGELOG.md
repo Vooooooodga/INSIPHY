@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0 - 2026-09-16
+
+- Split event reporting into observable `structural_pattern`,
+  `mechanism_hypothesis` and `call_scope` fields.
+- Reclassified high-identity paralogous segment matches as ambiguous evidence
+  instead of core gene-conversion event calls.
+- Added `hsg_phylogenetic_coverage.tsv` to summarize tree-spanning, partial
+  and tip-specific HSG support.
+- Updated benchmark summaries so core structural precision/recall exclude
+  copy-context and ambiguous evidence calls.
+- Added pattern-only HSG visualization by default and an integrated
+  species-tree plus gene-internal synteny SVG.
+
 ## 0.6.0 - 2026-09-16
 
 - Clarified the public method boundary: INSIPHY starts from supplied homologous

@@ -143,7 +143,7 @@ SCENARIO_TRUTH_FILTERS = {
     "segment_split_fusion": {"segment_fusion_or_new_adjacency", "segment_split_or_adjacency_loss"},
     "splice_boundary_shift": {"splice_boundary_shift"},
     "te_exonization": {"te_associated_exonization"},
-    "gene_conversion": {"gene_conversion_candidate"},
+    "gene_conversion": {"ambiguous_paralogous_similarity"},
 }
 
 
@@ -316,7 +316,7 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
     elif scenario == "te_exonization":
         truth = [{"family_id": family, "event_class": "te_associated_exonization", "branch_scope": "root->clade34", "object_id": "H_sim_C", "notes": "simulated TE-like hidden segment becomes exon or CDS"}]
     elif scenario == "gene_conversion":
-        truth = [{"family_id": family, "event_class": "gene_conversion_candidate", "branch_scope": "root->clade34", "object_id": "H_sim_A", "notes": "simulated paralogous copies are unusually homogenized"}]
+        truth = [{"family_id": family, "event_class": "ambiguous_paralogous_similarity", "branch_scope": "root->clade34", "object_id": "H_sim_A", "notes": "simulated paralogous copies are unusually similar; mechanism remains ambiguous"}]
     write_tsv(output_dir / "species_tree.tsv", species_tree, ["node_id", "parent_id", "label"])
     write_tsv(output_dir / "segment_occurrences.tsv", rows, ["occurrence_id", "family_id", "species", "gene_copy_id", "transcript_id", "role", "role_set", "presence_status", "contig", "start", "end", "strand", "phase", "source_feature_id", "boundary_class", "splice_motif_score", "splice_donor", "splice_acceptor", "frame_status"])
     write_tsv(output_dir / "segment_homology.tsv", homology, ["homology_id", "occurrence_id", "support_type", "confidence", "source_label"])

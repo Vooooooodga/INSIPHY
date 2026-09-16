@@ -31,8 +31,10 @@ def svg_text(x, y, text, size=11, anchor="start", weight="normal", fill="#222"):
 def pattern_defs(styles):
     body = ["<defs>"]
     for hsg, style in styles.items():
+        if style.get("encoding") != "pattern":
+            continue
         pid = style["pattern_id"]
-        color = style["color"]
+        color = style["stroke"]
         kind = style["pattern"]
         body.append(f'<pattern id="{pid}" patternUnits="userSpaceOnUse" width="8" height="8">')
         body.append('<rect width="8" height="8" fill="white"/>')
@@ -57,27 +59,47 @@ def pattern_defs(styles):
     return "\n".join(body)
 
 
-def segment_styles(homology):
+def segment_styles(homology, hsg_encoding="pattern"):
     by_occ = {}
     for row in homology:
         by_occ[row["occurrence_id"]] = row["homology_id"]
     styles = {}
     for idx, hsg in enumerate(sorted(set(by_occ.values()))):
-        styles[hsg] = {
-            "color": PALETTE[idx % len(PALETTE)],
-            "pattern": PATTERNS[idx % len(PATTERNS)],
-            "pattern_id": f"hsg_{idx + 1}",
-            "stroke_dasharray": "none" if idx % 3 == 0 else "4 2" if idx % 3 == 1 else "1.5 2",
-        }
+        dash = "none" if idx % 3 == 0 else "4 2" if idx % 3 == 1 else "1.5 2"
+        if hsg_encoding == "color":
+            styles[hsg] = {
+                "encoding": "color",
+                "fill": PALETTE[idx % len(PALETTE)],
+                "stroke": "#111111",
+                "pattern": "solid",
+                "pattern_id": f"hsg_{idx + 1}",
+                "stroke_dasharray": "none",
+            }
+        else:
+            styles[hsg] = {
+                "encoding": "pattern",
+                "fill": f"url(#hsg_{idx + 1})",
+                "stroke": "#111111",
+                "pattern": PATTERNS[idx % len(PATTERNS)],
+                "pattern_id": f"hsg_{idx + 1}",
+                "stroke_dasharray": dash,
+            }
     return by_occ, styles
 
 
-def draw_synteny(input_dir, result_dir, output_dir):
+def draw_segment_box(body, x, ybox, w, hbox, hsg, style):
+    fill = style.get("fill", "#E6E6E6")
+    body.append(f'<rect x="{x:.2f}" y="{ybox}" width="{w:.2f}" height="{hbox}" rx="2" fill="{fill}" stroke="{style.get("stroke", "#111111")}" stroke-width="0.8" stroke-dasharray="{style.get("stroke_dasharray", "none")}"/>')
+    if w > 22:
+        body.append(svg_text(x + w / 2, ybox + hbox + 11, hsg, 8, anchor="middle", fill="#333"))
+
+
+def draw_synteny(input_dir, result_dir, output_dir, hsg_encoding="pattern"):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
     occurrences = read_tsv(input_dir / "segment_occurrences.tsv", optional=True)
     homology = read_tsv(input_dir / "segment_homology.tsv", optional=True)
-    occ_to_hsg, styles = segment_styles(homology)
+    occ_to_hsg, styles = segment_styles(homology, hsg_encoding)
     grouped = defaultdict(list)
     for row in occurrences:
         grouped[(row.get("species", "NA"), row.get("gene_copy_id", "NA"))].append(row)
@@ -93,6 +115,7 @@ def draw_synteny(input_dir, result_dir, output_dir):
         pattern_defs(styles),
         svg_text(24, 28, "INSIPHY intragenic synteny", 16, weight="bold"),
     ]
+    hsg_positions = defaultdict(list)
     for ridx, (key, rows) in enumerate(sorted(grouped.items()), start=0):
         species, copy = key
         rows = sorted(rows, key=lambda row: (row.get("contig", ""), int(row.get("start", "0")), int(row.get("end", "0"))))
@@ -112,12 +135,22 @@ def draw_synteny(input_dir, result_dir, output_dir):
             role = row.get("role", "segment")
             ybox = y + 3 if role in {"CDS", "exon", "UTR", "noncoding_exon"} else y + 8
             hbox = 16 if role in {"CDS", "exon", "UTR", "noncoding_exon"} else 8
-            fill = f'url(#{style["pattern_id"]})' if hsg in styles else "#E6E6E6"
-            body.append(f'<rect x="{x:.2f}" y="{ybox}" width="{w:.2f}" height="{hbox}" rx="2" fill="{fill}" stroke="#111" stroke-width="0.8" stroke-dasharray="{style["stroke_dasharray"]}"/>')
-            if w > 22:
-                body.append(svg_text(x + w / 2, ybox + hbox + 11, hsg, 8, anchor="middle", fill="#333"))
+            if hsg in styles:
+                hsg_positions[hsg].append((y + 11, x + w / 2))
+            draw_segment_box(body, x, ybox, w, hbox, hsg, style)
+    for hsg, coords in sorted(hsg_positions.items()):
+        if len(coords) < 2:
+            continue
+        coords = sorted(coords)
+        dash = styles.get(hsg, {}).get("stroke_dasharray", "none")
+        for (y1, x1), (y2, x2) in zip(coords, coords[1:]):
+            body.append(f'<path d="M{x1:.2f},{y1:.2f} C{x1:.2f},{(y1 + y2) / 2:.2f} {x2:.2f},{(y1 + y2) / 2:.2f} {x2:.2f},{y2:.2f}" fill="none" stroke="#555" stroke-width="0.7" stroke-opacity="0.45" stroke-dasharray="{dash}"/>')
     legend_y = height - 58
-    body.append(svg_text(24, legend_y, "Texture, line style and label mark homologous segment groups; color is auxiliary and colorblind-friendly", 10, fill="#555"))
+    if hsg_encoding == "color":
+        legend = "Color and label mark homologous segment groups"
+    else:
+        legend = "Texture, line style and label mark homologous segment groups"
+    body.append(svg_text(24, legend_y, legend, 10, fill="#555"))
     body.append("</svg>")
     path = output_dir / "intragenic_synteny.svg"
     path.write_text("\n".join(body))
@@ -211,14 +244,121 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
     return path
 
 
-def visualize_results(input_dir, result_dir, output_dir):
+def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encoding="pattern"):
+    input_dir = Path(input_dir)
+    output_dir = Path(output_dir)
+    tree_rows = read_tsv(input_dir / "species_tree.tsv", optional=True)
+    occurrences = read_tsv(input_dir / "segment_occurrences.tsv", optional=True)
+    homology = read_tsv(input_dir / "segment_homology.tsv", optional=True)
+    events = read_tsv(Path(result_dir) / "event_support_summary.tsv", optional=True)
+    path = output_dir / "integrated_phylo_synteny.svg"
+    if not tree_rows or not occurrences:
+        path.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="120"><text x="20" y="40">species tree or segment data not available</text></svg>\n')
+        return path
+
+    tree = SpeciesTree(tree_rows)
+    occ_to_hsg, styles = segment_styles(homology, hsg_encoding)
+    grouped = defaultdict(list)
+    for row in occurrences:
+        grouped[(row.get("species", "NA"), row.get("gene_copy_id", "NA"))].append(row)
+    leaf_order = {tree.label[node]: idx for idx, node in enumerate(sorted(tree.leaves, key=lambda node: tree.label[node]))}
+    ordered_groups = sorted(grouped.items(), key=lambda item: (leaf_order.get(item[0][0], 10**6), item[0][0], item[0][1]))
+
+    row_h = 34
+    top = 70
+    width = 1320
+    left_tree = 46
+    right_tree = 250
+    left_track = 360
+    right = 42
+    height = top + max(1, len(ordered_groups)) * row_h + 96
+    row_y = {key: top + idx * row_h for idx, (key, _rows) in enumerate(ordered_groups)}
+    species_rows = defaultdict(list)
+    for (species, _copy), y in row_y.items():
+        species_rows[species].append(y + 11)
+    node_y = {}
+    for leaf in tree.leaves:
+        label = tree.label[leaf]
+        vals = species_rows.get(label, [top + leaf_order.get(label, 0) * row_h + 11])
+        node_y[leaf] = sum(vals) / len(vals)
+
+    def assign_y(node):
+        if node in node_y:
+            return node_y[node]
+        vals = [assign_y(child) for child in tree.children.get(node, [])]
+        node_y[node] = sum(vals) / max(1, len(vals))
+        return node_y[node]
+
+    assign_y(tree.root)
+    depth = {tree.root: 0.0}
+    for node in tree.preorder():
+        for child in tree.children.get(node, []):
+            depth[child] = depth[node] + tree.branch_length(child)
+    max_depth = max(depth.values() or [1.0])
+    node_x = {node: left_tree + depth[node] / max(max_depth, 1e-9) * (right_tree - left_tree) for node in depth}
+
+    branch_events = defaultdict(list)
+    for row in events:
+        scope = row.get("branch_scope", "")
+        if "->" in scope and row.get("call_scope") == "core_structural_event":
+            branch_events[scope].append(row)
+
+    body = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        '<rect width="100%" height="100%" fill="white"/>',
+        pattern_defs(styles),
+        svg_text(24, 30, "INSIPHY integrated phylogenetic intragenic synteny", 16, weight="bold"),
+        svg_text(left_track, 52, "gene-internal structure", 10, fill="#555"),
+    ]
+    for parent, child in tree.edges():
+        body.append(f'<line x1="{node_x[parent]:.2f}" y1="{node_y[parent]:.2f}" x2="{node_x[parent]:.2f}" y2="{node_y[child]:.2f}" stroke="#555" stroke-width="1.2"/>')
+        body.append(f'<line x1="{node_x[parent]:.2f}" y1="{node_y[child]:.2f}" x2="{node_x[child]:.2f}" y2="{node_y[child]:.2f}" stroke="#555" stroke-width="1.2"/>')
+        scope = f"{tree.label[parent]}->{tree.label[child]}"
+        evs = branch_events.get(scope, [])
+        if evs:
+            high = any(row.get("support_tier") == "high" for row in evs)
+            cx = (node_x[parent] + node_x[child]) / 2
+            cy = node_y[child]
+            fill = "#D55E00" if high else "#777777"
+            body.append(f'<path d="M{cx:.2f},{cy - 7:.2f} L{cx + 7:.2f},{cy:.2f} L{cx:.2f},{cy + 7:.2f} L{cx - 7:.2f},{cy:.2f} Z" fill="{fill}" fill-opacity="0.72" stroke="#111" stroke-width="0.7"/>')
+    for leaf in tree.leaves:
+        body.append(svg_text(node_x[leaf] + 6, node_y[leaf] + 4, tree.label[leaf], 10))
+
+    for (species, copy), rows in ordered_groups:
+        rows = sorted(rows, key=lambda row: (row.get("contig", ""), int(row.get("start", "0")), int(row.get("end", "0"))))
+        starts = [int(row.get("start", "0")) for row in rows]
+        ends = [int(row.get("end", "0")) for row in rows]
+        start = min(starts or [0])
+        end = max(ends or [start + 1])
+        span = max(1, end - start + 1)
+        y = row_y[(species, copy)]
+        body.append(svg_text(260, y + 15, copy, 9, fill="#333"))
+        body.append(f'<line x1="{left_track}" y1="{y + 11}" x2="{width - right}" y2="{y + 11}" stroke="#D0D0D0" stroke-width="1"/>')
+        for row in rows:
+            x = left_track + (int(row.get("start", "0")) - start) / span * (width - left_track - right)
+            w = max(4, (int(row.get("end", "0")) - int(row.get("start", "0")) + 1) / span * (width - left_track - right))
+            hsg = occ_to_hsg.get(row["occurrence_id"], "NA")
+            style = styles.get(hsg, {"fill": "#E6E6E6", "stroke_dasharray": "none", "stroke": "#111111"})
+            role = row.get("role", "segment")
+            ybox = y + 3 if role in {"CDS", "exon", "UTR", "noncoding_exon"} else y + 8
+            hbox = 16 if role in {"CDS", "exon", "UTR", "noncoding_exon"} else 8
+            draw_segment_box(body, x, ybox, w, hbox, hsg, style)
+    body.append(svg_text(24, height - 32, "Core structural events are marked on tree branches; HSG identity uses the selected single encoding mode.", 10, fill="#555"))
+    body.append("</svg>")
+    path.write_text("\n".join(body))
+    return path
+
+
+def visualize_results(input_dir, result_dir, output_dir, hsg_encoding="pattern"):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    synteny = draw_synteny(input_dir, result_dir, output_dir)
+    synteny = draw_synteny(input_dir, result_dir, output_dir, hsg_encoding)
     phylogeny = draw_phylogeny(input_dir, result_dir, output_dir)
+    integrated = draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encoding)
     rows = [
         {"path": str(synteny), "type": "svg", "description": "Gene-internal synteny by species and copy"},
         {"path": str(phylogeny), "type": "svg", "description": "Species-tree structural event map"},
+        {"path": str(integrated), "type": "svg", "description": "Integrated species-tree and gene-internal synteny map"},
     ]
     write_tsv(output_dir / "visualization_manifest.tsv", rows, ["path", "type", "description"])
     return rows

@@ -63,6 +63,7 @@ def main(argv=None):
     viz.add_argument("--input-dir", required=True)
     viz.add_argument("--result-dir", required=True)
     viz.add_argument("--output-dir", required=True)
+    viz.add_argument("--hsg-encoding", choices=["pattern", "color"], default="pattern")
 
     sub.add_parser("inspect-aligners")
 
@@ -120,7 +121,7 @@ def main(argv=None):
     elif args.command == "benchmark":
         benchmark_events(args.input_dir, args.output_dir)
     elif args.command == "visualize":
-        visualize_results(args.input_dir, args.result_dir, args.output_dir)
+        visualize_results(args.input_dir, args.result_dir, args.output_dir, args.hsg_encoding)
     elif args.command == "inspect-aligners":
         for row in available_alignment_backends():
             print(f"{row['aligner']}\t{row['available']}\t{row['notes']}")

@@ -23,6 +23,7 @@ class FixtureTests(unittest.TestCase):
             tests = read_tsv(Path(tmp) / "hypothesis_tests.tsv")
             baselines = read_tsv(Path(tmp) / "baseline_comparison.tsv")
             progressive = read_tsv(Path(tmp) / "progressive_correspondence.tsv")
+            coverage = read_tsv(Path(tmp) / "hsg_phylogenetic_coverage.tsv")
             self.assertEqual(rows[0]["family_id"], "jingwei")
             self.assertEqual(rows[0]["hidden_segment_candidates"], "1")
             self.assertEqual(rows[0]["best_compound_model"], "compound_chimeric_or_copy_event")
@@ -30,6 +31,8 @@ class FixtureTests(unittest.TestCase):
             self.assertIn("p_value", tests[0])
             self.assertIn("q_value", tests[0])
             self.assertTrue(progressive)
+            self.assertTrue(coverage)
+            self.assertIn("coverage_class", coverage[0])
             self.assertEqual({row["baseline_model"] for row in baselines}, {"annotation_only", "sequence_only", "synteny_aware_phylogenetic"})
 
     def test_sdic_case_summary(self):
@@ -48,8 +51,11 @@ class FixtureTests(unittest.TestCase):
             run_all(ROOT / "demos" / "jingwei", out, bootstrap_replicates=2, stochastic_maps=2)
             visualize_results(ROOT / "demos" / "jingwei", out, fig)
             manifest = read_tsv(fig / "visualization_manifest.tsv")
-            self.assertEqual({row["description"] for row in manifest}, {"Gene-internal synteny by species and copy", "Species-tree structural event map"})
-            self.assertIn("<pattern", (fig / "intragenic_synteny.svg").read_text())
+            self.assertEqual({row["description"] for row in manifest}, {"Gene-internal synteny by species and copy", "Species-tree structural event map", "Integrated species-tree and gene-internal synteny map"})
+            synteny_svg = (fig / "intragenic_synteny.svg").read_text()
+            self.assertIn("<pattern", synteny_svg)
+            self.assertNotIn("#0072B2", synteny_svg)
+            self.assertTrue((fig / "integrated_phylo_synteny.svg").exists())
 
 
 class PreprocessTests(unittest.TestCase):
@@ -140,6 +146,21 @@ class SimulationBenchmarkTests(unittest.TestCase):
             self.assertIn("hidden_segment_candidate", {row["completion_call"] for row in annot})
             self.assertEqual(bench[0]["truth_events"], "0")
             self.assertEqual(bench[0]["called_events"], "0")
+
+    def test_paralogous_similarity_is_ambiguous_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            sim = tmp / "sim_gene_conversion"
+            out = tmp / "out_gene_conversion"
+            simulate_dataset(sim, seed=17, scenario="gene_conversion")
+            run_all(sim, out)
+            benchmark_events(sim, out)
+            events = read_tsv(out / "candidate_structural_events.tsv")
+            bench = read_tsv(out / "benchmark_summary.tsv")
+            ambiguous = [row for row in events if row.get("structural_pattern") == "ambiguous_paralogous_similarity"]
+            self.assertTrue(ambiguous)
+            self.assertEqual({row["call_scope"] for row in ambiguous}, {"ambiguous_evidence"})
+            self.assertGreaterEqual(int(bench[0]["ambiguous_evidence_called"]), 1)
 
 
 class RealCasePreparationTests(unittest.TestCase):

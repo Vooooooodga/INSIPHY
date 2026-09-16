@@ -73,13 +73,15 @@ The benchmark and event vocabulary should cover:
 - exon splitting, exon fusion and splice-boundary shifts;
 - alternative-splicing turnover where annotation supports isoform differences;
 - pseudogenization, frame disruption and copy collapse;
-- gene conversion or concerted evolution among close paralogs;
+- high-similarity paralogous segments with mechanism ambiguity;
 - annotation dropout, fragmented assemblies and unresolved paralogy.
 
-INSIPHY v0.6.0 directly models segment presence, role state, adjacency state,
+INSIPHY v0.7.0 directly models segment presence, role state, adjacency state,
 source mixture and copy multiplicity. It reports splice-boundary shifts,
-segment fusion, TE-associated exonization and gene conversion as candidate
-classes when the available evidence supports them.
+segment fusion and TE-associated exonization as candidate structural patterns.
+High-identity paralogous segment matches are reported as ambiguous evidence
+because intragenic structure alone cannot distinguish gene conversion, recent
+duplication and unresolved paralogy.
 
 ## Progressive Alignment Idea
 

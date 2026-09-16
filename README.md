@@ -22,7 +22,8 @@ INSIPHY 面向近缘物种之间的单基因或小型重复基因家族比较。
    和相邻结构之间的同源性、保守性与局部 synteny。
 2. 在物种树框架下，判断演化事件是否涉及基因内部结构变化，并解释这些变化如何
    支持 gene duplication、source joining、exonization、splice-boundary shift、
-   segment split/fusion、copy expansion 或 gene conversion candidate。
+   segment split/fusion 或 copy-context 解释。高相似 paralog 片段会作为
+   机制待定证据报告，单靠本方法不直接判定 gene conversion。
 
 ## Method Frame
 
@@ -83,7 +84,8 @@ Generate colorblind-friendly SVG figures:
 PYTHONPATH=src python3 -m insiphy.cli visualize \
   --input-dir work/jingwei_case \
   --result-dir results/jingwei \
-  --output-dir results/jingwei_figures
+  --output-dir results/jingwei_figures \
+  --hsg-encoding pattern
 ```
 
 Check available local alignment backends:
@@ -101,6 +103,7 @@ PYTHONPATH=src python3 -m insiphy.cli inspect-aligners
 - `segment_conservation.tsv`
 - `segment_correspondence.tsv`
 - `progressive_correspondence.tsv`
+- `hsg_phylogenetic_coverage.tsv`
 - `transcript_paths.tsv`
 - `intron_sites.tsv`
 - `copy_relationships.tsv`
@@ -123,16 +126,21 @@ one-rate CTMC/Mk model on the species tree, including likelihoods, LRT statistic
 p value, BH q value, fitted rate, AIC and BIC. `hypothesis_bootstrap.tsv`
 contains empirical p values when bootstrap is requested.
 `branch_history_posteriors.tsv` contains stochastic-map summaries for event
-placement along branches. `event_support_summary.tsv` combines these statistics
-into biological event classes and support tiers.
+placement along branches. `candidate_structural_events.tsv` and
+`event_support_summary.tsv` report `structural_pattern`,
+`mechanism_hypothesis` and `call_scope`, so core structural events,
+copy-context evidence and ambiguous paralogous-similarity evidence remain
+separable.
 
 Visualization outputs:
 
 - `intragenic_synteny.svg`: gene-internal segment structure by species/copy.
-  Homologous segment groups are encoded with texture, line style and labels;
-  color is auxiliary and colorblind-friendly.
+  Homologous segment groups are encoded with one selected mode. The default is
+  texture, line style and labels; `--hsg-encoding color` switches to color.
 - `phylogenetic_event_map.svg`: species tree with structural-event markers and
   support summaries.
+- `integrated_phylo_synteny.svg`: species tree and gene-internal synteny tracks
+  in one figure.
 - `visualization_manifest.tsv`: figure inventory.
 
 ## Documentation
