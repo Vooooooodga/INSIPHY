@@ -43,9 +43,9 @@ def evidence_promotes_element(row):
     completion = row.get("completion_call", "")
     inferred_role = row.get("inferred_role", "")
     return (
-        status in HIDDEN_EVIDENCE_STATUS
-        or completion in HIDDEN_COMPLETION_CALLS
-        or inferred_role in EXON_LIKE_ROLES
+        inferred_role in EXON_LIKE_ROLES
+        or (completion in HIDDEN_COMPLETION_CALLS and inferred_role in EXON_LIKE_ROLES)
+        or (status in HIDDEN_EVIDENCE_STATUS and inferred_role in EXON_LIKE_ROLES)
     )
 
 

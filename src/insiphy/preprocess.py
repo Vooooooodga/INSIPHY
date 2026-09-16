@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import math
+import csv
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from itertools import islice
 from pathlib import Path
 
-from .alignment import available_alignment_backends, global_alignment_stats, phase_compatibility, splice_motif_score
-from .io import open_text, parse_fasta, read_fasta_record, read_tsv, to_float, write_tsv
+from .alignment import available_alignment_backends, local_alignment_stats, overlap_alignment_stats, phase_compatibility, splice_motif_score
+from .io import fasta_record_length, open_text, parse_fasta, read_fasta_interval, read_tsv, to_float, write_tsv
 
 
 SEGMENT_FIELDS = [
@@ -87,6 +89,23 @@ INTRON_SITE_FIELDS = [
     "splice_motif_score",
 ]
 
+GENE_LOCUS_FIELDS = [
+    "species",
+    "gene_copy_id",
+    "contig",
+    "strand",
+    "annotation_start",
+    "annotation_end",
+    "linked_start",
+    "linked_end",
+    "search_start",
+    "search_end",
+    "contig_length",
+    "genome_fasta",
+    "max_extension",
+    "range_status",
+]
+
 
 def parse_attributes(raw):
     attrs = {}
@@ -155,8 +174,28 @@ def read_annotation(path):
     return list(iter_annotation(path))
 
 
-def read_annotation_for_gene(path, gene_id):
-    """Collect one gene hierarchy with two streaming passes over GFF/GTF."""
+def _annotation_row_key(row):
+    return (
+        row.get("seqid", ""),
+        row.get("type", ""),
+        int(row.get("start", 0)),
+        int(row.get("end", 0)),
+        row.get("strand", "."),
+        row.get("id", ""),
+        row.get("parent", ""),
+    )
+
+
+def _copy_annotation_row(row):
+    copied = dict(row)
+    copied["attrs"] = dict(row.get("attrs", {}))
+    copied["parents"] = list(row.get("parents", []))
+    return copied
+
+
+@lru_cache(maxsize=128)
+def _read_annotation_for_gene_cached(path, gene_id):
+    """Collect one gene hierarchy with bounded per-gene GFF/GTF caching."""
     requested = {gene_id}
     gene = None
     matching_children = []
@@ -173,11 +212,66 @@ def read_annotation_for_gene(path, gene_id):
         gene, gene_ids = locate_gene(matching_children, gene_id)
     else:
         gene_ids = requested | feature_tokens(gene)
+    gene_ids = set(gene_ids)
+
+    linked = {}
+    link_ids = set(gene_ids)
+    if gene:
+        linked[_annotation_row_key(gene)] = gene
+        link_ids |= feature_tokens(gene)
+    for row in matching_children:
+        if row["seqid"] == gene["seqid"]:
+            linked[_annotation_row_key(row)] = row
+            link_ids |= feature_tokens(row)
+
+    changed = True
+    while changed:
+        changed = False
+        for row in iter_annotation(path):
+            if row["seqid"] != gene["seqid"]:
+                continue
+            parents = set(row.get("parents", []))
+            if not (parents & link_ids or feature_matches_gene(row, gene_ids)):
+                continue
+            key = _annotation_row_key(row)
+            if key not in linked:
+                linked[key] = row
+                changed = True
+            before = len(link_ids)
+            link_ids |= feature_tokens(row)
+            if len(link_ids) != before:
+                changed = True
+
+    if not linked:
+        linked[_annotation_row_key(gene)] = gene
+    linked_start = min(row["start"] for row in linked.values())
+    linked_end = max(row["end"] for row in linked.values())
     region_rows = [
         row for row in iter_annotation(path)
-        if row["seqid"] == gene["seqid"] and row["start"] <= gene["end"] and row["end"] >= gene["start"]
+        if row["seqid"] == gene["seqid"] and row["start"] <= linked_end and row["end"] >= linked_start
     ]
-    return region_rows, gene, set(gene_ids)
+    for row in linked.values():
+        region_rows.append(row)
+    deduped = {}
+    for row in region_rows:
+        deduped[_annotation_row_key(row)] = row
+    bounds = {
+        "annotation_start": gene["start"],
+        "annotation_end": gene["end"],
+        "linked_start": linked_start,
+        "linked_end": linked_end,
+    }
+    return tuple(deduped.values()), gene, frozenset(gene_ids | link_ids), bounds
+
+
+def read_annotation_for_gene(path, gene_id):
+    rows, gene, gene_ids, bounds = _read_annotation_for_gene_cached(str(Path(path)), gene_id)
+    return (
+        [_copy_annotation_row(row) for row in rows],
+        _copy_annotation_row(gene),
+        set(gene_ids),
+        dict(bounds),
+    )
 
 
 def feature_tokens(feature):
@@ -235,7 +329,17 @@ def sequence_slice(seqs, contig, start, end, strand):
     seq = seqs.get(contig, "")
     if not seq:
         return ""
-    sub = seq[start - 1 : end]
+    bounds = (seqs.get("__bounds__") or {}).get(contig)
+    if bounds:
+        lower, upper = bounds
+        if start < lower or end > upper:
+            raise SystemExit(f"requested interval {contig}:{start}-{end} outside loaded FASTA window {lower}-{upper}")
+        local_start = start - lower + 1
+        local_end = end - lower + 1
+    else:
+        local_start = start
+        local_end = end
+    sub = seq[local_start - 1 : local_end]
     if strand == "-":
         table = str.maketrans("ACGTNacgtn", "TGCANtgcan")
         sub = sub.translate(table)[::-1]
@@ -472,14 +576,46 @@ def extract_gene(
     canonical_rule="longest_cds",
     source_label="unknown_source",
     copy_role="candidate",
+    flank=1000,
+    max_extension=10000,
 ):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    features, gene, gene_ids = read_annotation_for_gene(annotation_path, gene_id)
-    seqs = {gene["seqid"]: read_fasta_record(genome_fasta, gene["seqid"])}
+    features, gene, gene_ids, annotation_bounds = read_annotation_for_gene(annotation_path, gene_id)
+    contig = gene["seqid"]
+    contig_length = fasta_record_length(str(Path(genome_fasta)), contig)
+    annotation_start = int(annotation_bounds["annotation_start"])
+    annotation_end = int(annotation_bounds["annotation_end"])
+    linked_start = int(annotation_bounds["linked_start"])
+    linked_end = int(annotation_bounds["linked_end"])
+    flank = int(flank or 0)
+    max_extension = int(max_extension or 0)
+    if flank < 0:
+        raise SystemExit("flank must be non-negative")
+    if max_extension < 0:
+        raise SystemExit("max_extension must be non-negative")
+    if flank > max_extension:
+        raise SystemExit("flank must be less than or equal to max_extension")
+    requested_start = min(linked_start, annotation_start - flank)
+    requested_end = max(linked_end, annotation_end + flank)
+    search_start = max(1, requested_start)
+    search_end = min(contig_length, requested_end)
+    if requested_start < 1 and requested_end > contig_length:
+        range_status = "both_truncated"
+    elif requested_start < 1:
+        range_status = "left_truncated"
+    elif requested_end > contig_length:
+        range_status = "right_truncated"
+    else:
+        range_status = "complete"
+    seqs = {
+        contig: read_fasta_interval(genome_fasta, contig, search_start, search_end),
+        "__bounds__": {contig: (search_start, search_end)},
+    }
+    annotation_gene = {**gene, "start": linked_start, "end": linked_end}
     gene_ids = set(gene_ids)
-    transcripts = transcript_features(features, gene, gene_ids)
-    features_by_tx = {tx["id"]: child_features_for_transcript(features, gene, gene_ids, tx) for tx in transcripts}
+    transcripts = transcript_features(features, annotation_gene, gene_ids)
+    features_by_tx = {tx["id"]: child_features_for_transcript(features, annotation_gene, gene_ids, tx) for tx in transcripts}
     selected = select_transcripts(transcripts, features_by_tx, transcript_policy, canonical_rule)
     if not selected or any(not features_by_tx.get(tx.get("id", "")) for tx in selected):
         raise SystemExit(
@@ -489,6 +625,7 @@ def extract_gene(
     rows = list(load_existing_segments(output_dir) if append else [])
     tx_path_rows = list(read_tsv(output_dir / "transcript_paths.tsv", optional=True) if append else [])
     intron_rows = list(read_tsv(output_dir / "intron_sites.tsv", optional=True) if append else [])
+    locus_rows = list(read_tsv(output_dir / "gene_loci.tsv", optional=True) if append else [])
 
     unique = {}
     tx_paths = []
@@ -496,8 +633,8 @@ def extract_gene(
     for tx in selected:
         tx_id = tx.get("id", "") or f"{gene_id}.tx"
         child_features = features_by_tx[tx_id]
-        introns = introns_from_path(child_features, gene, tx_id, seqs)
-        path_features = sorted(child_features + introns, key=lambda row: transcript_sort_key(row, gene["strand"]))
+        introns = introns_from_path(child_features, annotation_gene, tx_id, seqs)
+        path_features = sorted(child_features + introns, key=lambda row: transcript_sort_key(row, annotation_gene["strand"]))
         for rank, feat in enumerate(path_features, start=1):
             feat = dict(feat)
             feat["transcript_order"] = rank
@@ -614,12 +751,31 @@ def extract_gene(
     write_tsv(output_dir / "segment_occurrences.tsv", rows, SEGMENT_OUTPUT_FIELDS)
     write_tsv(output_dir / "transcript_paths.tsv", tx_path_rows, TRANSCRIPT_PATH_FIELDS)
     write_tsv(output_dir / "intron_sites.tsv", intron_rows, INTRON_SITE_FIELDS)
+    locus_rows.append(
+        {
+            "species": species,
+            "gene_copy_id": gene_copy_id,
+            "contig": contig,
+            "strand": gene["strand"],
+            "annotation_start": annotation_start,
+            "annotation_end": annotation_end,
+            "linked_start": linked_start,
+            "linked_end": linked_end,
+            "search_start": search_start,
+            "search_end": search_end,
+            "contig_length": contig_length,
+            "genome_fasta": str(genome_fasta),
+            "max_extension": max_extension,
+            "range_status": range_status,
+        }
+    )
+    write_tsv(output_dir / "gene_loci.tsv", locus_rows, GENE_LOCUS_FIELDS)
     locus_fasta = output_dir / "gene_loci.fasta"
     locus_mode = "a" if append and locus_fasta.exists() else "w"
     with locus_fasta.open(locus_mode) as handle:
         handle.write(
-            f">{species}|{gene_copy_id}|{gene['seqid']}:{gene['start']}-{gene['end']}:{gene['strand']}\n"
-            f"{sequence_slice(seqs, gene['seqid'], gene['start'], gene['end'], gene['strand'])}\n"
+            f">{species}|{gene_copy_id}|{contig}:{search_start}-{search_end}:{gene['strand']}\n"
+            f"{sequence_slice(seqs, contig, search_start, search_end, gene['strand'])}\n"
         )
     transcript_fasta = output_dir / "transcript_sequences.fasta"
     protein_fasta = output_dir / "protein_sequences.fasta"
@@ -628,7 +784,7 @@ def extract_gene(
     with transcript_fasta.open(sequence_mode) as tx_handle, protein_fasta.open(protein_mode) as protein_handle:
         for tx in selected:
             tx_id = tx.get("id", "") or f"{gene_id}.tx"
-            exons = sorted(features_by_tx[tx_id], key=lambda row: transcript_sort_key(row, gene["strand"]))
+            exons = sorted(features_by_tx[tx_id], key=lambda row: transcript_sort_key(row, annotation_gene["strand"]))
             transcript_sequence = "".join(
                 sequence_slice(seqs, exon["seqid"], exon["start"], exon["end"], exon["strand"])
                 for exon in exons
@@ -636,7 +792,7 @@ def extract_gene(
             cds_parts = []
             for exon in exons:
                 intervals = exon.get("cds_intervals", [])
-                intervals = sorted(intervals, reverse=gene["strand"] == "-")
+                intervals = sorted(intervals, reverse=annotation_gene["strand"] == "-")
                 cds_parts.extend(
                     sequence_slice(seqs, exon["seqid"], start, end, exon["strand"])
                     for start, end in intervals
@@ -863,16 +1019,69 @@ def cheap_match_evidence(left, right, context, alignment_backend="prefilter"):
         "size_ratio": size_ratio,
         "alignment_cigar": "NA",
         "alignment_backend": alignment_backend,
+        "alignment_mode": "none",
+        "alignment_meaning": "pair not aligned",
+        "alignment_requested_backend": "NA",
+        "alignment_strand": "NA",
+        "projected_reference_blocks": "NA",
         "total_score": total,
     }
 
 
-def match_evidence(left, right, seqs, context, aligner="auto", threads=1):
+def _alignment_blocks(aln):
+    blocks = getattr(aln, "aligned_blocks", None)
+    if blocks:
+        return [(int(qs), int(qe), int(ts), int(te)) for qs, qe, ts, te in blocks]
+    return []
+
+
+def _format_alignment_blocks(blocks):
+    if not blocks:
+        return "NA"
+    return ";".join(f"{qs}-{qe}:{ts}-{te}" for qs, qe, ts, te in blocks)
+
+
+def _mapped_genomic_interval(row, rel_start, rel_end):
+    if rel_start in {"NA", None, ""} or rel_end in {"NA", None, ""}:
+        return "NA", "NA", "NA"
+    rel_start = int(rel_start)
+    rel_end = int(rel_end)
+    if rel_end < rel_start:
+        return "NA", "NA", "NA"
+    start = int(row["start"])
+    end = int(row["end"])
+    if row.get("strand") == "-":
+        genomic_start = end - rel_end + 1
+        genomic_end = end - rel_start + 1
+    else:
+        genomic_start = start + rel_start - 1
+        genomic_end = start + rel_end - 1
+    genomic_start, genomic_end = min(genomic_start, genomic_end), max(genomic_start, genomic_end)
+    return genomic_start, genomic_end, genomic_end - genomic_start + 1
+
+
+def match_evidence(left, right, seqs, context, aligner="auto", threads=1, context_aligner="minimap2"):
     left_seq = seqs.get(left["occurrence_id"], "")
     right_seq = seqs.get(right["occurrence_id"], "")
-    aln = global_alignment_stats(left_seq, right_seq, backend=aligner, threads=threads)
+    exon_pair = left.get("role") in EXON_LIKE_ROLES and right.get("role") in EXON_LIKE_ROLES
+    requested_backend = aligner if exon_pair else context_aligner
+    # Keep left/query and right/target order for blocks, coverage, and genomic projection.
+    if exon_pair and aligner in {"mafft", "auto"}:
+        aln = overlap_alignment_stats(left_seq, right_seq, backend="mafft", threads=threads)
+    else:
+        if not exon_pair and context_aligner not in {"internal", "minimap2", "lastz"}:
+            raise ValueError("context_aligner must be internal, minimap2, or lastz")
+        aln = local_alignment_stats(left_seq, right_seq, backend=requested_backend, threads=threads)
     identity = aln.identity
-    coverage = aln.coverage
+    aligned_pairs = int(getattr(aln, "aligned_pairs", 0) or 0)
+    coverage = aligned_pairs / max(1, min(len(left_seq), len(right_seq)))
+    blocks = _alignment_blocks(aln)
+    qstart = min((block[0] for block in blocks), default="NA")
+    qend = max((block[1] for block in blocks), default="NA")
+    tstart = min((block[2] for block in blocks), default="NA")
+    tend = max((block[3] for block in blocks), default="NA")
+    q_gen_start, q_gen_end, q_gen_len = _mapped_genomic_interval(left, qstart, qend)
+    t_gen_start, t_gen_end, t_gen_len = _mapped_genomic_interval(right, tstart, tend)
     left_ctx = context.get(left["occurrence_id"], {})
     right_ctx = context.get(right["occurrence_id"], {})
     order = 1.0 - abs(to_float(left_ctx.get("scaled_index"), 0.5) - to_float(right_ctx.get("scaled_index"), 0.5))
@@ -880,7 +1089,8 @@ def match_evidence(left, right, seqs, context, aligner="auto", threads=1):
     right_context = context_score(left_ctx, right_ctx, "right")
     boundary = 0.5 * role_boundary_score(left, right) + 0.5 * phase_score(left, right)
     phase = phase_score(left, right)
-    strand = 1.0
+    alignment_strand = getattr(aln, "strand", "+")
+    strand = 1.0 if alignment_strand == "+" else 0.0
     splice = 1.0 - abs(to_float(left.get("splice_motif_score"), 0.5) - to_float(right.get("splice_motif_score"), 0.5))
     total = 0.34 * identity + 0.14 * coverage + 0.10 * left_context + 0.10 * right_context + 0.10 * boundary + 0.08 * phase + 0.06 * order + 0.04 * strand + 0.04 * splice
     return {
@@ -888,11 +1098,26 @@ def match_evidence(left, right, seqs, context, aligner="auto", threads=1):
         "coverage_score": coverage,
         "query_coverage": aln.query_coverage,
         "target_coverage": aln.target_coverage,
-        "aligned_pairs": aln.aligned_pairs,
-        "query_alignment_start": aln.query_start,
-        "query_alignment_end": aln.query_end,
-        "target_alignment_start": aln.target_start,
-        "target_alignment_end": aln.target_end,
+        "aligned_pairs": aligned_pairs,
+        "query_alignment_start": qstart,
+        "query_alignment_end": qend,
+        "target_alignment_start": tstart,
+        "target_alignment_end": tend,
+        "query_mapped_contig": left.get("contig", "NA"),
+        "query_mapped_start": q_gen_start,
+        "query_mapped_end": q_gen_end,
+        "query_mapped_strand": left.get("strand", "NA"),
+        "query_mapped_length": q_gen_len,
+        "subject_mapped_contig": right.get("contig", "NA"),
+        "subject_mapped_start": t_gen_start,
+        "subject_mapped_end": t_gen_end,
+        "subject_mapped_strand": right.get("strand", "NA"),
+        "subject_mapped_length": t_gen_len,
+        "alignment_strand": alignment_strand,
+        "projected_reference_occurrence_id": right["occurrence_id"],
+        "projected_reference_start": tstart,
+        "projected_reference_end": tend,
+        "projected_reference_blocks": _format_alignment_blocks(blocks),
         "left_context_score": left_context,
         "right_context_score": right_context,
         "boundary_score": boundary,
@@ -903,6 +1128,9 @@ def match_evidence(left, right, seqs, context, aligner="auto", threads=1):
         "size_ratio": min(segment_length(left), segment_length(right)) / max(segment_length(left), segment_length(right)),
         "alignment_cigar": aln.cigar,
         "alignment_backend": aln.backend,
+        "alignment_mode": aln.alignment_mode,
+        "alignment_meaning": aln.alignment_meaning,
+        "alignment_requested_backend": requested_backend,
         "total_score": total,
     }
 
@@ -930,9 +1158,6 @@ def roles_compatible(left, right):
 def sequence_supported_mapping(evidence, threshold):
     identity = evidence["alignment_score"]
     coverage = evidence["coverage_score"]
-    size_ratio = evidence["size_ratio"]
-    if size_ratio < 0.35:
-        return False
     if identity >= threshold and coverage >= 0.45:
         return True
     if identity >= threshold + 0.15 and coverage >= 0.30:
@@ -966,7 +1191,7 @@ def inferred_source_label(row, support):
     return ";".join(top) if top else "unknown_source"
 
 
-def graph_components(nodes, edges, occurrence_by_id=None, species_distances=None):
+def graph_components(nodes, edges, occurrence_by_id=None, species_distances=None, same_copy_compatible=None, cross_copy_compatible=None):
     if occurrence_by_id is None:
         import networkx as nx
         graph = nx.Graph()
@@ -976,6 +1201,8 @@ def graph_components(nodes, edges, occurrence_by_id=None, species_distances=None
     parent = {node: node for node in nodes}
     members = {node: {node} for node in nodes}
     direct = {frozenset((left, right)) for left, right, _score in edges}
+    same_copy_compatible = same_copy_compatible or set()
+    cross_copy_compatible = cross_copy_compatible or set()
 
     def find(node):
         while parent[node] != node:
@@ -989,10 +1216,12 @@ def graph_components(nodes, edges, occurrence_by_id=None, species_distances=None
                 left = occurrence_by_id.get(left_id, {})
                 right = occurrence_by_id.get(right_id, {})
                 if occurrence_copy_key(left) == occurrence_copy_key(right):
-                    nonoverlap = int(left.get("end", 0)) < int(right.get("start", 0)) or int(right.get("end", 0)) < int(left.get("start", 0))
-                    if not nonoverlap or left.get("role") not in EXON_LIKE_ROLES or right.get("role") not in EXON_LIKE_ROLES:
+                    if frozenset((left_id, right_id)) not in same_copy_compatible:
                         return False
-                elif frozenset((left_id, right_id)) not in direct:
+                elif (
+                    frozenset((left_id, right_id)) not in direct
+                    and frozenset((left_id, right_id)) not in cross_copy_compatible
+                ):
                     return False
         return True
 
@@ -1017,18 +1246,16 @@ def graph_components(nodes, edges, occurrence_by_id=None, species_distances=None
 def should_align_pair(left, right, seqs, min_size_ratio=0.25):
     if left["family_id"] != right["family_id"]:
         return False, "different_family"
-    if occurrence_copy_key(left) == occurrence_copy_key(right):
-        return False, "same_copy_excluded"
     left_role = left.get("role", "")
     right_role = right.get("role", "")
-    if left_role in NONCODING_ROLES and right_role in NONCODING_ROLES:
-        return False, "context_only_pair"
+    if occurrence_copy_key(left) == occurrence_copy_key(right):
+        return False, "same_copy_projection_only"
+    if left_role == "intron" and right_role == "intron":
+        return False, "intron_intron_skipped"
     size_ratio = min(segment_length(left), segment_length(right)) / max(segment_length(left), segment_length(right))
-    if size_ratio < min_size_ratio:
+    has_exon_like = left_role in EXON_LIKE_ROLES or right_role in EXON_LIKE_ROLES
+    if not has_exon_like and size_ratio < min_size_ratio:
         return False, "length_ratio_prefilter"
-    role_shift_pair = ({left_role, right_role} & EXON_LIKE_ROLES) and ({left_role, right_role} & NONCODING_ROLES)
-    if role_shift_pair and size_ratio < max(0.35, min_size_ratio):
-        return False, "role_shift_length_prefilter"
     if not seqs.get(left["occurrence_id"]) or not seqs.get(right["occurrence_id"]):
         return False, "missing_sequence"
     return True, "aligned_candidate"
@@ -1054,14 +1281,201 @@ def _species_tree_distances(path):
     return result
 
 
-def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=None, aligner="auto", threads=1, min_size_ratio=0.25, species_distances=None):
+MATCH_FIELDS = [
+    "match_id",
+    "query_occurrence_id",
+    "subject_occurrence_id",
+    "alignment_score",
+    "coverage_score",
+    "query_coverage",
+    "target_coverage",
+    "aligned_pairs",
+    "query_alignment_start",
+    "query_alignment_end",
+    "target_alignment_start",
+    "target_alignment_end",
+    "query_mapped_contig",
+    "query_mapped_start",
+    "query_mapped_end",
+    "query_mapped_strand",
+    "query_mapped_length",
+    "subject_mapped_contig",
+    "subject_mapped_start",
+    "subject_mapped_end",
+    "subject_mapped_strand",
+    "subject_mapped_length",
+    "alignment_strand",
+    "projected_reference_occurrence_id",
+    "projected_reference_start",
+    "projected_reference_end",
+    "projected_reference_blocks",
+    "left_context_score",
+    "right_context_score",
+    "boundary_score",
+    "phase_score",
+    "order_score",
+    "strand_score",
+    "splice_score",
+    "size_ratio",
+    "total_score",
+    "distance_class",
+    "threshold",
+    "alignment_cigar",
+    "alignment_backend",
+    "match_status",
+    "alignment_mode",
+    "alignment_meaning",
+    "alignment_requested_backend",
+]
+
+
+def _projection_interval(evidence, side):
+    if side == "query":
+        start = evidence.get("query_alignment_start", "NA")
+        end = evidence.get("query_alignment_end", "NA")
+    else:
+        start = evidence.get("target_alignment_start", "NA")
+        end = evidence.get("target_alignment_end", "NA")
+    if start in {"NA", None, ""} or end in {"NA", None, ""}:
+        return None
+    start, end = int(start), int(end)
+    if end < start:
+        return None
+    return start, end
+
+
+def _projection_record(evidence, side):
+    interval = _projection_interval(evidence, side)
+    if interval is None:
+        return None
+    return {
+        "interval": interval,
+        "strand": evidence.get("alignment_strand", "NA"),
+    }
+
+
+def _ordered_projection_compatible(left, right, left_ref_interval, right_ref_interval):
+    if not left_ref_interval or not right_ref_interval:
+        return False
+    left_ref_start, left_ref_end = left_ref_interval
+    right_ref_start, right_ref_end = right_ref_interval
+    if not _disjoint_reference_intervals(left_ref_interval, right_ref_interval):
+        return False
+    left_order = int(left.get("transcript_order", "0") or 0)
+    right_order = int(right.get("transcript_order", "0") or 0)
+    if left_order == right_order:
+        left_order = int(left.get("start", "0") or 0)
+        right_order = int(right.get("start", "0") or 0)
+    copy_order = -1 if left_order < right_order else 1
+    ref_order = -1 if left_ref_start < right_ref_start else 1
+    return copy_order == ref_order
+
+
+def _disjoint_reference_intervals(left_ref_interval, right_ref_interval):
+    if not left_ref_interval or not right_ref_interval:
+        return False
+    left_ref_start, left_ref_end = left_ref_interval
+    right_ref_start, right_ref_end = right_ref_interval
+    return left_ref_end < right_ref_start or right_ref_end < left_ref_start
+
+
+def _projection_compatibility(projection_by_occ_ref, occurrence_by_id):
+    same_copy_compatible = set()
+    cross_copy_compatible = set()
+    by_reference = defaultdict(list)
+    for (occ_id, ref_id), projection in projection_by_occ_ref.items():
+        if projection:
+            by_reference[ref_id].append((occ_id, projection))
+    for projected in by_reference.values():
+        for left_index, (left_id, left_projection) in enumerate(projected):
+            left = occurrence_by_id.get(left_id, {})
+            for right_id, right_projection in projected[left_index + 1 :]:
+                right = occurrence_by_id.get(right_id, {})
+                pair = frozenset((left_id, right_id))
+                if occurrence_copy_key(left) == occurrence_copy_key(right):
+                    if (
+                        left_projection.get("strand") == "+"
+                        and right_projection.get("strand") == "+"
+                        and _ordered_projection_compatible(
+                            left,
+                            right,
+                            left_projection["interval"],
+                            right_projection["interval"],
+                        )
+                    ):
+                        same_copy_compatible.add(pair)
+                elif _disjoint_reference_intervals(left_projection["interval"], right_projection["interval"]):
+                    cross_copy_compatible.add(pair)
+    return same_copy_compatible, cross_copy_compatible
+
+
+def _match_row(left, right, evidence, score, threshold, distance_class, status, match_index):
+    return {
+        "match_id": f"match_{match_index:05d}",
+        "query_occurrence_id": left["occurrence_id"],
+        "subject_occurrence_id": right["occurrence_id"],
+        "alignment_score": f"{evidence['alignment_score']:.6g}",
+        "coverage_score": f"{evidence['coverage_score']:.6g}",
+        "query_coverage": f"{evidence.get('query_coverage', 0.0):.6g}",
+        "target_coverage": f"{evidence.get('target_coverage', 0.0):.6g}",
+        "aligned_pairs": evidence.get("aligned_pairs", 0),
+        "query_alignment_start": evidence.get("query_alignment_start", "NA"),
+        "query_alignment_end": evidence.get("query_alignment_end", "NA"),
+        "target_alignment_start": evidence.get("target_alignment_start", "NA"),
+        "target_alignment_end": evidence.get("target_alignment_end", "NA"),
+        "query_mapped_contig": evidence.get("query_mapped_contig", "NA"),
+        "query_mapped_start": evidence.get("query_mapped_start", "NA"),
+        "query_mapped_end": evidence.get("query_mapped_end", "NA"),
+        "query_mapped_strand": evidence.get("query_mapped_strand", "NA"),
+        "query_mapped_length": evidence.get("query_mapped_length", "NA"),
+        "subject_mapped_contig": evidence.get("subject_mapped_contig", "NA"),
+        "subject_mapped_start": evidence.get("subject_mapped_start", "NA"),
+        "subject_mapped_end": evidence.get("subject_mapped_end", "NA"),
+        "subject_mapped_strand": evidence.get("subject_mapped_strand", "NA"),
+        "subject_mapped_length": evidence.get("subject_mapped_length", "NA"),
+        "alignment_strand": evidence.get("alignment_strand", "NA"),
+        "projected_reference_occurrence_id": evidence.get("projected_reference_occurrence_id", "NA"),
+        "projected_reference_start": evidence.get("projected_reference_start", "NA"),
+        "projected_reference_end": evidence.get("projected_reference_end", "NA"),
+        "projected_reference_blocks": evidence.get("projected_reference_blocks", "NA"),
+        "left_context_score": f"{evidence['left_context_score']:.6g}",
+        "right_context_score": f"{evidence['right_context_score']:.6g}",
+        "boundary_score": f"{evidence['boundary_score']:.6g}",
+        "phase_score": f"{evidence['phase_score']:.6g}",
+        "order_score": f"{evidence['order_score']:.6g}",
+        "strand_score": f"{evidence['strand_score']:.6g}",
+        "splice_score": f"{evidence['splice_score']:.6g}",
+        "size_ratio": f"{evidence['size_ratio']:.6g}",
+        "total_score": f"{score:.6g}",
+        "distance_class": distance_class,
+        "threshold": f"{threshold:.6g}",
+        "alignment_cigar": evidence["alignment_cigar"],
+        "alignment_backend": evidence["alignment_backend"],
+        "match_status": status,
+        "alignment_mode": evidence["alignment_mode"],
+        "alignment_meaning": evidence["alignment_meaning"],
+        "alignment_requested_backend": evidence["alignment_requested_backend"],
+    }
+
+
+def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=None, aligner="mafft", threads=1, min_size_ratio=0.25, species_distances=None, match_writer=None, context_aligner="minimap2"):
     context = copy_order_context(occurrences)
     distance_lookup = load_distance_table(distance_table)
     occurrence_by_id = {row["occurrence_id"]: row for row in occurrences}
     matches = []
     accepted_edges = []
+    projection_by_occ_ref = {}
     score_by_occ = defaultdict(list)
     source_support = defaultdict(lambda: defaultdict(float))
+
+    def emit_match(row):
+        if match_writer is not None:
+            match_writer(row)
+            if row.get("match_status") == "mapped":
+                matches.append(row)
+        else:
+            matches.append(row)
+
     def iter_pairs():
         index = 0
         by_family = defaultdict(list)
@@ -1070,6 +1484,10 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
         for family_rows in by_family.values():
             for left_index, left in enumerate(family_rows):
                 for right in family_rows[left_index + 1 :]:
+                    if occurrence_copy_key(left) == occurrence_copy_key(right):
+                        continue
+                    if left.get("role") == "intron" and right.get("role") == "intron":
+                        continue
                     yield index, left, right
                     index += 1
 
@@ -1077,7 +1495,7 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
         idx, left, right = item
         should_align, prefilter_status = should_align_pair(left, right, seqs, min_size_ratio)
         if should_align:
-            evidence = match_evidence(left, right, seqs, context, aligner=aligner, threads=1)
+            evidence = match_evidence(left, right, seqs, context, aligner=aligner, threads=1, context_aligner=context_aligner)
         else:
             evidence = cheap_match_evidence(left, right, context, alignment_backend=prefilter_status)
         return idx, left, right, evidence, prefilter_status
@@ -1101,15 +1519,17 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
         scored_pairs = map(score_pair, iter_pairs())
 
     try:
+        match_count = 0
         for _idx, left, right, evidence, prefilter_status in scored_pairs:
             threshold, distance_class = pair_threshold(left, right, identity_threshold, distance_lookup)
             score = evidence["total_score"]
-            same_copy = occurrence_copy_key(left) == occurrence_copy_key(right)
             compatible = roles_compatible(left, right)
             sequence_ok = sequence_supported_mapping(evidence, threshold)
-            mapped = (not same_copy) and compatible and sequence_ok and score >= threshold
+            mapped = compatible and sequence_ok and score >= threshold
             if mapped:
                 accepted_edges.append((left["occurrence_id"], right["occurrence_id"], score))
+                projection_by_occ_ref[(left["occurrence_id"], right["occurrence_id"])] = _projection_record(evidence, "target")
+                projection_by_occ_ref[(right["occurrence_id"], left["occurrence_id"])] = _projection_record(evidence, "query")
                 score_by_occ[left["occurrence_id"]].append(score)
                 score_by_occ[right["occurrence_id"]].append(score)
                 left_sources = known_source_labels(left)
@@ -1123,41 +1543,21 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
                 status = "mapped"
             else:
                 status = prefilter_status if prefilter_status != "aligned_candidate" else "low_similarity"
-            matches.append(
-                {
-                    "match_id": f"match_{len(matches) + 1:05d}",
-                    "query_occurrence_id": left["occurrence_id"],
-                    "subject_occurrence_id": right["occurrence_id"],
-                    "alignment_score": f"{evidence['alignment_score']:.6g}",
-                    "coverage_score": f"{evidence['coverage_score']:.6g}",
-                    "query_coverage": f"{evidence.get('query_coverage', 0.0):.6g}",
-                    "target_coverage": f"{evidence.get('target_coverage', 0.0):.6g}",
-                    "aligned_pairs": evidence.get("aligned_pairs", 0),
-                    "query_alignment_start": evidence.get("query_alignment_start", "NA"),
-                    "query_alignment_end": evidence.get("query_alignment_end", "NA"),
-                    "target_alignment_start": evidence.get("target_alignment_start", "NA"),
-                    "target_alignment_end": evidence.get("target_alignment_end", "NA"),
-                    "left_context_score": f"{evidence['left_context_score']:.6g}",
-                    "right_context_score": f"{evidence['right_context_score']:.6g}",
-                    "boundary_score": f"{evidence['boundary_score']:.6g}",
-                    "phase_score": f"{evidence['phase_score']:.6g}",
-                    "order_score": f"{evidence['order_score']:.6g}",
-                    "strand_score": f"{evidence['strand_score']:.6g}",
-                    "splice_score": f"{evidence['splice_score']:.6g}",
-                    "size_ratio": f"{evidence['size_ratio']:.6g}",
-                    "total_score": f"{score:.6g}",
-                    "distance_class": distance_class,
-                    "threshold": f"{threshold:.6g}",
-                    "alignment_cigar": evidence["alignment_cigar"],
-                    "alignment_backend": evidence["alignment_backend"],
-                    "match_status": status,
-                }
-            )
+            match_count += 1
+            emit_match(_match_row(left, right, evidence, score, threshold, distance_class, status, match_count))
     finally:
         if pool is not None:
             pool.shutdown(wait=True)
     nodes = [row["occurrence_id"] for row in occurrences]
-    components = graph_components(nodes, accepted_edges, occurrence_by_id, species_distances)
+    same_copy_compatible, cross_copy_compatible = _projection_compatibility(projection_by_occ_ref, occurrence_by_id)
+    components = graph_components(
+        nodes,
+        accepted_edges,
+        occurrence_by_id,
+        species_distances,
+        same_copy_compatible,
+        cross_copy_compatible,
+    )
     homology = []
     for idx, occ_ids in enumerate(sorted(components, key=lambda vals: vals[0]), start=1):
         component_id = f"HC_{idx:04d}"
@@ -1176,58 +1576,48 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
     return homology, matches
 
 
-def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_table=None, aligner="auto", threads=1, min_size_ratio=0.25):
+def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_table=None, aligner="mafft", threads=1, min_size_ratio=0.25, context_aligner="minimap2"):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir or input_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     occurrences = read_tsv(input_dir / "segment_occurrences.tsv", SEGMENT_FIELDS)
     seqs = parse_fasta(input_dir / "segment_sequences.fasta")
     species_distances = _species_tree_distances(input_dir / "species_tree.tsv")
-    homology, matches = cluster_segments(
-        occurrences, seqs, identity_threshold, distance_table, aligner=aligner,
-        threads=threads, min_size_ratio=min_size_ratio, species_distances=species_distances,
-    )
+    match_path = output_dir / "segment_matches.tsv"
+    with match_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, MATCH_FIELDS, delimiter="\t", lineterminator="\n")
+        writer.writeheader()
+        homology, matches = cluster_segments(
+            occurrences, seqs, identity_threshold, distance_table, aligner=aligner,
+            threads=threads, min_size_ratio=min_size_ratio, species_distances=species_distances,
+            match_writer=lambda row: writer.writerow({field: row.get(field, "NA") for field in MATCH_FIELDS}),
+            context_aligner=context_aligner,
+        )
     write_tsv(output_dir / "segment_homology.tsv", homology, ["homology_id", "occurrence_id", "support_type", "confidence", "source_label"])
-    match_fields = [
-        "match_id",
-        "query_occurrence_id",
-        "subject_occurrence_id",
-        "alignment_score",
-        "coverage_score",
-        "query_coverage",
-        "target_coverage",
-        "aligned_pairs",
-        "query_alignment_start",
-        "query_alignment_end",
-        "target_alignment_start",
-        "target_alignment_end",
-        "left_context_score",
-        "right_context_score",
-        "boundary_score",
-        "phase_score",
-        "order_score",
-        "strand_score",
-        "splice_score",
-        "size_ratio",
-        "total_score",
-        "distance_class",
-        "threshold",
-        "alignment_cigar",
-        "alignment_backend",
-        "match_status",
-    ]
-    write_tsv(output_dir / "segment_matches.tsv", matches, match_fields)
     backend_rows = []
     for row in available_alignment_backends():
+        selected_exon = row["aligner"] == aligner
+        selected_context = row["aligner"] == context_aligner
         backend_rows.append(
             {
                 **row,
-                "selected": int(row["aligner"] == aligner),
+                "selected": int(selected_exon or selected_context),
+                "selected_exon": int(selected_exon),
+                "selected_context": int(selected_context),
+                "alignment_mode": (
+                    "overlap_projection" if selected_exon and aligner in {"mafft", "auto"}
+                    else "local" if selected_exon or selected_context else "NA"
+                ),
                 "threads": threads,
                 "min_size_ratio": f"{min_size_ratio:.6g}",
+                "notes": (
+                    f"{row['notes']}; min_size_ratio is restricted to non-exon-like prefiltering"
+                    if selected_exon or selected_context
+                    else row["notes"]
+                ),
             }
         )
-    write_tsv(output_dir / "alignment_backend_report.tsv", backend_rows, ["aligner", "available", "selected", "threads", "min_size_ratio", "notes"])
+    write_tsv(output_dir / "alignment_backend_report.tsv", backend_rows, ["aligner", "available", "selected", "threads", "min_size_ratio", "notes", "selected_exon", "selected_context", "alignment_mode"])
     write_tsv(output_dir / "physical_adjacencies.tsv", make_adjacencies(occurrences), ["adjacency_id", "family_id", "species", "gene_copy_id", "left_occurrence_id", "right_occurrence_id", "adjacency_status"])
     write_tsv(output_dir / "copy_context.tsv", make_copy_context(occurrences), ["family_id", "species", "gene_copy_id", "copy_class", "copy_subclass", "copy_span"])
     write_tsv(output_dir / "copy_relationships.tsv", make_copy_relationships(occurrences), ["family_id", "species", "query_copy_id", "subject_copy_id", "relationship_class", "synteny_score", "distance_bp", "evidence"])

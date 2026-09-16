@@ -2,10 +2,11 @@
 
 ## 1. Analysis unit
 
-The formal v0.12 analysis accepts a single-copy ortholog set and a fixed rooted
+The formal v0.13 analysis accepts a single-copy ortholog set and a fixed rooted
 species tree. Gene-level homology is treated as known input. For each gene
-family and structural layer, homologous sites are conditionally independent
-replicates that share evolutionary parameters.
+family and structural layer, the optional likelihood analysis treats homologous
+sites as conditionally independent observations sharing evolutionary parameters.
+The default analysis localizes events using equal-cost parsimony.
 
 The observed tip state (x_{is}) for site (i) and species (s) is one of
 `0`, `1`, or `unknown`:
@@ -19,7 +20,28 @@ The observed tip state (x_{is}) for site (i) and species (s) is one of
 An absent state requires explicit sequence evidence. Missing coverage,
 ambiguous correspondence, and annotation uncertainty are coded as unknown.
 
-## 2. Continuous-time Markov model
+## Default qualitative reconstruction
+
+For each structural site, minimize the sum of state-change costs over the
+supplied rooted tree. Staying in the same state costs zero; either direction
+of change costs one. Unknown tips allow both states. Inside and outside
+minimum-cost messages identify all node states and branch endpoint pairs
+compatible with the global minimum. No arbitrary tie-breaking history is
+chosen. Pattern compression retains site identifiers and their missing masks.
+
+`required` means that every minimum-cost history has the same directed change
+on that branch; `possible` means that at least one minimum-cost history has
+that change. These labels express consequences of the parsimony criterion,
+not probabilities. Missing observations remain missing in the input table.
+Sites with no observed contrast are identified separately from fully observed
+conservation. Time and evolutionary rates are not estimated in this mode.
+
+One within-exon splice boundary encodes one split/fusion comparison. The
+presence, role and junction layers are not combined into a likelihood or an
+independent count of biological events. Remaining within-layer dependence is
+an assumption of the optional probability model.
+
+## 2. Optional continuous-time Markov model
 
 Each binary structural site evolves along the supplied tree under
 
@@ -58,10 +80,15 @@ parameters.
 
 ## 4. ER versus ARD
 
-The default nested comparison is:
+The optional `--model er-ard` nested comparison is:
 
-- H0, `ER`: (q_{01}=q_{10}=q), one free parameter;
-- H1, `ARD`: (q_{01}) and (q_{10}), two free parameters.
+- H0, `ER`: (q_{01}=q_{10}=q), one free rate parameter;
+- H1, `ARD`: (q_{01}) and (q_{10}), two free rate parameters.
+
+With the default estimated root frequency, each model has one additional
+parameter: two parameters in ER and three in ARD. The nested comparison still
+differs by one parameter. AIC and the reported parameter counts include the
+estimated root frequency.
 
 Rates are optimized on the log scale with bounded L-BFGS-B and several starting
 points. `model_fits.tsv` reports maximum log likelihood, AIC, convergence,
@@ -104,8 +131,9 @@ ln P(x_i | at least one state 1) =
 ln P(x_i) - ln(1 - P(all 0)).
 ```
 
-`--ascertainment complete-universe` is available only for an externally
-defined candidate universe that also contains meaningful all-zero sites.
+`--ascertainment complete-universe` requires an externally defined
+`structural_site_universe.tsv` containing meaningful candidate sites. Unobserved
+species are not assigned zero by membership in that catalogue.
 
 `--ascertainment variable-only` applies a Lewis-style Mkv correction:
 
@@ -114,9 +142,10 @@ ln P(x_i | variable) =
 ln P(x_i) - ln(1 - P(all 0) - P(all 1)).
 ```
 
-Every included site must vary among its observed terminal states. This option
-is appropriate only when the data construction deliberately excluded
-invariant sites.
+Every included site must vary among its observed terminal states. For every
+mode, the inclusion rule and its likelihood normalizer use exactly the same
+set of observed tips. This treats missingness as a fixed observation mask;
+it does not model state-dependent annotation or assembly errors.
 
 ## 7. Node and branch posteriors
 
@@ -140,9 +169,12 @@ endpoints. It can exceed the endpoint-change probability because an even
 number of hidden transitions may return to the starting state.
 
 `structural_changes.tsv` gives a compact branch/site view and retains both
-directions. Profile-likelihood endpoint fits provide a deterministic
-sensitivity range for node and branch probabilities. No categorical historical
-direction is called automatically.
+directions. These probabilities are conditional on the fitted parameter set.
+Joint parameter sensitivity is currently not estimated; range columns are
+`NA` and labelled `sensitivity_not_estimated`. Separate one-dimensional
+profile endpoints are not presented as a joint confidence region. Profiles
+that reach the numerical search bounds are labelled range-limited, and
+optimization failures remain distinguishable from wide statistical intervals.
 
 ## 8. Multiple testing
 
@@ -169,13 +201,19 @@ The model conditions on:
 - the inferred exon correspondence;
 - the structural state coding.
 
-Uncertainty in gene orthology and tree topology is not integrated in v0.12.
+Uncertainty in gene orthology and tree topology is not integrated in v0.13.
 Site independence is an approximation because neighboring exon and junction
 states can be biologically coupled. A small number of exons gives wide
 likelihood intervals and limited LRT power. These limitations should be
 reported directly in gene-level analyses.
 
 ## 11. Relation to established phylogenetic statistics
+
+The default minimum-change reconstruction uses a Sankoff-style cost recursion
+on a fixed tree, with outside costs retaining all globally optimal branch
+endpoint pairs. The classical fixed-tree minimum-cost formulation is described
+by [Sankoff (1975)](https://epubs.siam.org/doi/10.1137/0128004). INSIPHY applies
+this framework to observed gene-structure states and does not search for a tree.
 
 The implementation follows the likelihood logic emphasized in the PAML manual:
 define explicit null and alternative models, estimate shared parameters by

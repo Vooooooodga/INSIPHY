@@ -178,11 +178,14 @@ def build_case(
     species_tree=None,
     transcript_policy="canonical",
     canonical_rule="longest_cds",
-    aligner="auto",
+    aligner="mafft",
     threads=1,
     min_size_ratio=0.25,
     copy_tree=None,
     gene_tree=None,
+    flank=1000,
+    max_extension=10000,
+    context_aligner="minimap2",
 ):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -210,6 +213,8 @@ def build_case(
             canonical_rule=canonical_rule,
             source_label=infer_manifest_source_label(row),
             copy_role=infer_manifest_copy_role(row),
+            flank=flank,
+            max_extension=max_extension,
         )
         appended = True
         after = len(read_tsv(output_dir / "segment_occurrences.tsv", optional=True))
@@ -228,7 +233,7 @@ def build_case(
     copy_optional_tree(copy_tree, output_dir, "copy_tree.tsv")
     copy_optional_tree(gene_tree, output_dir, "gene_tree.tsv")
     if appended:
-        derive_tables(output_dir, output_dir, identity_threshold, aligner=aligner, threads=threads, min_size_ratio=min_size_ratio)
+        derive_tables(output_dir, output_dir, identity_threshold, aligner=aligner, threads=threads, min_size_ratio=min_size_ratio, context_aligner=context_aligner)
     write_tsv(output_dir / "case_build_report.tsv", report, ["case_id", "species", "gene_id", "gene_copy_id", "status", "segment_count", "message"])
     return report
 

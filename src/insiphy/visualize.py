@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import textwrap
 from collections import defaultdict
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -51,11 +52,16 @@ def structural_tree_rows(input_dir, result_dir):
 
 def phylogenetic_change_rows(result_dir):
     result_dir = Path(result_dir)
+    if (result_dir / "branch_structural_events.tsv").exists():
+        return [
+            row for row in read_tsv(result_dir / "branch_structural_events.tsv")
+            if row.get("placement_status") in {"required", "possible"}
+        ]
     rows = read_tsv(result_dir / "structural_changes.tsv", optional=True)
     if rows:
         return sorted(
             rows,
-            key=lambda row: float(row.get("endpoint_change_probability", "0") or 0),
+            key=change_probability,
             reverse=True,
         )
     return read_tsv(result_dir / "event_support_summary.tsv", optional=True)
@@ -75,7 +81,28 @@ def change_probability(row):
 
 
 def change_label(row):
-    return row.get("structural_change_type") or row.get("event_class") or "structural_change"
+    return row.get("event_type") or row.get("structural_change_type") or row.get("event_class") or "structural_change"
+
+
+def change_priority(row):
+    return ({"required": 2, "possible": 1}.get(row.get("placement_status"), 0), change_probability(row))
+
+
+def change_symbol(row, x, y, radius=7.0):
+    status = row.get("placement_status")
+    color = "#D55E00" if any(word in change_label(row) for word in ("loss", "fusion")) else "#0072B2"
+    if status:
+        fill, opacity = (color if status == "required" else "white"), 1.0
+    else:
+        opacity = change_probability(row)
+        radius *= math.sqrt(opacity)
+        fill = color
+    title = f"{row.get('site_id', '')}: {change_label(row)}; {status or 'conditional probability'}"
+    return (
+        f'<circle cx="{x:.2f}" cy="{y:.2f}" r="{radius:.2f}" fill="{fill}" '
+        f'fill-opacity="{opacity:.3f}" stroke="{color}" stroke-width="1.3">'
+        f'<title>{escape(title)}</title></circle>'
+    )
 
 
 def tip_label_for_group(tree, species, copy):
@@ -326,8 +353,8 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
         scope = row.get("branch_scope", "")
         if "->" in scope and row.get("call_scope", "core_structural_event") == "core_structural_event":
             branch_events[scope].append(row)
-    height = max(y.values() or [80]) + 90
-    width = 1100
+    height = max(max(y.values() or [80]) + 90, 100 + min(12, len(events)) * 54)
+    width = 1250
     body = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         '<rect width="100%" height="100%" fill="white"/>',
@@ -340,17 +367,10 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
         scope = f"{tree.label[parent]}->{tree.label[child]}"
         evs = branch_events.get(scope, [])
         if evs:
-            strongest = max(evs, key=change_probability)
-            probability = change_probability(strongest)
+            strongest = max(evs, key=change_priority)
             cx = (x[parent] + x[child]) / 2
             cy = y[child]
-            radius = 8.0 * math.sqrt(max(0.0, probability))
-            opacity = probability
-            fill = "#0072B2"
-            body.append(
-                f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{radius:.2f}" fill="{fill}" '
-                f'fill-opacity="{opacity:.3f}" stroke="#111" stroke-width="0.7"/>'
-            )
+            body.append(change_symbol(strongest, cx, cy, 8.0))
     for node in tree.preorder():
         if node in tree.leaves:
             body.append(svg_text(x[node] + 8, y[node] + 4, tree.label[node], 11))
@@ -359,16 +379,16 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
             if node != tree.root:
                 body.append(svg_text(x[node] + 6, y[node] - 5, tree.label[node], 9, fill="#555"))
     aside_x = 720
-    body.append(svg_text(aside_x, 58, "Branch change probabilities", 12, weight="bold"))
-    for idx, row in enumerate(sorted(events, key=change_probability, reverse=True)[:12]):
-        y0 = 80 + idx * 18
-        probability = change_probability(row)
-        fill = "#0072B2"
-        body.append(
-            f'<circle cx="{aside_x + 5}" cy="{y0 - 5}" r="5" fill="{fill}" '
-            f'fill-opacity="{probability:.3f}" stroke="#111" stroke-opacity="{probability:.3f}" stroke-width="0.7"/>'
-        )
-        body.append(svg_text(aside_x + 16, y0, f"{change_label(row)} | {row.get('branch_scope')} | P={probability:.3f}", 9))
+    parsimony = (Path(result_dir) / "branch_structural_events.tsv").exists()
+    title = "Most-parsimonious branch placements" if parsimony else "Conditional branch probabilities"
+    body.append(svg_text(aside_x, 58, title, 12, weight="bold"))
+    for idx, row in enumerate(sorted(events, key=change_priority, reverse=True)[:12]):
+        y0 = 80 + idx * 54
+        body.append(change_symbol(row, aside_x + 5, y0 - 5, 5.0))
+        support = row.get("placement_status") or f"Pr={change_probability(row):.3f}"
+        body.append(svg_text(aside_x + 16, y0, f"{row.get('site_id', '')} | {change_label(row)} | {support}", 9))
+        for line_number, line in enumerate(textwrap.wrap(row.get("branch_scope", ""), width=78)):
+            body.append(svg_text(aside_x + 16, y0 + 13 * (line_number + 1), line, 9, fill="#555"))
     body.append("</svg>")
     path = output_dir / "phylogenetic_event_map.svg"
     path.write_text("\n".join(body))
@@ -448,16 +468,10 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, corresponde
         scope = f"{tree.label[parent]}->{tree.label[child]}"
         evs = branch_events.get(scope, [])
         if evs:
-            strongest = max(evs, key=change_probability)
-            probability = change_probability(strongest)
+            strongest = max(evs, key=change_priority)
             cx = (node_x[parent] + node_x[child]) / 2
             cy = node_y[child]
-            fill = "#D55E00" if "loss" in change_label(strongest) or "fusion" in change_label(strongest) else "#0072B2"
-            radius = 7.0 * math.sqrt(max(0.0, probability))
-            body.append(
-                f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{radius:.2f}" fill="{fill}" '
-                f'fill-opacity="{probability:.3f}" stroke="#111" stroke-opacity="{probability:.3f}" stroke-width="0.7"/>'
-            )
+            body.append(change_symbol(strongest, cx, cy))
     for leaf in tree.leaves:
         body.append(svg_text(node_x[leaf] + 6, node_y[leaf] + 4, tree.label[leaf], 10))
     for node in tree.preorder():
@@ -501,7 +515,12 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, corresponde
             draw_homology_connector(body, left_box, right_box, styles.get(element_id, {}))
     for args in pending_boxes:
         draw_segment_box(body, *args)
-    body.append(svg_text(24, height - 32, "Branch symbols show conditional transition probability; links mark homologous exons; introns are gray context.", 10, fill="#555"))
+    legend = (
+        "Filled: required in all minimum-change histories; open: possible in some; links: homologous exons."
+        if (Path(result_dir) / "branch_structural_events.tsv").exists()
+        else "Branch symbols: conditional transition probability; links: homologous exons; introns: gray context."
+    )
+    body.append(svg_text(24, height - 32, legend, 10, fill="#555"))
     body.append("</svg>")
     path.write_text("\n".join(body))
     return path

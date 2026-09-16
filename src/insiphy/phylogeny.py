@@ -711,7 +711,7 @@ def infer_phylogeny(
     seed=7,
     foreground_branches=None,
     analysis_scope="single-copy",
-    model="er-ard",
+    model="parsimony",
     branch_length_mode="supplied",
     ascertainment="observed-at-least-one",
     threads=1,
@@ -721,13 +721,17 @@ def infer_phylogeny(
     if analysis_scope == "single-copy":
         if bootstrap_replicates or stochastic_maps:
             raise SystemExit(
-                "single-copy v0.12 uses analytic likelihood and empirical-Bayes probability outputs; "
+                "single-copy analysis uses parsimony or analytic likelihood; "
                 "--bootstrap-replicates and --stochastic-maps must be 0"
             )
         if model != "foreground" and foreground_branches:
             raise SystemExit("--foreground-branches requires --model foreground")
         if int(threads) < 1:
             raise SystemExit("--threads must be at least 1")
+        if model == "parsimony":
+            from .parsimony import infer_single_copy_parsimony
+
+            return infer_single_copy_parsimony(input_dir, output_dir, threads=threads)
         from .structural_phylogeny import infer_single_copy_phylogeny
 
         return infer_single_copy_phylogeny(

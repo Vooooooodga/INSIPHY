@@ -10,23 +10,15 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
-from scipy.integrate import quad
 from scipy.linalg import expm
 from scipy.optimize import brentq, minimize
 from scipy.stats import chi2
 
-from .alignment import AlignmentBackendError, local_alignment_stats
-from .io import norm_state, parse_fasta, read_tsv, write_tsv
+from .io import read_tsv, write_tsv
+from .structural_sites import build_structural_site_matrix, _single_copy_families
 from .tree import SpeciesTree
 
 
-EXONIC_ROLES = {"CDS", "exon", "UTR", "noncoding_exon"}
-EXON_COMPLETION_CALLS = {
-    "hidden_segment_candidate",
-    "shifted_splice_site_candidate",
-    "joined_exon_candidate",
-    "hidden_segment_with_frame_disruption",
-}
 RATE_MIN = 1e-8
 RATE_MAX = 100.0
 MULTIPLIER_MIN = 1e-3
@@ -63,334 +55,22 @@ def _validated_tree_rows(path, branch_length_mode):
     return out
 
 
-def _single_copy_families(occurrences):
-    copies = defaultdict(set)
-    species_by_family = defaultdict(set)
-    for row in occurrences:
-        key = (row.get("family_id", "NA"), row.get("species", "NA"))
-        copies[key].add(row.get("gene_copy_id", "NA"))
-        species_by_family[key[0]].add(key[1])
-    excluded = []
-    valid = set(species_by_family)
-    for (family, species), gene_copies in sorted(copies.items()):
-        if len(gene_copies) > 1:
-            valid.discard(family)
-            excluded.append(
-                {
-                    "family_id": family,
-                    "species": species,
-                    "copy_count": len(gene_copies),
-                    "gene_copy_ids": ";".join(sorted(gene_copies)),
-                    "reason": "multiple_gene_copies_in_single_copy_mode",
-                }
-            )
-    return valid, species_by_family, excluded
-
-
-def _element_site_rows(
-    occurrences,
-    element_rows,
-    completion_rows,
-    valid_families,
-    species_by_family,
-):
-    occ_by_id = {row["occurrence_id"]: row for row in occurrences}
-    mapped = defaultdict(lambda: defaultdict(list))
-    family_by_element = {}
-    element_by_homology = {}
-    for row in element_rows:
-        if row.get("element_class") != "exon_like":
-            continue
-        occ = occ_by_id.get(row.get("occurrence_id", ""))
-        if not occ or occ.get("family_id") not in valid_families:
-            continue
-        family = occ["family_id"]
-        element = row["element_id"]
-        family_by_element[element] = family
-        element_by_homology[row.get("homology_id", "")] = element
-        mapped[element][occ["species"]].append((occ, row))
-
-    completion_by_element = defaultdict(lambda: defaultdict(list))
-    for row in completion_rows:
-        element = element_by_homology.get(row.get("homology_id", ""))
-        family = row.get("family_id")
-        species = row.get("species")
-        if element and family in valid_families and species:
-            completion_by_element[element][species].append(row)
-
-    rows = []
-    for element, family in sorted(family_by_element.items()):
-        for species in sorted(species_by_family[family]):
-            observations = mapped[element].get(species, [])
-            presence_states = set()
-            presence_evidence = set()
-            states = set()
-            evidence = set()
-            for occ, membership in observations:
-                if membership.get("membership_call", "core_member") != "core_member":
-                    presence_evidence.add("ambiguous_correspondence")
-                    evidence.add("ambiguous_correspondence")
-                    continue
-                presence = norm_state(occ.get("presence_status"))
-                if presence == "unknown":
-                    presence_evidence.add("uncertain_sequence_or_annotation")
-                    evidence.add("uncertain_sequence_or_annotation")
-                    continue
-                presence_states.add(presence)
-                presence_evidence.add(
-                    "homologous_sequence_observed" if presence == "present" else "explicit_sequence_absence"
-                )
-                if presence == "absent":
-                    continue
-                role = occ.get("role", "unknown")
-                completion = [
-                    row
-                    for row in completion_by_element[element].get(species, [])
-                    if row.get("gene_copy_id") == occ.get("gene_copy_id")
-                ]
-                completed_exon = any(
-                    row.get("completion_call") in EXON_COMPLETION_CALLS
-                    and row.get("inferred_role") in EXONIC_ROLES
-                    for row in completion
-                )
-                if completed_exon:
-                    states.add("exonic")
-                    evidence.add("sequence_supported_exon_completion")
-                else:
-                    states.add("exonic" if role in EXONIC_ROLES else "not_exonic")
-                    evidence.add("annotated_exon" if role in EXONIC_ROLES else "homologous_non_exonic_sequence")
-            for completion in completion_by_element[element].get(species, []):
-                call = completion.get("completion_call")
-                if call == "supports_true_absence":
-                    presence_states.add("absent")
-                    presence_evidence.add("sequence_supported_true_absence")
-                elif call in EXON_COMPLETION_CALLS and completion.get("inferred_role") in EXONIC_ROLES:
-                    presence_states.add("present")
-                    presence_evidence.add("sequence_supported_hidden_exon")
-                    states.add("exonic")
-                    evidence.add("sequence_supported_exon_completion")
-            presence_state = next(iter(presence_states)) if len(presence_states) == 1 else "unknown"
-            if len(presence_states) > 1:
-                presence_evidence.add("conflicting_presence_states")
-            rows.append(
-                {
-                    "family_id": family,
-                    "layer": "exon_presence",
-                    "site_id": element,
-                    "species": species,
-                    "state": presence_state,
-                    "state_0": "absent",
-                    "state_1": "present",
-                    "evidence": ";".join(sorted(presence_evidence)) or "no_observation",
-                }
-            )
-            state = next(iter(states)) if len(states) == 1 else "unknown"
-            if len(states) > 1:
-                evidence.add("conflicting_transcript_states")
-            rows.append(
-                {
-                    "family_id": family,
-                    "layer": "exon_role",
-                    "site_id": element,
-                    "species": species,
-                    "state": state,
-                    "state_0": "not_exonic",
-                    "state_1": "exonic",
-                    "evidence": ";".join(sorted(evidence)) or "no_observation",
-                }
-            )
-    return rows
-
-
-def _junction_site_rows(input_dir, output_dir, occurrences, element_rows, valid_families, species_by_family):
-    paths = read_tsv(Path(input_dir) / "transcript_paths.tsv", optional=True)
-    if not paths:
-        return []
-    occ_by_id = {row["occurrence_id"]: row for row in occurrences}
-    sequences = parse_fasta(Path(input_dir) / "segment_sequences.fasta")
-    elements_by_occ = defaultdict(list)
-    for row in element_rows:
-        if row.get("element_class") == "exon_like" and row.get("membership_call", "core_member") == "core_member":
-            elements_by_occ[row["occurrence_id"]].append(row["element_id"])
-
-    path_groups = defaultdict(list)
-    for row in paths:
-        occ = occ_by_id.get(row.get("occurrence_id", ""))
-        if not occ or occ.get("family_id") not in valid_families:
-            continue
-        key = (occ["family_id"], occ["species"], occ["gene_copy_id"], row.get("transcript_id", "NA"))
-        path_groups[key].append(row)
-
-    observations = defaultdict(lambda: defaultdict(set))
-    evidence = defaultdict(lambda: defaultdict(set))
-    family_by_site = {}
-    element_counts = defaultdict(lambda: defaultdict(list))
-    boundary_rows = []
-    reference_by_element = {}
-    for row in element_rows:
-        occurrence_id = row.get("occurrence_id", "")
-        sequence = sequences.get(occurrence_id, "")
-        element = row.get("element_id", "")
-        if sequence and (element not in reference_by_element or len(sequence) > len(reference_by_element[element][1])):
-            reference_by_element[element] = (occurrence_id, sequence)
-    canonical_positions = defaultdict(list)
-
-    def boundary_site(family, element, left_occurrence, right_occurrence):
-        reference_id, reference = reference_by_element.get(element, ("NA", ""))
-        left_sequence = sequences.get(left_occurrence, "")
-        right_sequence = sequences.get(right_occurrence, "")
-        method = "relative_exon_coordinate"
-        if reference and left_sequence and right_sequence:
-            try:
-                left_alignment = local_alignment_stats(left_sequence, reference)
-                right_alignment = local_alignment_stats(right_sequence, reference)
-                coordinate = int(round((left_alignment.target_end + right_alignment.target_start) / 2))
-                method = "projected_sequence_alignment_coordinate"
-            except AlignmentBackendError:
-                coordinate = int(round(1000 * len(left_sequence) / max(1, len(left_sequence) + len(right_sequence))))
-        else:
-            left_length = max(1, int(occ_by_id.get(left_occurrence, {}).get("end", 0)) - int(occ_by_id.get(left_occurrence, {}).get("start", 0)) + 1)
-            right_length = max(1, int(occ_by_id.get(right_occurrence, {}).get("end", 0)) - int(occ_by_id.get(right_occurrence, {}).get("start", 0)) + 1)
-            coordinate = int(round(1000 * left_length / (left_length + right_length)))
-        tolerance = max(3, int(round(0.05 * max(1, len(reference))))) if reference else 25
-        positions = canonical_positions[(family, element)]
-        canonical = next((value for value in positions if abs(value - coordinate) <= tolerance), None)
-        if canonical is None:
-            canonical = coordinate
-            positions.append(canonical)
-        return f"JG_{element}_ALN_{canonical}", coordinate, reference_id, method
-    for (family, species, _copy, _transcript), path_rows in sorted(path_groups.items()):
-        path_rows.sort(key=lambda row: int(row.get("path_rank", "0")))
-        previous = None
-        previous_occurrence = None
-        intron_between = False
-        path_elements = []
-        for row in path_rows:
-            occ_id = row.get("occurrence_id", "")
-            role = occ_by_id.get(occ_id, {}).get("role", row.get("role", "unknown"))
-            if role == "intron":
-                if previous is not None:
-                    intron_between = True
-                continue
-            current_elements = sorted(set(elements_by_occ.get(occ_id, [])))
-            if not current_elements:
-                previous = None
-                previous_occurrence = None
-                intron_between = False
-                continue
-            current = current_elements[0]
-            path_elements.append(current)
-            if previous is not None:
-                if previous == current:
-                    site_id, coordinate, reference_id, method = boundary_site(
-                        family, current, previous_occurrence, occ_id
-                    )
-                    boundary_rows.append(
-                        {
-                            "family_id": family,
-                            "species": species,
-                            "gene_copy_id": _copy,
-                            "transcript_id": _transcript,
-                            "site_id": site_id,
-                            "element_id": current,
-                            "projected_alignment_coordinate": coordinate,
-                            "reference_occurrence_id": reference_id,
-                            "projection_method": method,
-                            "left_occurrence_id": previous_occurrence,
-                            "right_occurrence_id": occ_id,
-                        }
-                    )
-                else:
-                    site_id = f"JG_{previous}__{current}"
-                family_by_site[site_id] = family
-                observations[site_id][species].add("present" if intron_between else "absent")
-                evidence[site_id][species].add(
-                    "annotated_intron_between_homologous_exons" if intron_between else "direct_exonic_adjacency"
-                )
-            previous = current
-            previous_occurrence = occ_id
-            intron_between = False
-        for element in set(path_elements):
-            element_counts[(family, element)][species].append(path_elements.count(element))
-
-    for site_id, family in list(family_by_site.items()):
-        if "_ALN_" not in site_id:
-            continue
-        element = site_id.split("_ALN_", 1)[0].removeprefix("JG_")
-        for species, counts in element_counts[(family, element)].items():
-            if counts and set(counts) == {1}:
-                observations[site_id][species].add("absent")
-                evidence[site_id][species].add("single_unsplit_exon_occurrence")
-
-    rows = []
-    for site_id, family in sorted(family_by_site.items()):
-        for species in sorted(species_by_family[family]):
-            values = observations[site_id].get(species, set())
-            state = next(iter(values)) if len(values) == 1 else "unknown"
-            ev = set(evidence[site_id].get(species, set()))
-            if len(values) > 1:
-                ev.add("conflicting_transcript_states")
-            rows.append(
-                {
-                    "family_id": family,
-                    "layer": "splice_junction",
-                    "site_id": site_id,
-                    "species": species,
-                    "state": state,
-                    "state_0": "absent",
-                    "state_1": "present",
-                    "evidence": ";".join(sorted(ev)) or "no_observation",
-                }
-            )
-    write_tsv(
-        Path(output_dir) / "splice_boundary_correspondence.tsv",
-        boundary_rows,
-        [
-            "family_id", "species", "gene_copy_id", "transcript_id", "site_id", "element_id",
-            "projected_alignment_coordinate", "reference_occurrence_id", "projection_method",
-            "left_occurrence_id", "right_occurrence_id",
-        ],
-    )
-    return rows
-
-
-def build_structural_site_matrix(input_dir, output_dir):
-    occurrences = read_tsv(
-        Path(input_dir) / "segment_occurrences.tsv",
-        ["occurrence_id", "family_id", "species", "gene_copy_id", "role", "presence_status"],
-    )
-    element_rows = read_tsv(Path(output_dir) / "element_correspondence.tsv", optional=True)
-    if not element_rows:
-        raise SystemExit("element_correspondence.tsv is required before single-copy phylogenetic analysis")
-    completion_rows = read_tsv(Path(output_dir) / "annotation_completion_candidates.tsv", optional=True)
-    valid, species_by_family, excluded = _single_copy_families(occurrences)
-    rows = _element_site_rows(
-        occurrences,
-        element_rows,
-        completion_rows,
-        valid,
-        species_by_family,
-    )
-    rows.extend(_junction_site_rows(input_dir, output_dir, occurrences, element_rows, valid, species_by_family))
-    sites_with_observed_state_1 = {
-        (row["family_id"], row["layer"], row["site_id"])
-        for row in rows
-        if row["state"] == row["state_1"]
-    }
-    rows = [
-        row for row in rows
-        if (row["family_id"], row["layer"], row["site_id"]) in sites_with_observed_state_1
-    ]
-    return rows, excluded
-
-
 @lru_cache(maxsize=32768)
 def _transition_matrix(gain, loss, branch_length, multiplier=1.0):
-    q = np.array(
-        [[-gain * multiplier, gain * multiplier], [loss * multiplier, -loss * multiplier]],
+    gain_rate = float(gain) * float(multiplier)
+    loss_rate = float(loss) * float(multiplier)
+    total = gain_rate + loss_rate
+    if total <= 0.0:
+        return np.eye(2, dtype=float)
+    changed = -math.expm1(-total * float(branch_length))
+    stayed = 1.0 - changed
+    return np.array(
+        [
+            [(loss_rate + gain_rate * stayed) / total, gain_rate * changed / total],
+            [loss_rate * changed / total, (gain_rate + loss_rate * stayed) / total],
+        ],
         dtype=float,
     )
-    return expm(q * branch_length)
 
 
 def _root_prior(gain, loss, root_presence=None):
@@ -400,6 +80,59 @@ def _root_prior(gain, loss, root_presence=None):
     if total <= 0:
         return np.array([0.5, 0.5], dtype=float)
     return np.array([loss / total, gain / total], dtype=float)
+
+
+def _iter_weighted_patterns(patterns):
+    for item in patterns:
+        if isinstance(item, tuple) and len(item) == 2:
+            observations, weight = item
+            yield observations, int(weight)
+        else:
+            yield item, 1
+
+
+def _compress_patterns(patterns, labels):
+    counts = defaultdict(int)
+    by_key = {}
+    for observations in patterns:
+        completed = {label: observations.get(label, "unknown") for label in labels}
+        key = tuple((label, 2 if completed[label] == "unknown" else completed[label]) for label in labels)
+        counts[key] += 1
+        by_key[key] = completed
+    return [(by_key[key], counts[key]) for key in sorted(by_key)]
+
+
+def _site_key(row):
+    return (row.get("family_id", "NA"), row.get("layer", "NA"), row.get("site_id", "NA"))
+
+
+def _load_structural_site_universe(input_dir):
+    path = Path(input_dir) / "structural_site_universe.tsv"
+    rows = read_tsv(path, ["family_id", "layer", "site_id"], optional=True)
+    if not rows:
+        return None
+    return {_site_key(row) for row in rows}
+
+
+def _pattern_observed_values(pattern):
+    return {value for value in pattern.values() if value in {0, 1}}
+
+
+def _pattern_has_state_one(pattern):
+    return any(value == 1 for value in pattern.values())
+
+
+def _selected_for_ascertainment(pattern, ascertainment):
+    observed = _pattern_observed_values(pattern)
+    if len(observed) == 0:
+        return False
+    if ascertainment == "observed-at-least-one":
+        return _pattern_has_state_one(pattern)
+    if ascertainment == "variable-only":
+        return len(observed) > 1
+    if ascertainment == "complete-universe":
+        return True
+    raise SystemExit("unsupported ascertainment mode")
 
 
 def _decode_parameters(theta, model, root_frequency="estimated", root_presence=0.5):
@@ -474,13 +207,13 @@ def _ascertainment_log_probability(tree, observations, gain, loss, foreground_mu
 def _dataset_log_likelihood(tree, patterns, model, theta, foreground_children, ascertainment, root_frequency, root_presence):
     gain, loss, multiplier, rho = _decode_parameters(theta, model, root_frequency, root_presence)
     total = 0.0
-    for observations in patterns:
+    for observations, weight in _iter_weighted_patterns(patterns):
         value = _pattern_log_likelihood(tree, observations, gain, loss, multiplier, foreground_children, rho)
         if ascertainment in {"observed-at-least-one", "variable-only"}:
             value -= _ascertainment_log_probability(
                 tree, observations, gain, loss, multiplier, foreground_children, rho, ascertainment
             )
-        total += value
+        total += int(weight) * value
     return total
 
 
@@ -521,7 +254,7 @@ def _profile_interval(objective, optimum, index, bounds, max_log_likelihood, tra
         if not free_indices:
             trial = optimum.copy()
             trial[index] = fixed
-            return -float(objective(trial))
+            return -float(objective(trial)), "ok"
 
         def free_objective(free_values):
             trial = optimum.copy()
@@ -532,7 +265,9 @@ def _profile_interval(objective, optimum, index, bounds, max_log_likelihood, tra
         start = optimum[free_indices]
         free_bounds = [bounds[idx] for idx in free_indices]
         result = minimize(free_objective, start, method="L-BFGS-B", bounds=free_bounds)
-        return -float(result.fun)
+        if not result.success:
+            return None, "profile_optimization_failed"
+        return -float(result.fun), "ok"
 
     def crossing(direction):
         edge = bounds[index][0] if direction < 0 else bounds[index][1]
@@ -540,22 +275,32 @@ def _profile_interval(objective, optimum, index, bounds, max_log_likelihood, tra
         previous_x = optimum[index]
         previous_value = max_log_likelihood - target
         for point in points:
-            value = profile_at(float(point)) - target
+            profiled, status = profile_at(float(point))
+            if status != "ok":
+                return float(point), status
+            value = profiled - target
             if value <= 0 <= previous_value:
-                return brentq(lambda x: profile_at(x) - target, float(point), float(previous_x)), "closed"
+                try:
+                    root = brentq(lambda x: profile_at(x)[0] - target, float(point), float(previous_x))
+                except ValueError:
+                    return float(point), "profile_root_failed"
+                return root, "closed"
             previous_x = float(point)
             previous_value = value
-        return None, "open"
+        return edge, "range_limited"
 
     lower, lower_status = crossing(-1)
     upper, upper_status = crossing(1)
     status = "two_sided"
-    if lower_status == "open" and upper_status == "open":
-        status = "unbounded"
-    elif lower_status == "open":
-        status = "lower_open"
-    elif upper_status == "open":
-        status = "upper_open"
+    failed_statuses = {lower_status, upper_status} & {"profile_optimization_failed", "profile_root_failed"}
+    if failed_statuses:
+        status = ";".join(sorted(failed_statuses))
+    elif lower_status == "range_limited" and upper_status == "range_limited":
+        status = "range_limited_both"
+    elif lower_status == "range_limited":
+        status = "lower_range_limited"
+    elif upper_status == "range_limited":
+        status = "upper_range_limited"
     return {
         "low": transform(lower) if lower is not None else None,
         "high": transform(upper) if upper is not None else None,
@@ -563,32 +308,6 @@ def _profile_interval(objective, optimum, index, bounds, max_log_likelihood, tra
         "raw_low": lower,
         "raw_high": upper,
     }
-
-
-def _profile_support_thetas(objective, optimum, bounds, intervals):
-    optimum = np.asarray(optimum, dtype=float)
-    support = [optimum.copy()]
-    for index, interval in enumerate(intervals):
-        for fixed in (interval.get("raw_low"), interval.get("raw_high")):
-            if fixed is None:
-                continue
-            free_indices = [idx for idx in range(len(optimum)) if idx != index]
-            trial = optimum.copy()
-            trial[index] = fixed
-            if free_indices:
-                result = minimize(
-                    lambda values: objective(np.array([
-                        fixed if idx == index else values[free_indices.index(idx)]
-                        for idx in range(len(optimum))
-                    ])),
-                    optimum[free_indices],
-                    method="L-BFGS-B",
-                    bounds=[bounds[idx] for idx in free_indices],
-                )
-                if result.success:
-                    trial[free_indices] = result.x
-            support.append(trial)
-    return support
 
 
 def _observed_information(objective, optimum):
@@ -626,7 +345,9 @@ def fit_model(
     threads=1,
     root_frequency="estimated",
     root_presence=0.5,
+    extra_starts=None,
 ):
+    """Fit a CTMC with optional extra starts in log-rate/root-logit coordinates."""
     if root_frequency not in {"estimated", "stationary", "fixed"}:
         raise SystemExit("root_frequency must be estimated, stationary or fixed")
     if not 0 < float(root_presence) < 1:
@@ -634,11 +355,11 @@ def fit_model(
     if ascertainment not in {"observed-at-least-one", "complete-universe", "variable-only"}:
         raise SystemExit("unsupported ascertainment mode")
     if ascertainment == "observed-at-least-one":
-        for pattern in patterns:
+        for pattern, _weight in _iter_weighted_patterns(patterns):
             if not any(value == 1 for value in pattern.values()):
                 raise SystemExit("observed-at-least-one ascertainment requires each structural site to be present in at least one observed tip")
     if ascertainment == "variable-only":
-        for pattern in patterns:
+        for pattern, _weight in _iter_weighted_patterns(patterns):
             observed = {value for value in pattern.values() if value in {0, 1}}
             if len(observed) < 2:
                 raise SystemExit("variable-only ascertainment requires every included site to vary among observed tips")
@@ -651,6 +372,8 @@ def fit_model(
         )
 
     starts = _model_starts(model, root_frequency, root_presence)
+    if extra_starts is not None:
+        starts.extend(extra_starts)
     if threads > 1 and len(starts) > 1:
         with ThreadPoolExecutor(max_workers=min(threads, len(starts))) as executor:
             results = list(
@@ -661,7 +384,16 @@ def fit_model(
             )
     else:
         results = [minimize(objective, start, method="L-BFGS-B", bounds=bounds) for start in starts]
-    best = min(results, key=lambda result: float(result.fun))
+    finite_results = [
+        result for result in results
+        if math.isfinite(float(result.fun)) and np.all(np.isfinite(result.x))
+    ]
+    converged_results = [result for result in finite_results if result.success]
+    best = min(
+        converged_results or finite_results or results,
+        key=lambda result: float(result.fun) if math.isfinite(float(result.fun)) else math.inf,
+    )
+    converged = bool(converged_results)
     theta = np.asarray(best.x, dtype=float)
     log_likelihood = -float(best.fun)
     gain, loss, multiplier, rho = _decode_parameters(theta, model, root_frequency, root_presence)
@@ -669,14 +401,25 @@ def fit_model(
         abs(theta[idx] - lower) < 1e-5 or abs(theta[idx] - upper) < 1e-5
         for idx, (lower, upper) in enumerate(bounds)
     )
-    intervals = []
-    for idx in range(len(theta)):
-        transform = math.exp
-        if root_frequency == "estimated" and idx == len(theta) - 1:
-            transform = lambda value: 1.0 / (1.0 + math.exp(-value))
-        intervals.append(_profile_interval(objective, theta, idx, bounds, log_likelihood, transform))
-    identifiable, information_eigenvalues, information_condition = _observed_information(objective, theta)
-    support_thetas = _profile_support_thetas(objective, theta, bounds, intervals)
+    identifiable, information_eigenvalues, information_condition = (
+        _observed_information(objective, theta) if converged else (False, np.array([], dtype=float), math.inf)
+    )
+    if not converged:
+        intervals = [{"low": None, "high": None, "status": "optimizer_failed", "raw_low": None, "raw_high": None} for _idx in range(len(theta))]
+        fit_status = "optimizer_failed"
+    else:
+        intervals = []
+        for idx in range(len(theta)):
+            transform = math.exp
+            if root_frequency == "estimated" and idx == len(theta) - 1:
+                transform = lambda value: 1.0 / (1.0 + math.exp(-value))
+            intervals.append(_profile_interval(objective, theta, idx, bounds, log_likelihood, transform))
+        if boundary:
+            fit_status = "boundary_limited"
+        elif not identifiable:
+            fit_status = "nonidentifiable"
+        else:
+            fit_status = "success"
     return {
         "model": model,
         "theta": theta,
@@ -687,7 +430,8 @@ def fit_model(
         "log_likelihood": log_likelihood,
         "parameter_count": len(theta),
         "aic": 2 * len(theta) - 2 * log_likelihood,
-        "converged": bool(best.success),
+        "converged": converged,
+        "fit_status": fit_status,
         "optimizer_message": str(best.message),
         "boundary": boundary,
         "intervals": intervals,
@@ -696,7 +440,7 @@ def fit_model(
         "information_eigenvalues": information_eigenvalues,
         "information_condition": information_condition,
         "root_frequency": root_frequency,
-        "profile_support_thetas": support_thetas,
+        "profile_support_thetas": [],
     }
 
 
@@ -736,14 +480,16 @@ def _posterior_messages(tree, observations, gain, loss, multiplier, foreground_c
 def _conditional_transition_count(gain, loss, branch_length, multiplier, start, end, src, dst):
     matrix = _transition_matrix(gain, loss, branch_length, multiplier)
     denominator = max(float(matrix[start, end]), 1e-300)
-    q_value = gain * multiplier if (src, dst) == (0, 1) else loss * multiplier
-
-    def integrand(time):
-        left = _transition_matrix(gain, loss, time, multiplier)
-        right = _transition_matrix(gain, loss, branch_length - time, multiplier)
-        return float(left[start, src]) * q_value * float(right[dst, end])
-
-    integral = quad(integrand, 0.0, branch_length, epsabs=1e-9, epsrel=1e-7)[0]
+    gain_rate = float(gain) * float(multiplier)
+    loss_rate = float(loss) * float(multiplier)
+    q = np.array([[-gain_rate, gain_rate], [loss_rate, -loss_rate]], dtype=float)
+    reward = np.zeros((2, 2), dtype=float)
+    reward[src, dst] = gain_rate if (src, dst) == (0, 1) else loss_rate
+    block = np.zeros((4, 4), dtype=float)
+    block[:2, :2] = q
+    block[:2, 2:] = reward
+    block[2:, 2:] = q
+    integral = float(expm(block * float(branch_length))[:2, 2:][start, end])
     return max(0.0, integral / denominator)
 
 
@@ -849,6 +595,13 @@ def infer_single_copy_phylogeny(
     foreground_children = _read_foreground_children(foreground_branches, tree)
     if model == "foreground" and not foreground_children:
         raise SystemExit("--model foreground requires --foreground-branches")
+    site_universe = None
+    if ascertainment == "complete-universe":
+        site_universe = _load_structural_site_universe(input_dir)
+        if site_universe is None:
+            raise SystemExit(
+                "complete-universe ascertainment requires input structural_site_universe.tsv with family_id, layer and site_id"
+            )
 
     grouped = defaultdict(lambda: defaultdict(dict))
     state_labels = {}
@@ -863,27 +616,38 @@ def infer_single_copy_phylogeny(
     change_rows = []
     for (family, layer), sites in sorted(grouped.items()):
         state_0, state_1 = state_labels[(family, layer)]
-        patterns = []
+        raw_patterns = []
         encoded_sites = []
         for site_id, observations in sorted(sites.items()):
+            if site_universe is not None and (family, layer, site_id) not in site_universe:
+                continue
             encoded = {
-                species: 0 if state == state_0 else 1 if state == state_1 else "unknown"
-                for species, state in observations.items()
+                label: 0 if observations.get(label) == state_0 else 1 if observations.get(label) == state_1 else "unknown"
+                for label in tree.leaf_by_label
             }
             observed_count = sum(value in {0, 1} for value in encoded.values())
-            if observed_count >= 2:
-                patterns.append(encoded)
+            if observed_count >= 2 and _selected_for_ascertainment(encoded, ascertainment):
+                raw_patterns.append(encoded)
                 encoded_sites.append((site_id, encoded))
+        patterns = _compress_patterns(raw_patterns, sorted(tree.leaf_by_label))
         if not patterns:
             continue
+        site_count = sum(weight for _pattern, weight in patterns)
+        compressed_pattern_count = len(patterns)
         informative = sum(
-            1 for pattern in patterns if len({value for value in pattern.values() if value in {0, 1}}) > 1
+            weight
+            for pattern, weight in patterns
+            if len({value for value in pattern.values() if value in {0, 1}}) > 1
         )
         observed_taxa = len(
-            {species for pattern in patterns for species, value in pattern.items() if value in {0, 1}}
+            {species for pattern, _weight in patterns for species, value in pattern.items() if value in {0, 1}}
         )
         if model == "foreground":
             null_fit = fit_model(tree, patterns, "ARD", ascertainment=ascertainment, threads=threads, root_frequency=root_frequency, root_presence=root_presence)
+            extra_starts = []
+            if null_fit["converged"]:
+                null_theta = null_fit["theta"]
+                extra_starts.append([null_theta[0], null_theta[1], 0.0, *null_theta[2:]])
             alternative_fit = fit_model(
                 tree,
                 patterns,
@@ -893,11 +657,25 @@ def infer_single_copy_phylogeny(
                 threads=threads,
                 root_frequency=root_frequency,
                 root_presence=root_presence,
+                extra_starts=extra_starts,
             )
             test_id = "homogeneous_vs_foreground"
         else:
             null_fit = fit_model(tree, patterns, "ER", ascertainment=ascertainment, threads=threads, root_frequency=root_frequency, root_presence=root_presence)
-            alternative_fit = fit_model(tree, patterns, "ARD", ascertainment=ascertainment, threads=threads, root_frequency=root_frequency, root_presence=root_presence)
+            extra_starts = []
+            if null_fit["converged"]:
+                null_theta = null_fit["theta"]
+                extra_starts.append([null_theta[0], null_theta[0], *null_theta[1:]])
+            alternative_fit = fit_model(
+                tree,
+                patterns,
+                "ARD",
+                ascertainment=ascertainment,
+                threads=threads,
+                root_frequency=root_frequency,
+                root_presence=root_presence,
+                extra_starts=extra_starts,
+            )
             test_id = "equal_rates_vs_gain_loss"
 
         for fit in (null_fit, alternative_fit):
@@ -911,7 +689,8 @@ def infer_single_copy_phylogeny(
                     "layer": layer,
                     "model": fit["model"],
                     "n_taxa": observed_taxa,
-                    "n_structural_sites": len(patterns),
+                    "n_structural_sites": site_count,
+                    "n_compressed_patterns": compressed_pattern_count,
                     "n_informative_patterns": informative,
                     "gain_rate": _fmt(fit["gain_rate"]),
                     "gain_rate_ci_low": _fmt(gain_ci["low"]),
@@ -934,6 +713,7 @@ def infer_single_copy_phylogeny(
                     "parameter_count": fit["parameter_count"],
                     "aic": _fmt(fit["aic"]),
                     "converged": str(fit["converged"]).lower(),
+                    "fit_status": fit["fit_status"],
                     "parameter_at_boundary": str(fit["boundary"]).lower(),
                     "identifiable": str(fit["identifiable"]).lower(),
                     "information_condition": _fmt(fit["information_condition"]),
@@ -944,7 +724,7 @@ def infer_single_copy_phylogeny(
             )
 
         likelihood_difference = alternative_fit["log_likelihood"] - null_fit["log_likelihood"]
-        lrt = 2.0 * likelihood_difference if likelihood_difference >= -1e-7 else None
+        lrt = 2.0 * likelihood_difference if likelihood_difference >= 0.0 else None
         estimable = (
             informative >= 1
             and null_fit["converged"]
@@ -953,10 +733,14 @@ def infer_single_copy_phylogeny(
             and not alternative_fit["boundary"]
             and null_fit["identifiable"]
             and alternative_fit["identifiable"]
+            and null_fit["fit_status"] == "success"
+            and alternative_fit["fit_status"] == "success"
             and lrt is not None
         )
-        p_value = float(chi2.sf(max(0.0, lrt), 1)) if estimable else None
-        if likelihood_difference < -1e-7:
+        p_value = float(chi2.sf(lrt, 1)) if estimable else None
+        if informative == 0:
+            test_status = "parameters_not_estimable"
+        elif likelihood_difference < -1e-7:
             test_status = "optimization_failure_alternative_below_null"
         elif estimable:
             test_status = "tested"
@@ -976,17 +760,25 @@ def infer_single_copy_phylogeny(
             "q_value": "NA",
             "q_value_method": "not_available",
             "test_status": test_status,
-            "reference_distribution": "chi_square_df1_asymptotic" if estimable else "not_available",
+            "reference_distribution": "chi_square_df1_asymptotic_regular_interior" if estimable else "not_available",
             "n_taxa": observed_taxa,
-            "n_structural_sites": len(patterns),
+            "n_structural_sites": site_count,
+            "n_compressed_patterns": compressed_pattern_count,
             "n_informative_patterns": informative,
         }
         test_rows.append(test_row)
-        eligible_fits = [fit for fit in (null_fit, alternative_fit) if fit["converged"] and fit["identifiable"]]
+        eligible_fits = [fit for fit in (null_fit, alternative_fit) if fit["converged"]]
         if informative == 0:
-            selected_fit = null_fit
+            selected_fit = null_fit if null_fit["converged"] else None
         else:
-            selected_fit = min(eligible_fits, key=lambda fit: fit["aic"]) if eligible_fits else null_fit
+            selected_fit = min(eligible_fits, key=lambda fit: fit["aic"]) if eligible_fits else None
+        if selected_fit is None:
+            continue
+        posterior_conditioning = (
+            "conditional_MLE;"
+            f"fit_status={selected_fit['fit_status']};"
+            "uncertainty=sensitivity_not_estimated"
+        )
 
         for site_id, observations in encoded_sites:
             node_posterior, edge_posterior = _posterior_messages(
@@ -998,20 +790,8 @@ def infer_single_copy_phylogeny(
                 foreground_children,
                 selected_fit["root_presence"],
             )
-            support_posteriors = []
-            for support_theta in selected_fit["profile_support_thetas"]:
-                support_gain, support_loss, support_multiplier, support_root = _decode_parameters(
-                    support_theta, selected_fit["model"], root_frequency, root_presence
-                )
-                support_posteriors.append(
-                    _posterior_messages(
-                        tree, observations, support_gain, support_loss, support_multiplier,
-                        foreground_children, support_root,
-                    )
-                )
             for node_id, probabilities in node_posterior.items():
                 for index, probability in enumerate(probabilities):
-                    sensitivity = [float(nodes[node_id][index]) for nodes, _edges in support_posteriors]
                     node_rows.append(
                         {
                             "family_id": family,
@@ -1021,10 +801,11 @@ def infer_single_copy_phylogeny(
                             "node_label": tree.label[node_id],
                             "state": state_0 if index == 0 else state_1,
                             "posterior_probability": _fmt(probability),
-                            "profile_probability_low": _fmt(min(sensitivity)),
-                            "profile_probability_high": _fmt(max(sensitivity)),
+                            "profile_probability_low": "NA",
+                            "profile_probability_high": "NA",
+                            "uncertainty_status": "sensitivity_not_estimated",
                             "model": selected_fit["model"],
-                            "conditioning": "empirical_Bayes_conditional_on_MLE",
+                            "conditioning": posterior_conditioning,
                         }
                     )
             for (parent, child), joint in edge_posterior.items():
@@ -1052,10 +833,6 @@ def infer_single_copy_phylogeny(
                 gain_probability = float(joint[0, 1])
                 loss_probability = float(joint[1, 0])
                 change_probability = gain_probability + loss_probability
-                support_joints = [edges[(parent, child)] for _nodes, edges in support_posteriors]
-                gain_sensitivity = [float(value[0, 1]) for value in support_joints]
-                loss_sensitivity = [float(value[1, 0]) for value in support_joints]
-                change_sensitivity = [gain + loss for gain, loss in zip(gain_sensitivity, loss_sensitivity)]
                 for src, dst, probability in (
                     (state_0, state_1, gain_probability),
                     (state_1, state_0, loss_probability),
@@ -1073,15 +850,16 @@ def infer_single_copy_phylogeny(
                             "from_state": src,
                             "to_state": dst,
                             "endpoint_transition_probability": _fmt(probability),
-                            "profile_transition_probability_low": _fmt(min(gain_sensitivity if src == state_0 else loss_sensitivity)),
-                            "profile_transition_probability_high": _fmt(max(gain_sensitivity if src == state_0 else loss_sensitivity)),
+                            "profile_transition_probability_low": "NA",
+                            "profile_transition_probability_high": "NA",
                             "total_endpoint_change_probability": _fmt(change_probability),
-                            "profile_total_change_probability_low": _fmt(min(change_sensitivity)),
-                            "profile_total_change_probability_high": _fmt(max(change_sensitivity)),
+                            "profile_total_change_probability_low": "NA",
+                            "profile_total_change_probability_high": "NA",
                             "expected_gain_count": _fmt(expected_gain),
                             "expected_loss_count": _fmt(expected_loss),
+                            "uncertainty_status": "sensitivity_not_estimated",
                             "model": selected_fit["model"],
-                            "conditioning": "empirical_Bayes_conditional_on_MLE",
+                            "conditioning": posterior_conditioning,
                         }
                     )
                 change_rows.append(
@@ -1102,6 +880,7 @@ def infer_single_copy_phylogeny(
                         "expected_loss_count": _fmt(expected_loss),
                         "model": selected_fit["model"],
                         "rate_test_status": test_status,
+                        "conditioning": posterior_conditioning,
                     }
                 )
 
@@ -1110,13 +889,14 @@ def infer_single_copy_phylogeny(
         output_dir / "model_fits.tsv",
         fit_rows,
         [
-            "family_id", "layer", "model", "n_taxa", "n_structural_sites", "n_informative_patterns",
+            "family_id", "layer", "model", "n_taxa", "n_structural_sites", "n_compressed_patterns",
+            "n_informative_patterns",
             "gain_rate", "gain_rate_ci_low", "gain_rate_ci_high", "gain_rate_ci_status",
             "loss_rate", "loss_rate_ci_low", "loss_rate_ci_high", "loss_rate_ci_status",
             "foreground_multiplier", "foreground_multiplier_ci_low", "foreground_multiplier_ci_high",
             "foreground_multiplier_ci_status", "root_presence", "root_presence_ci_low",
             "root_presence_ci_high", "root_presence_ci_status", "root_frequency_mode", "log_likelihood",
-            "parameter_count", "aic", "converged", "parameter_at_boundary", "identifiable",
+            "parameter_count", "aic", "converged", "fit_status", "parameter_at_boundary", "identifiable",
             "information_condition", "optimizer_starts", "optimizer_message", "ascertainment",
         ],
     )
@@ -1126,14 +906,15 @@ def infer_single_copy_phylogeny(
         [
             "family_id", "layer", "test_id", "null_model", "alternative_model", "null_log_likelihood",
             "alternative_log_likelihood", "lrt_statistic", "df", "p_value", "q_value", "q_value_method",
-            "test_status", "reference_distribution", "n_taxa", "n_structural_sites", "n_informative_patterns",
+            "test_status", "reference_distribution", "n_taxa", "n_structural_sites", "n_compressed_patterns",
+            "n_informative_patterns",
         ],
     )
     write_tsv(
         output_dir / "node_state_posteriors.tsv",
         node_rows,
         ["family_id", "layer", "site_id", "node_id", "node_label", "state", "posterior_probability",
-         "profile_probability_low", "profile_probability_high", "model", "conditioning"],
+         "profile_probability_low", "profile_probability_high", "uncertainty_status", "model", "conditioning"],
     )
     write_tsv(
         output_dir / "branch_transition_posteriors.tsv",
@@ -1143,7 +924,8 @@ def infer_single_copy_phylogeny(
             "branch_length", "from_state", "to_state", "endpoint_transition_probability",
             "profile_transition_probability_low", "profile_transition_probability_high",
             "total_endpoint_change_probability", "profile_total_change_probability_low",
-            "profile_total_change_probability_high", "expected_gain_count", "expected_loss_count", "model", "conditioning",
+            "profile_total_change_probability_high", "expected_gain_count", "expected_loss_count",
+            "uncertainty_status", "model", "conditioning",
         ],
     )
     write_tsv(
@@ -1153,7 +935,7 @@ def infer_single_copy_phylogeny(
             "family_id", "layer", "site_id", "parent_node", "child_node", "branch_scope",
             "structural_change_type", "structural_pattern", "endpoint_change_probability",
             "gain_endpoint_probability", "loss_endpoint_probability", "direction_probability",
-            "expected_gain_count", "expected_loss_count", "model", "rate_test_status",
+            "expected_gain_count", "expected_loss_count", "model", "rate_test_status", "conditioning",
         ],
     )
     write_tsv(
@@ -1176,6 +958,7 @@ def infer_single_copy_phylogeny(
         "root_presence_when_fixed": root_presence if root_frequency == "fixed" else None,
         "tree_file": str(input_dir / "species_tree.tsv"),
         "foreground_branches": str(foreground_branches) if foreground_branches else None,
+        "structural_site_universe": str(input_dir / "structural_site_universe.tsv") if ascertainment == "complete-universe" else None,
         "threads": max(1, int(threads)),
         "fixed_inputs": ["species_tree", "ortholog_set", "structural_site_states"],
         "estimated_parameters": ["gain_rate", "loss_rate"] + (["root_presence"] if root_frequency == "estimated" else []) + (["foreground_multiplier"] if model == "foreground" else []),

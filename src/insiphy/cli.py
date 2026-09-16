@@ -1,6 +1,7 @@
 """Command line interface for INSIPHY."""
 
 import argparse
+import json
 from pathlib import Path
 
 from . import __version__
@@ -26,16 +27,17 @@ def run_all(
     seed=7,
     foreground_branches=None,
     analysis_scope="single-copy",
-    model="er-ard",
+    model="parsimony",
     branch_length_mode="supplied",
     ascertainment="observed-at-least-one",
     threads=1,
     root_frequency="estimated",
     root_presence=0.5,
+    evidence_aligner="minimap2",
 ):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     infer_correspondence(input_dir, output_dir)
-    generate_sequence_evidence(input_dir, output_dir)
+    generate_sequence_evidence(input_dir, output_dir, threads=threads, aligner=evidence_aligner)
     complete_annotation(input_dir, output_dir)
     infer_phylogeny(
         input_dir,
@@ -52,8 +54,20 @@ def run_all(
         root_frequency=root_frequency,
         root_presence=root_presence,
     )
+    _record_evidence_aligner(output_dir, evidence_aligner)
     if analysis_scope == "experimental-multicopy":
         evaluate_baselines(input_dir, output_dir)
+
+
+def _record_evidence_aligner(output_dir, evidence_aligner):
+    parameter_path = Path(output_dir) / "run_parameters.json"
+    if not parameter_path.exists():
+        return
+    parameters = json.loads(parameter_path.read_text())
+    if not isinstance(parameters, dict):
+        raise ValueError(f"{parameter_path} does not contain a JSON object")
+    parameters["evidence_aligner"] = evidence_aligner
+    parameter_path.write_text(json.dumps(parameters, indent=2, sort_keys=True) + "\n")
 
 
 def main(argv=None):
@@ -74,13 +88,16 @@ def main(argv=None):
     extract.add_argument("--canonical-rule", choices=["longest_cds", "longest_span"], default="longest_cds")
     extract.add_argument("--source-label", default="unknown_source")
     extract.add_argument("--copy-role", choices=["source", "background", "derived", "candidate"], default="candidate")
+    extract.add_argument("--flank", type=int, default=1000)
+    extract.add_argument("--max-extension", type=int, default=10000)
 
     derive = sub.add_parser("derive-tables")
     derive.add_argument("--input-dir", required=True)
     derive.add_argument("--output-dir")
     derive.add_argument("--identity-threshold", type=float, default=0.7)
     derive.add_argument("--distance-table")
-    derive.add_argument("--aligner", choices=["auto", "internal", "mafft", "minimap2"], default="auto")
+    derive.add_argument("--aligner", choices=["auto", "internal", "mafft", "minimap2", "lastz"], default="mafft", help="Exon-pair backend: mafft/auto uses overlap projection; others use local alignment.")
+    derive.add_argument("--context-aligner", choices=["internal", "minimap2", "lastz"], default="minimap2", help="Local backend for pairs involving non-exon sequence.")
     derive.add_argument("--threads", type=int, default=1)
     derive.add_argument("--min-size-ratio", type=float, default=0.25)
 
@@ -144,9 +161,12 @@ def main(argv=None):
     case.add_argument("--gene-tree")
     case.add_argument("--transcript-policy", choices=["canonical", "all"], default="canonical")
     case.add_argument("--canonical-rule", choices=["longest_cds", "longest_span"], default="longest_cds")
-    case.add_argument("--aligner", choices=["auto", "internal", "mafft", "minimap2"], default="auto")
+    case.add_argument("--aligner", choices=["auto", "internal", "mafft", "minimap2", "lastz"], default="mafft", help="Exon-pair backend: mafft/auto uses overlap projection; others use local alignment.")
+    case.add_argument("--context-aligner", choices=["internal", "minimap2", "lastz"], default="minimap2", help="Local backend for pairs involving non-exon sequence.")
     case.add_argument("--threads", type=int, default=1)
     case.add_argument("--min-size-ratio", type=float, default=0.25)
+    case.add_argument("--flank", type=int, default=1000)
+    case.add_argument("--max-extension", type=int, default=10000)
 
     orthofinder = sub.add_parser("import-orthofinder")
     orthofinder.add_argument("--orthofinder-dir", required=True)
@@ -180,7 +200,7 @@ def main(argv=None):
             choices=["single-copy", "experimental-multicopy"],
             default="single-copy",
         )
-        cmd.add_argument("--model", choices=["er-ard", "foreground"], default="er-ard")
+        cmd.add_argument("--model", choices=["parsimony", "er-ard", "foreground"], default="parsimony")
         cmd.add_argument("--branch-length-mode", choices=["supplied", "unit"], default="supplied")
         cmd.add_argument(
             "--ascertainment",
@@ -198,12 +218,19 @@ def main(argv=None):
         cmd.add_argument("--stochastic-maps", type=int, default=0)
         cmd.add_argument("--seed", type=int, default=7)
         cmd.add_argument("--foreground-branches")
+        if name == "run":
+            cmd.add_argument(
+                "--evidence-aligner",
+                choices=["internal", "mafft", "minimap2", "lastz", "miniprot"],
+                default="minimap2",
+                help="Aligner for sequence/protein evidence projection.",
+            )
 
     args = parser.parse_args(argv)
     if args.command == "extract-gene":
-        extract_gene(args.genome, args.annotation, args.gene_id, args.family_id, args.species, args.gene_copy_id, args.output_dir, args.append, args.transcript_policy, args.canonical_rule, args.source_label, args.copy_role)
+        extract_gene(args.genome, args.annotation, args.gene_id, args.family_id, args.species, args.gene_copy_id, args.output_dir, args.append, args.transcript_policy, args.canonical_rule, args.source_label, args.copy_role, flank=args.flank, max_extension=args.max_extension)
     elif args.command == "derive-tables":
-        derive_tables(args.input_dir, args.output_dir, args.identity_threshold, args.distance_table, args.aligner, args.threads, args.min_size_ratio)
+        derive_tables(args.input_dir, args.output_dir, args.identity_threshold, args.distance_table, args.aligner, args.threads, args.min_size_ratio, context_aligner=args.context_aligner)
     elif args.command == "simulate":
         simulate_dataset(args.output_dir, args.seed, args.scenario)
     elif args.command == "benchmark":
@@ -219,7 +246,7 @@ def main(argv=None):
     elif args.command == "inspect-annotation":
         inspect_annotation(args.annotation, args.output_dir, args.query, args.alias_file, args.species, args.case_id)
     elif args.command == "build-case":
-        build_case(args.manifest, args.output_dir, args.identity_threshold, args.species_tree, args.transcript_policy, args.canonical_rule, args.aligner, args.threads, args.min_size_ratio, args.copy_tree, args.gene_tree)
+        build_case(args.manifest, args.output_dir, args.identity_threshold, args.species_tree, args.transcript_policy, args.canonical_rule, args.aligner, args.threads, args.min_size_ratio, args.copy_tree, args.gene_tree, flank=args.flank, max_extension=args.max_extension, context_aligner=args.context_aligner)
     elif args.command == "import-orthofinder":
         import_orthofinder(args.orthofinder_dir, args.orthogroup, args.genome_manifest, args.output_dir, args.species_tree)
     elif args.command == "scan-hidden-segments":
@@ -266,6 +293,7 @@ def main(argv=None):
             args.threads,
             args.root_frequency,
             args.root_presence,
+            evidence_aligner=args.evidence_aligner,
         )
 
 

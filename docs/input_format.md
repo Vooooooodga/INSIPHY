@@ -20,8 +20,8 @@ Optional provenance fields are `assembly`, `annotation`, `source_url`,
 column names.
 
 The importer accepts a Newick or INSIPHY TSV species tree. Newick branch
-lengths are retained. Missing branch lengths require
-`--branch-length-mode unit` at analysis time.
+lengths are retained. Default parsimony uses the rooted topology alone.
+Optional likelihood analysis needs lengths or `--branch-length-mode unit`.
 
 ## Case manifest
 
@@ -79,6 +79,8 @@ Every listed edge must occur in `species_tree.tsv`.
 
 - `segment_occurrences.tsv`: observed or sequence-supported intervals;
 - `segment_sequences.fasta`: interval sequences;
+- `gene_loci.fasta`: oriented search-window sequences;
+- `gene_loci.tsv`: original annotation bounds, search bounds and genome source;
 - `segment_matches.tsv`: pairwise alignment and context scores;
 - `segment_homology.tsv`: internal homology-component membership;
 - `transcript_paths.tsv`: ordered transcript paths;
@@ -116,11 +118,28 @@ for the affected structural site.
   meaningful all-zero candidates.
 - `--ascertainment variable-only`: use only when both constant patterns were
   deliberately excluded.
-- `--ascertainment variable-only`: every analyzed site must vary; apply Mkv
-  conditioning.
+
+Ascertainment and branch-length modes apply only to the optional probability
+analysis. `--model parsimony` is the default. Gene extraction accepts `--flank`
+and `--max-extension` in bp; these control search extent and do not establish
+biological confidence.
+
+`--ascertainment complete-universe` requires `structural_site_universe.tsv`
+inside the input directory. Its required columns are `family_id`, `layer`,
+and `site_id`. A site-only row declares the candidate set; it contributes no
+absence observation. Optional `species` and `state` columns provide explicit
+curated observations, with `state_0`, `state_1`, and `evidence` recommended.
+Explicit observations replace the generated observation at the same
+family/layer/site/species key. Missing species remain unknown. The declared
+universe must be justified independently of which sites happen to be present.
+
+`--aligner` selects exon correspondence. `--context-aligner` selects local
+exon/non-exonic mapping. `run --evidence-aligner` selects supplementary genomic
+or protein evidence. MAFFT, minimap2 and miniprot serve different alignment
+questions; these choices are recorded with their output evidence.
 
 ## Experimental multi-copy input
 
 `copy_tree.tsv` and `gene_tree.tsv` remain supported only under
-`--analysis-scope experimental-multicopy`. The formal v0.12 single-copy
+`--analysis-scope experimental-multicopy`. The formal v0.13 single-copy
 statistics ignore these files.

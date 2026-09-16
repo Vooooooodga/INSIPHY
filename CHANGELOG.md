@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.13.0 - 2026-09-16
+
+- Make equal-cost single-copy parsimony the default, retaining all equally
+  optimal ancestral states and required/possible branch changes. Retain
+  likelihood models and experimental multi-copy analysis.
+- Separate original gene bounds, linked features and genomic search bounds;
+  add bounded terminal extension and interval FASTA access.
+- Separate homologous DNA presence from exon-role evidence. Add exon-specific
+  protein splice projections and deletion-spanning evidence for absence.
+- Use external genomic alignment for deletion-spanning evidence, with local
+  coordinate offsets and transcript-specific source flanks. Preserve deletion
+  evidence independently of protein reference availability.
+- Support split fragments through disjoint projections onto a shared exon;
+  project exact splice anchors and preserve alignment orientation.
+- Standardize paired-base coverage, gap conventions and nucleotide identity;
+  remove hand-written alignment fallbacks and expose genomic evidence backends.
+- Condition likelihood ascertainment on observed masks and require an explicit
+  complete-universe catalogue while preserving unknown observations.
+- Compress site patterns; use analytic binary transitions and exact reward
+  integrals. Distinguish failed/truncated profile searches; mark unimplemented
+  joint parameter sensitivity NA instead of publishing surrogate intervals.
+- Stream diagnostic pair comparisons and bound concurrent alignment tasks.
+- Separate exon alignment from local exon/non-exonic context mapping; honor
+  explicit backend choices and seed nested alternatives at the null optimum.
+- Add qualitative branch tables and solid/hollow markers, retaining default
+  colorblind-aware synteny colors and connecting ribbons.
+- Complete real RpL32 and seven-bee dsx demonstrations with four allocated CPUs,
+  default parsimony, optional ER/ARD fits, and color figures. Report unresolved
+  dsx observations and non-estimable rate comparisons explicitly.
+
 ## 0.12.4 - 2026-09-16
 
 - Convert gene-locus hit coordinates to genomic coordinates on both strands.
