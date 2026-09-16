@@ -1,6 +1,6 @@
 # INSIPHY Roadmap
 
-## Current v0.11 status
+## Current v0.12 status
 
 - Formal single-copy input from OrthoFinder or a curated ortholog set.
 - Sequence-assisted annotation completion inside selected genes.

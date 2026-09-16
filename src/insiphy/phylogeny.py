@@ -713,13 +713,15 @@ def infer_phylogeny(
     analysis_scope="single-copy",
     model="er-ard",
     branch_length_mode="supplied",
-    ascertainment="all-sites",
+    ascertainment="observed-at-least-one",
     threads=1,
+    root_frequency="estimated",
+    root_presence=0.5,
 ):
     if analysis_scope == "single-copy":
         if bootstrap_replicates or stochastic_maps:
             raise SystemExit(
-                "single-copy v0.11 uses analytic likelihood and posterior outputs; "
+                "single-copy v0.12 uses analytic likelihood and empirical-Bayes probability outputs; "
                 "--bootstrap-replicates and --stochastic-maps must be 0"
             )
         if model != "foreground" and foreground_branches:
@@ -736,6 +738,8 @@ def infer_phylogeny(
             branch_length_mode=branch_length_mode,
             ascertainment=ascertainment,
             threads=threads,
+            root_frequency=root_frequency,
+            root_presence=root_presence,
         )
     occurrences = read_tsv(f"{input_dir}/segment_occurrences.tsv", ["occurrence_id", "family_id", "species", "gene_copy_id", "role", "presence_status"])
     homology = read_tsv(f"{input_dir}/segment_homology.tsv", ["homology_id", "occurrence_id", "support_type", "confidence"])

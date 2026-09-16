@@ -110,12 +110,17 @@ for the affected structural site.
 
 - `--branch-length-mode supplied`: use positive lengths from the input tree.
 - `--branch-length-mode unit`: replace every non-root length with one.
-- `--ascertainment all-sites`: conserved and variable sites were retained.
+- `--ascertainment observed-at-least-one`: default for sites discovered because
+  at least one species contains the structure.
+- `--ascertainment complete-universe`: use only when the input defines
+  meaningful all-zero candidates.
+- `--ascertainment variable-only`: use only when both constant patterns were
+  deliberately excluded.
 - `--ascertainment variable-only`: every analyzed site must vary; apply Mkv
   conditioning.
 
 ## Experimental multi-copy input
 
 `copy_tree.tsv` and `gene_tree.tsv` remain supported only under
-`--analysis-scope experimental-multicopy`. The formal v0.11 single-copy
+`--analysis-scope experimental-multicopy`. The formal v0.12 single-copy
 statistics ignore these files.

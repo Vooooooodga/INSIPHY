@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.12.0 - 2026-09-16
+
+- Made complete exon intervals the primary structural observations, with CDS,
+  UTR, GFF phase and reading-frame information retained as attributes.
+- Connected sequence-supported annotation completion to the standard run and
+  distinguished supported absence from unresolved missing evidence.
+- Projected within-exon splice boundaries onto homologous sequence coordinates
+  so distinct split/fusion sites remain separate.
+- Replaced unconstrained transitive homology merging with tree-ordered,
+  coordinate-constrained profile merging and bounded pair scoring.
+- Corrected aligned-pair coverage, strand normalization, CDS phase continuity,
+  protein queries for miniprot and long-alignment failure behavior.
+- Added observed-at-least-one ascertainment, independently estimated root
+  frequency, numerical identifiability checks and strict foreground validation.
+- Added open-ended profile interval states and profile-likelihood sensitivity
+  ranges for empirical-Bayes node and branch probabilities.
+- Removed automatic directional event labels and updated tree-aligned,
+  colorblind-aware synteny figures.
+
 ## 0.11.0 - 2026-09-16
 
 - Made single-copy ortholog analysis the formal default and isolated retained

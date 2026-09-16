@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from insiphy.alignment import AlignmentBackendError, global_alignment_stats, phase_compatibility
 from insiphy.cli import run_all
 from insiphy.io import read_tsv
 from insiphy.benchmark import benchmark_events
@@ -78,7 +79,16 @@ class SingleCopyPhylogenyTests(unittest.TestCase):
             branches = read_tsv(result_dir / "branch_transition_posteriors.tsv")
             self.assertEqual({row["layer"] for row in matrix}, {"exon_presence", "exon_role", "splice_junction"})
             self.assertEqual({row["model"] for row in fits}, {"ER", "ARD"})
-            self.assertTrue(all(row["test_status"] in {"tested", "parameters_not_estimable"} for row in tests))
+            self.assertTrue(
+                all(
+                    row["test_status"] in {
+                        "tested",
+                        "parameters_not_estimable",
+                        "optimization_failure_alternative_below_null",
+                    }
+                    for row in tests
+                )
+            )
             invariant = [row for row in tests if row["layer"] == "exon_presence"][0]
             self.assertEqual(invariant["p_value"], "NA")
             self.assertTrue(nodes)
@@ -103,6 +113,24 @@ class SingleCopyPhylogenyTests(unittest.TestCase):
                 {row["test_id"] for row in read_tsv(result_dir / "model_tests.tsv")},
                 {"homogeneous_vs_foreground"},
             )
+
+    def test_foreground_rejects_unmatched_and_all_tree_branches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir = self.write_structural_case(Path(tmp))
+            unmatched = Path(tmp) / "unmatched.tsv"
+            unmatched.write_text("parent_id\tchild_id\nmissing\tbranch\n")
+            with self.assertRaises(SystemExit):
+                infer_single_copy_phylogeny(
+                    input_dir, result_dir, model="foreground", foreground_branches=unmatched
+                )
+            all_branches = Path(tmp) / "all.tsv"
+            all_branches.write_text(
+                "parent_id\tchild_id\nroot\tab\nab\ta\nab\tb\nroot\tcd\ncd\tc\ncd\td\n"
+            )
+            with self.assertRaises(SystemExit):
+                infer_single_copy_phylogeny(
+                    input_dir, result_dir, model="foreground", foreground_branches=all_branches
+                )
 
     def test_sequence_supported_annotation_completion_enters_tip_state(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -179,7 +207,7 @@ class SingleCopyPhylogenyTests(unittest.TestCase):
             junctions = {
                 row["species"]: row["state"]
                 for row in matrix
-                if row["site_id"] == "JG_WITHIN_EG_1"
+                if row["site_id"].startswith("JG_EG_1_ALN_")
             }
             self.assertFalse(excluded)
             self.assertEqual(junctions, {"A": "present", "B": "absent"})
@@ -279,6 +307,54 @@ class FixtureTests(unittest.TestCase):
 
 
 class PreprocessTests(unittest.TestCase):
+    def test_alignment_coverage_counts_paired_bases(self):
+        stats = global_alignment_stats("ACGT", "ACGTTTTT")
+        self.assertAlmostEqual(stats.query_coverage, 1.0)
+        self.assertAlmostEqual(stats.target_coverage, 0.5)
+        self.assertAlmostEqual(stats.coverage, 0.5)
+        self.assertEqual(stats.aligned_pairs, 4)
+
+    def test_internal_alignment_refuses_oversized_dynamic_program(self):
+        with self.assertRaises(AlignmentBackendError):
+            global_alignment_stats("A" * 501, "A" * 501)
+
+    def test_phase_compatibility_uses_cds_length(self):
+        self.assertEqual(phase_compatibility("0", "1", 26), "compatible")
+        self.assertEqual(phase_compatibility("0", "2", 26), "incompatible")
+
+    def test_gene_without_exon_cds_or_utr_is_unresolved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            genome = tmp / "genome.fa"
+            annotation = tmp / "annotation.gff3"
+            genome.write_text(">chr1\n" + "ACGT" * 50 + "\n")
+            annotation.write_text(
+                "chr1\ttest\tgene\t10\t100\t.\t+\t.\tID=g\n"
+                "chr1\ttest\tmRNA\t10\t100\t.\t+\t.\tID=t;Parent=g\n"
+            )
+            with self.assertRaises(SystemExit):
+                extract_gene(genome, annotation, "g", "fam", "Sp", "g", tmp / "out")
+
+    def test_negative_strand_is_written_in_transcript_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            genome = tmp / "genome.fa"
+            annotation = tmp / "annotation.gff3"
+            output = tmp / "out"
+            genome.write_text(">chr1\n" + "ACGT" * 100 + "\n")
+            annotation.write_text(
+                "chr1\ttest\tgene\t20\t180\t.\t-\t.\tID=g\n"
+                "chr1\ttest\tmRNA\t20\t180\t.\t-\t.\tID=t;Parent=g\n"
+                "chr1\ttest\texon\t20\t60\t.\t-\t.\tID=e1;Parent=t\n"
+                "chr1\ttest\tCDS\t30\t60\t.\t-\t1\tID=c1;Parent=t\n"
+                "chr1\ttest\texon\t140\t180\t.\t-\t.\tID=e2;Parent=t\n"
+                "chr1\ttest\tCDS\t140\t170\t.\t-\t0\tID=c2;Parent=t\n"
+            )
+            extract_gene(genome, annotation, "g", "fam", "Sp", "g", output)
+            exons = [row for row in read_tsv(output / "segment_occurrences.tsv") if row["role"] == "exon"]
+            ordered = sorted(exons, key=lambda row: int(row["transcript_order"]))
+            self.assertEqual([int(row["start"]) for row in ordered], [140, 20])
+
     def test_extract_gene_and_derive_tables(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -310,7 +386,10 @@ class PreprocessTests(unittest.TestCase):
             copy_context = read_tsv(out / "copy_context.tsv")
             self.assertEqual(len(occ), 3)
             self.assertEqual(len(adj), 2)
-            self.assertEqual({row["role"] for row in occ}, {"CDS", "intron"})
+            self.assertEqual({row["role"] for row in occ}, {"exon", "intron"})
+            exons = [row for row in occ if row["role"] == "exon"]
+            self.assertEqual([(int(row["start"]), int(row["end"])) for row in exons], [(10, 40), (80, 120)])
+            self.assertEqual({row["coding_status"] for row in exons}, {"coding"})
             self.assertTrue(hom)
             self.assertIn("phase_score", matches[0])
             self.assertTrue(paths)

@@ -1,18 +1,16 @@
 """Sequence-supported annotation completion."""
 
-from collections import Counter
+from collections import Counter, defaultdict
+from pathlib import Path
 
-from .io import read_tsv, to_float, write_tsv
+from .alignment import AlignmentBackendError, local_alignment_stats
+from .io import parse_fasta, read_tsv, to_float, write_tsv
 
 
 def support_score(row):
-    seq = to_float(row.get("sequence_score"))
-    left = to_float(row.get("left_synteny_score"))
-    right = to_float(row.get("right_synteny_score"))
-    motif = to_float(row.get("splice_motif_score"))
-    phase_bonus = 0.05 if row.get("phase_compatibility") == "compatible" else 0.0
-    frame_bonus = 0.05 if row.get("frame_status") in {"coding_frame_preserved", "coding_frame_annotated"} else 0.0
-    return min(1.0, 0.36 * seq + 0.18 * left + 0.18 * right + 0.18 * motif + phase_bonus + frame_bonus)
+    identity = to_float(row.get("sequence_score"))
+    coverage = to_float(row.get("sequence_coverage"), 1.0)
+    return min(identity, coverage)
 
 
 def completion_call(row, score, threshold):
@@ -36,9 +34,133 @@ def completion_call(row, score, threshold):
     return "ambiguous_evidence"
 
 
+def _locus_key(header):
+    parts = header.split("|", 2)
+    return tuple(parts[:2]) if len(parts) >= 2 else ("NA", header)
+
+
+def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_coverage=0.60):
+    """Search missing homologous exon sequences inside supplied homologous gene loci."""
+    input_dir = Path(input_dir)
+    result_dir = Path(result_dir)
+    occurrences = read_tsv(input_dir / "segment_occurrences.tsv")
+    elements = read_tsv(result_dir / "element_correspondence.tsv", optional=True)
+    sequences = parse_fasta(input_dir / "segment_sequences.fasta")
+    loci = {_locus_key(name): sequence for name, sequence in parse_fasta(input_dir / "gene_loci.fasta").items()}
+    if not elements or not loci:
+        return []
+
+    occ_by_id = {row["occurrence_id"]: row for row in occurrences}
+    element_by_occ = {row["occurrence_id"]: row["element_id"] for row in elements}
+    rows_by_element = defaultdict(list)
+    copies_by_family_species = defaultdict(set)
+    present_elements = defaultdict(set)
+    order_by_copy = defaultdict(list)
+    for occurrence in occurrences:
+        key = (occurrence["family_id"], occurrence["species"])
+        copies_by_family_species[key].add(occurrence["gene_copy_id"])
+        element = element_by_occ.get(occurrence["occurrence_id"])
+        if element and occurrence.get("role") != "intron":
+            present_elements[(occurrence["family_id"], occurrence["species"], occurrence["gene_copy_id"])].add(element)
+            order_by_copy[(occurrence["family_id"], occurrence["species"], occurrence["gene_copy_id"])].append(
+                (int(occurrence.get("transcript_order", 0) or 0), element)
+            )
+    for row in elements:
+        occurrence = occ_by_id.get(row.get("occurrence_id", ""))
+        if occurrence and row.get("element_class") == "exon_like":
+            rows_by_element[(occurrence["family_id"], row["element_id"])].append((row, occurrence))
+
+    evidence = []
+    for (family, element), members in sorted(rows_by_element.items()):
+        representative_row, representative = max(
+            members,
+            key=lambda pair: len(sequences.get(pair[1]["occurrence_id"], "")),
+        )
+        query = sequences.get(representative["occurrence_id"], "")
+        if not query:
+            continue
+        source_order = [element_id for _rank, element_id in sorted(order_by_copy[(family, representative["species"], representative["gene_copy_id"])])]
+        source_index = source_order.index(element) if element in source_order else -1
+        left_element = source_order[source_index - 1] if source_index > 0 else None
+        right_element = source_order[source_index + 1] if 0 <= source_index < len(source_order) - 1 else None
+        for (candidate_family, species), copies in sorted(copies_by_family_species.items()):
+            if candidate_family != family or len(copies) != 1:
+                continue
+            gene_copy = next(iter(copies))
+            copy_key = (family, species, gene_copy)
+            if element in present_elements[copy_key]:
+                continue
+            locus = loci.get((species, gene_copy), "")
+            if not locus:
+                continue
+            backend = "internal" if len(query) * len(locus) <= 250_000 else "minimap2"
+            try:
+                alignment = local_alignment_stats(query, locus, backend=backend)
+                identity = alignment.identity
+                coverage = alignment.query_coverage or alignment.coverage
+            except AlignmentBackendError:
+                alignment = None
+                identity = coverage = 0.0
+            anchored = bool(
+                left_element
+                and right_element
+                and left_element in present_elements[copy_key]
+                and right_element in present_elements[copy_key]
+            )
+            assembly_complete = locus.count("N") / max(1, len(locus)) <= 0.05
+            supported = alignment is not None and identity >= min_identity and coverage >= min_coverage
+            if supported:
+                status = "supports_hidden_segment"
+                annotation_status = "unannotated_homologous_sequence"
+                start, end = alignment.target_start, alignment.target_end
+            elif anchored and assembly_complete:
+                status = "supports_absence"
+                annotation_status = "sequence_absence_between_flanking_homologs"
+                start = end = "NA"
+            else:
+                status = "ambiguous"
+                annotation_status = "insufficient_sequence_or_flank_evidence"
+                start = end = "NA"
+            evidence.append(
+                {
+                    "evidence_id": f"completion_{family}_{element}_{species}",
+                    "family_id": family,
+                    "species": species,
+                    "gene_copy_id": gene_copy,
+                    "homology_id": representative_row.get("homology_id", "NA"),
+                    "annotation_status": annotation_status,
+                    "evidence_status": status,
+                    "inferred_role": "exon",
+                    "contig": "supplied_gene_locus",
+                    "start": start,
+                    "end": end,
+                    "strand": "+",
+                    "sequence_score": f"{identity:.6g}",
+                    "sequence_coverage": f"{coverage:.6g}",
+                    "left_synteny_score": "1" if left_element in present_elements[copy_key] else "0",
+                    "right_synteny_score": "1" if right_element in present_elements[copy_key] else "0",
+                    "splice_motif_score": "NA",
+                    "phase_compatibility": "unknown",
+                    "inferred_event": "homologous_exon_sequence_search",
+                    "frame_status": "unknown",
+                }
+            )
+    fields = [
+        "evidence_id", "family_id", "species", "gene_copy_id", "homology_id",
+        "annotation_status", "evidence_status", "inferred_role", "contig", "start", "end",
+        "strand", "sequence_score", "sequence_coverage", "left_synteny_score",
+        "right_synteny_score", "splice_motif_score", "phase_compatibility",
+        "inferred_event", "frame_status",
+    ]
+    write_tsv(result_dir / "sequence_synteny_evidence.tsv", evidence, fields)
+    return evidence
+
+
 def complete_annotation(input_dir, output_dir, threshold=0.55):
+    generated = Path(output_dir) / "sequence_synteny_evidence.tsv"
+    evidence_path = generated if generated.exists() else Path(input_dir) / "sequence_synteny_evidence.tsv"
     evidence = read_tsv(
-        f"{input_dir}/sequence_synteny_evidence.tsv",
+        evidence_path,
         ["evidence_id", "family_id", "species", "gene_copy_id", "homology_id", "annotation_status", "evidence_status"],
         optional=True,
     )

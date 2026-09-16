@@ -9,6 +9,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +29,9 @@ class AlignmentStats:
     target_end: int = 0
     cigar: str = "NA"
     backend: str = "internal"
+    query_coverage: float = 0.0
+    target_coverage: float = 0.0
+    aligned_pairs: int = 0
 
 
 class AlignmentBackendError(RuntimeError):
@@ -53,9 +57,10 @@ def _fallback_global(seq_a: str, seq_b: str, match=2, mismatch=-1, gap=-2) -> Al
     if not m or not n:
         return AlignmentStats(0.0, 0.0, 0.0, query_end=m, target_end=n)
     if m * n > MAX_INTERNAL_DP_CELLS:
-        identity = ungapped_identity(seq_a, seq_b)
-        coverage = min(m, n) / max(1, max(m, n))
-        return AlignmentStats(identity, coverage, identity * coverage, query_end=m, target_end=n, cigar=f"{min(m, n)}M")
+        raise AlignmentBackendError(
+            f"internal global alignment requires {m * n} DP cells; "
+            "select minimap2 or MAFFT for this sequence pair"
+        )
 
     score = [[0] * (n + 1) for _ in range(m + 1)]
     trace = [[""] * (n + 1) for _ in range(m + 1)]
@@ -100,8 +105,14 @@ def _fallback_global(seq_a: str, seq_b: str, match=2, mismatch=-1, gap=-2) -> Al
             j -= 1
     ops.reverse()
     identity = matches / max(1, aligned)
-    coverage = min(q_used / max(1, m), t_used / max(1, n))
-    return AlignmentStats(identity, coverage, float(score[m][n]), query_end=m, target_end=n, cigar=_compress_ops(ops))
+    query_coverage = aligned / max(1, m)
+    target_coverage = aligned / max(1, n)
+    coverage = min(query_coverage, target_coverage)
+    return AlignmentStats(
+        identity, coverage, float(score[m][n]), query_end=m, target_end=n,
+        cigar=_compress_ops(ops), query_coverage=query_coverage,
+        target_coverage=target_coverage, aligned_pairs=aligned,
+    )
 
 
 def _compress_ops(ops):
@@ -132,6 +143,12 @@ def _parse_paf_tags(fields):
         if len(parts) == 3:
             tags[parts[0]] = parts[2]
     return tags
+
+
+def _paired_bases_from_cigar(cigar):
+    if not cigar or cigar == "NA":
+        return 0
+    return sum(int(length) for length, op in re.findall(r"(\d+)([MIDNSHP=X])", cigar) if op in {"M", "=", "X"})
 
 
 def _external_minimap2_stats(query: str, target: str, mode: str, threads: int = 1) -> AlignmentStats:
@@ -177,12 +194,16 @@ def _external_minimap2_stats(query: str, target: str, mode: str, threads: int = 
         block = max(1.0, float(fields[10]))
         tags = _parse_paf_tags(fields)
         identity = matches / block
-        if mode == "global":
-            coverage = min((qend - qstart) / max(1, qlen), abs(tend - tstart) / max(1, len(target)))
-        else:
-            coverage = (qend - qstart) / max(1, qlen)
+        paired = _paired_bases_from_cigar(tags.get("cg", "NA")) or int(min(qend - qstart, abs(tend - tstart)))
+        query_coverage = paired / max(1, qlen)
+        target_coverage = paired / max(1, len(target))
+        coverage = min(query_coverage, target_coverage) if mode == "global" else query_coverage
         score = float(tags.get("AS", matches))
-        stat = AlignmentStats(identity, coverage, score, qstart + 1, qend, min(tstart, tend) + 1, max(tstart, tend), tags.get("cg", "NA"), "minimap2")
+        stat = AlignmentStats(
+            identity, coverage, score, qstart + 1, qend, min(tstart, tend) + 1,
+            max(tstart, tend), tags.get("cg", "NA"), "minimap2",
+            query_coverage, target_coverage, paired,
+        )
         rank = (stat.coverage * stat.identity, stat.score)
         if best is None or rank > best[0]:
             best = (rank, stat)
@@ -192,11 +213,13 @@ def _external_minimap2_stats(query: str, target: str, mode: str, threads: int = 
 
 
 def _external_miniprot_stats(query: str, target: str, threads: int = 1) -> AlignmentStats:
+    query = (query or "").upper()
+    target = (target or "").upper()
+    if set(query) <= set("ACGTUN-"):
+        raise AlignmentBackendError("miniprot requires an amino-acid query; a nucleotide query was supplied")
     exe = shutil.which("miniprot")
     if not exe:
         raise AlignmentBackendError("miniprot was requested but is not available on PATH")
-    query = (query or "").upper()
-    target = (target or "").upper()
     if not query or not target:
         return AlignmentStats(0.0, 0.0, 0.0, query_end=len(query), target_end=len(target), backend="miniprot")
     with tempfile.TemporaryDirectory(prefix="insiphy_miniprot_") as tmp:
@@ -225,9 +248,14 @@ def _external_miniprot_stats(query: str, target: str, threads: int = 1) -> Align
         block = max(1.0, float(fields[10]))
         tags = _parse_paf_tags(fields)
         identity = matches / block
-        coverage = (qend - qstart) / max(1, qlen)
+        paired = int(qend - qstart)
+        coverage = paired / max(1, qlen)
         score = float(tags.get("AS", matches))
-        stat = AlignmentStats(identity, coverage, score, qstart + 1, qend, min(tstart, tend) + 1, max(tstart, tend), tags.get("cg", "NA"), "miniprot")
+        stat = AlignmentStats(
+            identity, coverage, score, qstart + 1, qend, min(tstart, tend) + 1,
+            max(tstart, tend), tags.get("cg", "NA"), "miniprot",
+            coverage, paired / max(1, len(target)), paired,
+        )
         rank = (stat.coverage * stat.identity, stat.score)
         if best is None or rank > best[0]:
             best = (rank, stat)
@@ -236,10 +264,57 @@ def _external_miniprot_stats(query: str, target: str, threads: int = 1) -> Align
     return best[1]
 
 
+def _external_mafft_stats(query: str, target: str, threads: int = 1) -> AlignmentStats:
+    exe = shutil.which("mafft")
+    if not exe:
+        raise AlignmentBackendError("MAFFT was requested but is not available on PATH")
+    with tempfile.TemporaryDirectory(prefix="insiphy_mafft_") as tmp:
+        input_path = Path(tmp) / "pair.fa"
+        input_path.write_text(f">query\n{query.upper()}\n>target\n{target.upper()}\n")
+        proc = subprocess.run(
+            [exe, "--quiet", "--thread", str(max(1, int(threads or 1))), "--auto", str(input_path)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    if proc.returncode != 0:
+        raise AlignmentBackendError(proc.stderr.strip() or "MAFFT failed")
+    aligned = {}
+    name = None
+    for line in proc.stdout.splitlines():
+        if line.startswith(">"):
+            name = line[1:].split()[0]
+            aligned[name] = ""
+        elif name:
+            aligned[name] += line.strip().upper()
+    left, right = aligned.get("query", ""), aligned.get("target", "")
+    if not left or len(left) != len(right):
+        raise AlignmentBackendError("MAFFT did not return a valid two-sequence alignment")
+    operations = []
+    matches = paired = 0
+    for a, b in zip(left, right):
+        if a != "-" and b != "-":
+            paired += 1
+            matches += int(a == b and a != "N")
+            operations.append("M")
+        elif a != "-":
+            operations.append("D")
+        elif b != "-":
+            operations.append("I")
+    query_coverage = paired / max(1, len(query))
+    target_coverage = paired / max(1, len(target))
+    return AlignmentStats(
+        matches / max(1, paired), min(query_coverage, target_coverage), float(matches),
+        1, len(query), 1, len(target), _compress_ops(operations), "mafft",
+        query_coverage, target_coverage, paired,
+    )
+
+
 def available_alignment_backends():
     rows = [{"aligner": "internal", "available": 1, "notes": "Biopython PairwiseAligner with pure-Python fallback"}]
     rows.append({"aligner": "minimap2", "available": int(shutil.which("minimap2") is not None), "notes": "external nucleotide aligner"})
     rows.append({"aligner": "miniprot", "available": int(shutil.which("miniprot") is not None), "notes": "external protein-to-genome aligner"})
+    rows.append({"aligner": "mafft", "available": int(shutil.which("mafft") is not None), "notes": "external progressive multiple-sequence aligner"})
     return rows
 
 
@@ -286,8 +361,8 @@ def _pairwise_aligner_stats(seq_a: str, seq_b: str, mode: str) -> AlignmentStats
     query_end = int(coordinates[0, -1])
     target_start = int(coordinates[1, 0]) + 1
     target_end = int(coordinates[1, -1])
-    query_used = max(0, query_end - query_start + 1)
-    target_used = max(0, target_end - target_start + 1)
+    query_used = aligned
+    target_used = aligned
     if mode == "global":
         coverage = min(query_used / len(seq_a), target_used / len(seq_b))
     else:
@@ -301,6 +376,9 @@ def _pairwise_aligner_stats(seq_a: str, seq_b: str, mode: str) -> AlignmentStats
         target_start=target_start,
         target_end=target_end,
         cigar=_compress_ops(operations),
+        query_coverage=query_used / len(seq_a),
+        target_coverage=target_used / len(seq_b),
+        aligned_pairs=aligned,
     )
 
 
@@ -310,6 +388,8 @@ def global_alignment_stats(seq_a: str, seq_b: str, backend: str = "internal", th
         return _external_minimap2_stats(seq_a, seq_b, "global", threads)
     if backend == "miniprot":
         return _external_miniprot_stats(seq_a, seq_b, threads)
+    if backend == "mafft":
+        return _external_mafft_stats(seq_a, seq_b, threads)
     if backend != "internal":
         raise AlignmentBackendError(f"unsupported alignment backend: {backend}")
     try:
@@ -318,7 +398,10 @@ def global_alignment_stats(seq_a: str, seq_b: str, backend: str = "internal", th
         if not seq_a or not seq_b:
             return AlignmentStats(0.0, 0.0, 0.0, query_end=len(seq_a), target_end=len(seq_b))
         if len(seq_a) * len(seq_b) > MAX_INTERNAL_DP_CELLS:
-            return _fallback_global(seq_a, seq_b)
+            raise AlignmentBackendError(
+                f"internal global alignment requires {len(seq_a) * len(seq_b)} DP cells; "
+                "select minimap2 or MAFFT"
+            )
         return _pairwise_aligner_stats(seq_a, seq_b, "global")
     except ImportError:
         return _fallback_global(seq_a, seq_b)
@@ -331,7 +414,9 @@ def _fallback_local(query: str, target: str, match=2, mismatch=-1, gap=-2) -> Al
     if not m or not n:
         return AlignmentStats(0.0, 0.0, 0.0)
     if m * n > MAX_INTERNAL_DP_CELLS:
-        return best_ungapped_hit(query, target)
+        raise AlignmentBackendError(
+            f"internal local alignment requires {m * n} DP cells; select minimap2"
+        )
 
     score = [[0] * (n + 1) for _ in range(m + 1)]
     trace = [[""] * (n + 1) for _ in range(m + 1)]
@@ -371,6 +456,7 @@ def _fallback_local(query: str, target: str, match=2, mismatch=-1, gap=-2) -> Al
             ops.append("I")
             j -= 1
     ops.reverse()
+    target_used = aligned
     return AlignmentStats(
         identity=matches / max(1, aligned),
         coverage=q_used / max(1, m),
@@ -380,6 +466,9 @@ def _fallback_local(query: str, target: str, match=2, mismatch=-1, gap=-2) -> Al
         target_start=j + 1,
         target_end=end_j,
         cigar=_compress_ops(ops),
+        query_coverage=q_used / max(1, m),
+        target_coverage=target_used / max(1, n),
+        aligned_pairs=aligned,
     )
 
 
@@ -389,6 +478,8 @@ def local_alignment_stats(query: str, target: str, backend: str = "internal", th
         return _external_minimap2_stats(query, target, "local", threads)
     if backend == "miniprot":
         return _external_miniprot_stats(query, target, threads)
+    if backend == "mafft":
+        raise AlignmentBackendError("MAFFT is a global correspondence backend and cannot perform locus-local searches")
     if backend != "internal":
         raise AlignmentBackendError(f"unsupported alignment backend: {backend}")
     try:
@@ -397,7 +488,9 @@ def local_alignment_stats(query: str, target: str, backend: str = "internal", th
         if not query or not target:
             return AlignmentStats(0.0, 0.0, 0.0)
         if len(query) * len(target) > MAX_INTERNAL_DP_CELLS:
-            return best_ungapped_hit(query, target)
+            raise AlignmentBackendError(
+                f"internal local alignment requires {len(query) * len(target)} DP cells; select minimap2"
+            )
         return _pairwise_aligner_stats(query, target, "local")
     except ImportError:
         return _fallback_local(query, target)
@@ -439,7 +532,16 @@ def splice_motif_score(oriented_intron_seq: str) -> tuple[float, str, str]:
     return 0.1, donor, acceptor
 
 
-def phase_compatibility(left_phase: str, right_phase: str) -> str:
-    if left_phase in {"", ".", "NA", None} or right_phase in {"", ".", "NA", None}:
+def phase_compatibility(left_phase: str, right_phase: str, left_cds_length=None) -> str:
+    if left_phase in {"", ".", "NA", None} or right_phase in {"", ".", "NA", None} or left_cds_length is None:
         return "unknown"
-    return "compatible" if str(left_phase) == str(right_phase) else "incompatible"
+    try:
+        left_phase = int(left_phase)
+        right_phase = int(right_phase)
+        coding_bases = int(left_cds_length) - left_phase
+    except (TypeError, ValueError):
+        return "unknown"
+    if coding_bases < 0:
+        return "incompatible"
+    expected_right_phase = (3 - (coding_bases % 3)) % 3
+    return "compatible" if right_phase == expected_right_phase else "incompatible"

@@ -2,7 +2,7 @@
 
 ## 1. Analysis unit
 
-The formal v0.11 analysis accepts a single-copy ortholog set and a fixed rooted
+The formal v0.12 analysis accepts a single-copy ortholog set and a fixed rooted
 species tree. Gene-level homology is treated as known input. For each gene
 family and structural layer, homologous sites are conditionally independent
 replicates that share evolutionary parameters.
@@ -30,8 +30,9 @@ Q = [ -q01   q01 ]
 
 where (q_{01}) is the gain rate and (q_{10}) is the loss rate per unit
 branch length. Transition probabilities on a branch of length (t) are
-(P(t)=exp(Qt)). The default root distribution is the stationary distribution
-((q_{10}/(q_{01}+q_{10}), q_{01}/(q_{01}+q_{10}))).
+(P(t)=exp(Qt)). The default model estimates the root presence probability
+independently of the gain and loss rates. `stationary` and user-supplied
+`fixed` root frequencies remain explicit alternatives.
 
 Likelihoods are computed with scaled Felsenstein pruning. At an unknown tip,
 the conditional likelihood vector is ((1,1)), which integrates over both
@@ -47,8 +48,7 @@ ln L(theta | X_g,l, T) = sum_i ln P(x_i | theta, T)
 ```
 
 A site enters fitting when at least two terminal species have observed states.
-Invariant sites remain in the all-sites likelihood and contribute information
-about low change rates. Sites with fewer than two observations stay in
+Sites with fewer than two observations stay in
 `structural_site_matrix.tsv` but do not contribute to parameter fitting.
 
 This pooling follows the same statistical principle used by sequence
@@ -73,9 +73,10 @@ The likelihood-ratio statistic is
 LR = 2 * (ln L_ARD - ln L_ER).
 ```
 
-When both fits converge, at least one site varies among observed tips, and no
-estimate lies on the optimization boundary, `model_tests.tsv` reports the
-asymptotic tail probability from `chi-square(df=1)`.
+The asymptotic `chi-square(df=1)` P value is reported only when both models
+converge, the alternative likelihood is at least the null likelihood, the
+observed-information matrix has full numerical rank, and no estimate lies on
+the optimization boundary.
 
 With no observed tip variation, gain and loss directions cannot be identified.
 Boundary estimates also violate the regular chi-square approximation. These
@@ -95,8 +96,16 @@ the statistical test.
 
 ## 6. Ascertainment
 
-`--ascertainment all-sites` is the default and should be used when conserved
-and variable structural sites were retained during correspondence.
+Automatically generated candidate sites exist because state 1 was observed in
+at least one species. The default correction therefore uses:
+
+```text
+ln P(x_i | at least one state 1) =
+ln P(x_i) - ln(1 - P(all 0)).
+```
+
+`--ascertainment complete-universe` is available only for an externally
+defined candidate universe that also contains meaningful all-zero sites.
 
 `--ascertainment variable-only` applies a Lewis-style Mkv correction:
 
@@ -111,7 +120,8 @@ invariant sites.
 
 ## 7. Node and branch posteriors
 
-After model selection by AIC, inside-outside messages give marginal posterior
+After model selection by AIC, inside-outside messages give marginal empirical-
+Bayes probabilities conditional on maximum-likelihood parameters
 probabilities for every node and the joint endpoint posterior for every
 branch:
 
@@ -130,16 +140,16 @@ The expected count integrates over all CTMC paths conditional on branch
 endpoints. It can exceed the endpoint-change probability because an even
 number of hidden transitions may return to the starting state.
 
-`structural_changes.tsv` gives a compact branch/site view. Its direction label
-records the direction with the larger posterior probability. The accompanying
-probability remains the evidence measure; the label alone does not establish a
-historical event.
+`structural_changes.tsv` gives a compact branch/site view and retains both
+directions. Profile-likelihood endpoint fits provide a deterministic
+sensitivity range for node and branch probabilities. No categorical historical
+direction is called automatically.
 
 ## 8. Multiple testing
 
 Benjamini-Hochberg adjustment is applied separately within each `test_id`
-across all valid family-layer tests in one run. A single valid test receives
-`q_value=NA` and `q_value_method=single_test_not_adjusted`.
+across all valid family-layer tests in one run. With one valid test, its BH
+q value equals its P value.
 
 ## 9. Branch lengths
 
@@ -160,7 +170,7 @@ The model conditions on:
 - the inferred exon correspondence;
 - the structural state coding.
 
-Uncertainty in gene orthology and tree topology is not integrated in v0.11.
+Uncertainty in gene orthology and tree topology is not integrated in v0.12.
 Site independence is an approximation because neighboring exon and junction
 states can be biologically coupled. A small number of exons gives wide
 likelihood intervals and limited LRT power. These limitations should be

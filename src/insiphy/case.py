@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .alignment import local_alignment_stats, revcomp as reverse_complement, splice_motif_score
 from .io import parse_fasta, read_tsv, write_tsv
-from .preprocess import extract_gene, derive_tables, read_annotation
+from .preprocess import extract_gene, derive_tables, read_annotation, translate_cds
 
 
 def split_aliases(value):
@@ -264,9 +264,12 @@ def scan_hidden_segments(source_fasta, target_fasta, output_dir, family_id="NA",
     targets = parse_fasta(target_fasta)
     rows = []
     for query_id, query_seq in sorted(sources.items()):
+        if aligner == "miniprot" and set(query_seq.upper()) <= set("ACGTUN-"):
+            query_seq = translate_cds(query_seq)
         best = None
         for target_id, target_seq in sorted(targets.items()):
-            for strand, qseq in [("+", query_seq), ("-", revcomp(query_seq))]:
+            orientations = [("+", query_seq)] if aligner == "miniprot" else [("+", query_seq), ("-", revcomp(query_seq))]
+            for strand, qseq in orientations:
                 hit = local_alignment_stats(qseq, target_seq, backend=aligner, threads=threads)
                 target_fragment = target_seq[max(0, hit.target_start - 1) : hit.target_end]
                 motif, donor, acceptor = splice_motif_score(target_fragment)
@@ -281,7 +284,7 @@ def scan_hidden_segments(source_fasta, target_fasta, output_dir, family_id="NA",
                     "end": hit.target_end,
                     "strand": strand,
                     "identity": hit.identity,
-                    "coverage": hit.coverage,
+                    "coverage": hit.query_coverage or hit.coverage,
                     "alignment_score": hit.score,
                     "alignment_cigar": hit.cigar,
                     "alignment_backend": hit.backend,

@@ -1,6 +1,6 @@
 # Biological and Statistical Rationale
 
-## Conclusions adopted in v0.11
+## Conclusions adopted in v0.12
 
 The literature supports three separable tasks:
 
@@ -23,7 +23,7 @@ terminal exon-intron pattern. Comparative sequence and local structure can
 identify the changed unit, while transposon origin, selection, gene conversion,
 or expression consequences usually require additional data.
 
-The v0.11 layers reflect this:
+The v0.12 layers reflect this:
 
 - sequence presence addresses gain/loss of a homologous unit;
 - exonic role addresses recruitment or loss of an exon role while sequence

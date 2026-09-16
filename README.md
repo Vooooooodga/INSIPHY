@@ -26,9 +26,10 @@ RNA-seq、表达量、pathway 富集和机制判定均不在当前模型中。�
 
 1. **注释补全**：在给定基因区间内，用序列相似性、剪接边界、阅读框和局部
    顺序识别漏注释或边界不完整的外显子候选。
-2. **基因内部同源对应**：比较近缘物种的 exon/CDS/UTR 和序列支持的候选
-   外显子区域，建立 exon-like correspondence group (`EG_*`)。内含子作为间隔、
-   剪接连接和边界证据。
+2. **基因内部同源对应**：以完整外显子为观察单位，将 CDS、UTR、phase 和
+   reading frame 保存为属性，并把外显子边界投影到同源序列坐标。`EG_*` 只是
+   表格中的稳定标识符，生物学对象是同源外显子或由明确比对坐标限定的同源
+   外显子区块。内含子只提供剪接边界和间隔信息。
 3. **系统发育统计**：把可观察的基因结构编码为三类二状态位点，在固定物种树
    上联合估计结构获得率和丢失率，计算祖先状态后验及分支变化后验。
 
@@ -58,9 +59,10 @@ RNA-seq、表达量、pathway 富集和机制判定均不在当前模型中。�
 `--model foreground` 比较全树共享的 ARD 模型和指定前景分支具有倍率参数的
 ARD 模型。零假设下前景倍率为 1。
 
-若叶节点没有结构变化，或最大似然估计落在参数边界，数据无法识别方向性变化
-率，`p_value` 会报告为 `NA`。祖先状态和分支事件均以 posterior probability
-表达，代表给定树、状态编码和模型后的条件不确定性。
+自动构建的位点按“至少一个物种观察到状态 1”进行检出条件修正。根节点状态 1
+频率默认独立估计。若参数不可识别、落在边界、前景与背景混淆或嵌套模型优化
+异常，`p_value` 报告为 `NA`。祖先状态和分支概率属于条件于极大似然参数的
+经验贝叶斯结果，并同时报告 profile-likelihood 参数区域下的敏感性范围。
 
 ## 安装
 
@@ -69,8 +71,9 @@ python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
 
-运行外部比对时可选择 `minimap2` 或 `miniprot`。默认内部比对器使用 Biopython
-`PairwiseAligner`。软件包内部不包含工作流引擎。
+外显子对应可选择 MAFFT 或 minimap2。miniprot 只接受重建后的蛋白质查询并映射
+到已知同源基因区间。默认内部比对器仅用于规模受限的短序列，超限时会要求
+外部后端。软件包内部不包含工作流引擎。
 
 ## OrthoFinder 导入
 
@@ -116,6 +119,8 @@ insiphy run \
   --analysis-scope single-copy \
   --model er-ard \
   --branch-length-mode supplied \
+  --ascertainment observed-at-least-one \
+  --root-frequency estimated \
   --threads 8
 ```
 
@@ -153,14 +158,15 @@ insiphy visualize \
 
 ## 正式输出
 
-- `element_correspondence.tsv`：外显子样结构单元及其同源成员；
+- `element_correspondence.tsv`：完整外显子或明确同源外显子区块的对应成员；
+- `splice_boundary_correspondence.tsv`：投影到同源序列坐标的剪接边界；
 - `structural_site_matrix.tsv`：三类结构位点在叶节点的观察状态与证据；
 - `model_fits.tsv`：ER、ARD 或前景模型的参数、profile-likelihood 95% 区间、
   lnL 和 AIC；
 - `model_tests.tsv`：零假设、备择假设、LRT、P 值、q 值和可估计状态；
 - `node_state_posteriors.tsv`：每个内部节点的状态后验概率；
 - `branch_transition_posteriors.tsv`：每条分支两个方向的端点转移后验及期望转移数；
-- `structural_changes.tsv`：每个位点与分支的变化概率及概率较大的方向；
+- `structural_changes.tsv`：每个位点与分支的双向变化概率，不自动判定历史方向；
 - `excluded_families.tsv`：不满足单拷贝要求的家族；
 - `run_parameters.json`：树、模型和运行参数。
 
@@ -169,10 +175,9 @@ insiphy visualize \
 
 ## 真实 Demo
 
-`examples/real_cases/rpl32_control` 是五种果蝇的真实单拷贝保守对照，数据来自本地
-保存的公开 genome assembly 和 annotation。它用于展示：可靠对应的 RpL32 外显子
-在五个物种中保持存在和外显子角色；叶节点没有可识别的方向性结构变化时，软件
-报告近零分支变化概率，并将 ER/ARD 检验标记为参数不可识别。
+`examples/real_cases/rpl32_control` 包含五种果蝇的真实单拷贝 RpL32 数据。新版按
+完整外显子重新分析该案例，不预设其必须完全保守；不同转录本注释造成的结构
+差异会在结果中保留为观察或未知状态。
 
 Jingwei 和 Sdic 的多拷贝材料保留为实验性开发案例，当前版本不将它们作为正式
 单拷贝方法的性能证据。

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from . import __version__
 from .alignment import available_alignment_backends
-from .annotation import complete_annotation
+from .annotation import complete_annotation, generate_sequence_evidence
 from .baseline import evaluate_baselines
 from .benchmark import benchmark_events
 from .calibration import DEFAULT_SCENARIOS, calibrate_simulations
@@ -28,12 +28,15 @@ def run_all(
     analysis_scope="single-copy",
     model="er-ard",
     branch_length_mode="supplied",
-    ascertainment="all-sites",
+    ascertainment="observed-at-least-one",
     threads=1,
+    root_frequency="estimated",
+    root_presence=0.5,
 ):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    complete_annotation(input_dir, output_dir)
     infer_correspondence(input_dir, output_dir)
+    generate_sequence_evidence(input_dir, output_dir)
+    complete_annotation(input_dir, output_dir)
     infer_phylogeny(
         input_dir,
         output_dir,
@@ -46,6 +49,8 @@ def run_all(
         branch_length_mode=branch_length_mode,
         ascertainment=ascertainment,
         threads=threads,
+        root_frequency=root_frequency,
+        root_presence=root_presence,
     )
     if analysis_scope == "experimental-multicopy":
         evaluate_baselines(input_dir, output_dir)
@@ -75,7 +80,7 @@ def main(argv=None):
     derive.add_argument("--output-dir")
     derive.add_argument("--identity-threshold", type=float, default=0.7)
     derive.add_argument("--distance-table")
-    derive.add_argument("--aligner", choices=["internal", "minimap2", "miniprot"], default="internal")
+    derive.add_argument("--aligner", choices=["internal", "mafft", "minimap2"], default="internal")
     derive.add_argument("--threads", type=int, default=1)
     derive.add_argument("--min-size-ratio", type=float, default=0.25)
 
@@ -139,7 +144,7 @@ def main(argv=None):
     case.add_argument("--gene-tree")
     case.add_argument("--transcript-policy", choices=["canonical", "all"], default="canonical")
     case.add_argument("--canonical-rule", choices=["longest_cds", "longest_span"], default="longest_cds")
-    case.add_argument("--aligner", choices=["internal", "minimap2", "miniprot"], default="internal")
+    case.add_argument("--aligner", choices=["internal", "mafft", "minimap2"], default="internal")
     case.add_argument("--threads", type=int, default=1)
     case.add_argument("--min-size-ratio", type=float, default=0.25)
 
@@ -177,7 +182,17 @@ def main(argv=None):
         )
         cmd.add_argument("--model", choices=["er-ard", "foreground"], default="er-ard")
         cmd.add_argument("--branch-length-mode", choices=["supplied", "unit"], default="supplied")
-        cmd.add_argument("--ascertainment", choices=["all-sites", "variable-only"], default="all-sites")
+        cmd.add_argument(
+            "--ascertainment",
+            choices=["observed-at-least-one", "complete-universe", "variable-only"],
+            default="observed-at-least-one",
+        )
+        cmd.add_argument(
+            "--root-frequency",
+            choices=["estimated", "stationary", "fixed"],
+            default="estimated",
+        )
+        cmd.add_argument("--root-presence", type=float, default=0.5)
         cmd.add_argument("--threads", type=int, default=1)
         cmd.add_argument("--bootstrap-replicates", type=int, default=0)
         cmd.add_argument("--stochastic-maps", type=int, default=0)
@@ -229,6 +244,8 @@ def main(argv=None):
             args.branch_length_mode,
             args.ascertainment,
             args.threads,
+            args.root_frequency,
+            args.root_presence,
         )
     elif args.command == "compare-baselines":
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
@@ -247,6 +264,8 @@ def main(argv=None):
             args.branch_length_mode,
             args.ascertainment,
             args.threads,
+            args.root_frequency,
+            args.root_presence,
         )
 
 

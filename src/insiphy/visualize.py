@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -242,7 +243,7 @@ def draw_synteny(input_dir, result_dir, output_dir, correspondence_encoding="col
     pending_boxes = []
     for ridx, (key, rows) in enumerate(sorted(grouped.items()), start=0):
         species, copy = key
-        rows = sorted(rows, key=lambda row: (row.get("contig", ""), int(row.get("start", "0")), int(row.get("end", "0"))))
+        rows = sorted(rows, key=lambda row: int(row.get("transcript_order", "0") or 0))
         starts = [int(row.get("start", "0")) for row in rows]
         ends = [int(row.get("end", "0")) for row in rows]
         start = min(starts or [0])
@@ -251,8 +252,10 @@ def draw_synteny(input_dir, result_dir, output_dir, correspondence_encoding="col
         y = top + ridx * row_h
         body.append(svg_text(18, y + 15, f"{species}  {copy}", 11))
         body.append(f'<line x1="{left}" y1="{y + 11}" x2="{width - right}" y2="{y + 11}" stroke="#C8C8C8" stroke-width="1"/>')
+        negative = rows and rows[0].get("strand") == "-"
         for row in rows:
-            x = left + (int(row.get("start", "0")) - start) / span * (width - left - right)
+            relative_start = end - int(row.get("end", "0")) if negative else int(row.get("start", "0")) - start
+            x = left + relative_start / span * (width - left - right)
             w = max(4, (int(row.get("end", "0")) - int(row.get("start", "0")) + 1) / span * (width - left - right))
             element_id = occ_to_element.get(row["occurrence_id"], "NA")
             style = styles.get(element_id, {"pattern_id": "missing", "stroke_dasharray": "none", "stroke": "#999999"})
@@ -287,7 +290,7 @@ def draw_synteny(input_dir, result_dir, output_dir, correspondence_encoding="col
 
 
 def tree_coordinates(tree):
-    leaves = sorted(tree.leaves, key=lambda node: tree.label[node])
+    leaves = [node for node in tree.preorder() if node in tree.leaves]
     y = {node: 60 + idx * 42 for idx, node in enumerate(leaves)}
 
     def assign_y(node):
@@ -341,14 +344,13 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
             probability = change_probability(strongest)
             cx = (x[parent] + x[child]) / 2
             cy = y[child]
-            radius = 3.5 + 5.5 * probability
-            opacity = 0.12 + 0.78 * probability
-            fill = "#D55E00" if "loss" in change_label(strongest) or "fusion" in change_label(strongest) else "#0072B2"
+            radius = 8.0 * math.sqrt(max(0.0, probability))
+            opacity = probability
+            fill = "#0072B2"
             body.append(
                 f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{radius:.2f}" fill="{fill}" '
                 f'fill-opacity="{opacity:.3f}" stroke="#111" stroke-width="0.7"/>'
             )
-            body.append(svg_text(cx + radius + 4, y[child] - 6, f"{change_label(strongest)} P={probability:.2f}", 8, fill="#333"))
     for node in tree.preorder():
         if node in tree.leaves:
             body.append(svg_text(x[node] + 8, y[node] + 4, tree.label[node], 11))
@@ -358,13 +360,13 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
                 body.append(svg_text(x[node] + 6, y[node] - 5, tree.label[node], 9, fill="#555"))
     aside_x = 720
     body.append(svg_text(aside_x, 58, "Branch change probabilities", 12, weight="bold"))
-    for idx, row in enumerate(events[:12]):
+    for idx, row in enumerate(sorted(events, key=change_probability, reverse=True)[:12]):
         y0 = 80 + idx * 18
         probability = change_probability(row)
-        fill = "#D55E00" if "loss" in change_label(row) or "fusion" in change_label(row) else "#0072B2"
+        fill = "#0072B2"
         body.append(
             f'<circle cx="{aside_x + 5}" cy="{y0 - 5}" r="5" fill="{fill}" '
-            f'fill-opacity="{0.12 + 0.78 * probability:.3f}" stroke="#111" stroke-width="0.7"/>'
+            f'fill-opacity="{probability:.3f}" stroke="#111" stroke-opacity="{probability:.3f}" stroke-width="0.7"/>'
         )
         body.append(svg_text(aside_x + 16, y0, f"{change_label(row)} | {row.get('branch_scope')} | P={probability:.3f}", 9))
     body.append("</svg>")
@@ -389,7 +391,8 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, corresponde
     grouped = defaultdict(list)
     for row in occurrences:
         grouped[(row.get("species", "NA"), row.get("gene_copy_id", "NA"))].append(row)
-    leaf_order = {tree.label[node]: idx for idx, node in enumerate(sorted(tree.leaves, key=lambda node: tree.label[node]))}
+    tree_leaf_order = [node for node in tree.preorder() if node in tree.leaves]
+    leaf_order = {tree.label[node]: idx for idx, node in enumerate(tree_leaf_order)}
     ordered_groups = sorted(grouped.items(), key=lambda item: (leaf_order.get(tip_label_for_group(tree, item[0][0], item[0][1]), 10**6), item[0][0], item[0][1]))
 
     row_h = 34
@@ -450,10 +453,10 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, corresponde
             cx = (node_x[parent] + node_x[child]) / 2
             cy = node_y[child]
             fill = "#D55E00" if "loss" in change_label(strongest) or "fusion" in change_label(strongest) else "#0072B2"
-            radius = 3.0 + 4.5 * probability
+            radius = 7.0 * math.sqrt(max(0.0, probability))
             body.append(
                 f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{radius:.2f}" fill="{fill}" '
-                f'fill-opacity="{0.12 + 0.78 * probability:.3f}" stroke="#111" stroke-width="0.7"/>'
+                f'fill-opacity="{probability:.3f}" stroke="#111" stroke-opacity="{probability:.3f}" stroke-width="0.7"/>'
             )
     for leaf in tree.leaves:
         body.append(svg_text(node_x[leaf] + 6, node_y[leaf] + 4, tree.label[leaf], 10))
@@ -464,7 +467,7 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, corresponde
     element_boxes = defaultdict(list)
     pending_boxes = []
     for group_idx, ((species, copy), rows) in enumerate(ordered_groups):
-        rows = sorted(rows, key=lambda row: (row.get("contig", ""), int(row.get("start", "0")), int(row.get("end", "0"))))
+        rows = sorted(rows, key=lambda row: int(row.get("transcript_order", "0") or 0))
         starts = [int(row.get("start", "0")) for row in rows]
         ends = [int(row.get("end", "0")) for row in rows]
         start = min(starts or [0])
@@ -473,8 +476,10 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, corresponde
         y = row_y[(species, copy)]
         body.append(svg_text(260, y + 15, copy, 9, fill="#333"))
         body.append(f'<line x1="{left_track}" y1="{y + 11}" x2="{width - right}" y2="{y + 11}" stroke="#D0D0D0" stroke-width="1"/>')
+        negative = rows and rows[0].get("strand") == "-"
         for row in rows:
-            x = left_track + (int(row.get("start", "0")) - start) / span * (width - left_track - right)
+            relative_start = end - int(row.get("end", "0")) if negative else int(row.get("start", "0")) - start
+            x = left_track + relative_start / span * (width - left_track - right)
             w = max(4, (int(row.get("end", "0")) - int(row.get("start", "0")) + 1) / span * (width - left_track - right))
             element_id = occ_to_element.get(row["occurrence_id"], "NA")
             style = styles.get(element_id, {"fill": "#E6E6E6", "stroke_dasharray": "none", "stroke": "#111111"})
@@ -496,7 +501,7 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, corresponde
             draw_homology_connector(body, left_box, right_box, styles.get(element_id, {}))
     for args in pending_boxes:
         draw_segment_box(body, *args)
-    body.append(svg_text(24, height - 32, "Branch symbols scale continuously with posterior change probability; links mark exon correspondence; introns are gray context.", 10, fill="#555"))
+    body.append(svg_text(24, height - 32, "Branch symbols show conditional transition probability; links mark homologous exons; introns are gray context.", 10, fill="#555"))
     body.append("</svg>")
     path.write_text("\n".join(body))
     return path

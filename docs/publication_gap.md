@@ -2,7 +2,7 @@
 
 ## Current status
 
-INSIPHY v0.11 is a runnable single-copy method prototype. It accepts an
+INSIPHY v0.12 is a runnable single-copy method prototype. It accepts an
 upstream ortholog set, reconstructs exon-like correspondence from genome
 sequence and annotation, builds explicit structural sites, and fits ER/ARD or
 foreground CTMC models on a fixed species tree.

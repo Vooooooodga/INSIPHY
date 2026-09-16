@@ -3,7 +3,7 @@
 ## Scope
 
 INSIPHY studies internal structure within an upstream-defined homologous gene
-set. The formal v0.11 scope contains one orthologous gene per species and uses
+set. The formal v0.12 scope contains one orthologous gene per species and uses
 the species tree. Gene discovery, genome-wide orthology inference, expression
 analysis, and molecular-mechanism assignment remain upstream or downstream
 tasks.
@@ -18,9 +18,9 @@ results are outside the formal single-copy method.
 Canonical-transcript mode chooses a reproducible transcript by CDS or span
 length; all-transcript mode retains every annotated transcript.
 
-The extracted representation contains:
+The extracted representation uses complete exon intervals and contains:
 
-- exon/CDS/UTR intervals;
+- complete exon intervals with CDS and UTR subinterval attributes;
 - intron intervals and splice motifs;
 - exon phase and frame status;
 - transcript order;
@@ -46,16 +46,17 @@ Candidate pairs are evaluated with:
 - strand and order consistency;
 - reciprocal-best support.
 
-Users may select `internal`, `minimap2`, or `miniprot`. The internal
-backend uses Biopython `PairwiseAligner`. Candidate scoring can run in
-parallel.
+Users may select `internal`, `mafft`, or `minimap2` for exon correspondence.
+The internal backend uses Biopython `PairwiseAligner` and refuses sequence
+pairs above its declared dynamic-programming limit. miniprot is restricted to
+reconstructed protein-to-locus searches.
 
-Pairwise evidence is assembled into internal homology components (`HC_*`).
-Components supported as exon/CDS/UTR or as a sequence-supported candidate
-exonic source are exposed as exon-like groups (`EG_*`). Figures and
-phylogenetic models use `EG_*` as the biological unit. Introns remain context
-unless they provide explicit evidence for a homologous sequence changing its
-exonic role.
+Pairwise evidence is merged from close to distant species on the supplied
+tree. A merge must satisfy direct sequence support across the two profiles;
+one-to-many members from one gene must occupy non-overlapping coordinates.
+This prevents a chain of unrelated pairwise matches from forming one group.
+`HC_*` and `EG_*` are stable identifiers. Their members remain traceable to
+complete exon intervals and aligned coordinates.
 
 Tree-guided progressive summarization first evaluates close relatives, then
 within-clade and deeper comparisons. This applies the progressive-alignment
@@ -96,9 +97,10 @@ Transcript paths and homologous flanking units define splice-junction sites:
 - `absent`: the units are directly contiguous in an exon path;
 - `unknown`: the relevant units cannot both be placed reliably.
 
-Junction gain and loss provide the structural pattern used to study exon
-splitting and fusion. A specific mechanistic history requires additional
-sequence and functional evidence.
+Every junction is keyed by its projected coordinate in the homologous sequence
+alignment. Distinct junctions inside one homologous exon block remain distinct.
+Unknown correspondence breaks adjacency. Junction-state changes describe the
+structural pattern used to study exon splitting and fusion.
 
 ## Stage 4: phylogenetic likelihood
 
@@ -109,26 +111,20 @@ reports:
 - maximum-likelihood gain and loss rates;
 - profile-likelihood intervals;
 - ER-versus-ARD or homogeneous-versus-foreground LRT;
-- node-state posterior probabilities;
-- branch endpoint-transition posteriors;
+- node-state empirical-Bayes probabilities conditional on fitted parameters;
+- branch endpoint-transition probabilities and profile-likelihood sensitivity ranges;
 - expected gain and loss counts.
 
 Ancestral states are probabilistic reconstructions. Several histories can
 produce the same terminal pattern, especially with few species or short gene
 structures. Output tables preserve this uncertainty.
 
-## Event vocabulary
+## Transition reporting
 
-The formal output uses a compact structural vocabulary:
-
-- `exon_gain`, `exon_loss`;
-- `exonic_role_gain`, `exonic_role_loss`;
-- `splice_junction_gain`, `splice_junction_loss`;
-- `exon_split_pattern`, `exon_fusion_pattern`.
-
-These names describe modeled changes in observable structure. They do not
-assign transposon activity, gene conversion, selection, or other causal
-mechanisms.
+The formal output reports both directions for sequence presence, exonic role,
+and splice-junction states. It does not convert the larger of two probabilities
+into a categorical historical event. Users can relate well-supported junction
+transitions to split or fusion patterns in their biological analysis.
 
 ## Visualization
 

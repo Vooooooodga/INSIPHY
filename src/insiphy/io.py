@@ -61,6 +61,28 @@ def parse_fasta(path):
     return records
 
 
+def read_fasta_record(path, record_id):
+    """Read one FASTA record without retaining the remaining assembly in memory."""
+    path = Path(path)
+    sequence = []
+    collecting = False
+    with open_text(path) as handle:
+        for raw in handle:
+            line = raw.strip()
+            if not line:
+                continue
+            if line.startswith(">"):
+                current = line[1:].split()[0]
+                if collecting:
+                    break
+                collecting = current == record_id
+            elif collecting:
+                sequence.append(line)
+    if not sequence:
+        raise SystemExit(f"FASTA record not found: {record_id} in {path}")
+    return "".join(sequence).upper()
+
+
 def norm_state(value):
     value = (value or "unknown").strip()
     return "unknown" if value in UNKNOWN else value
