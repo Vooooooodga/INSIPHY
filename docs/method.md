@@ -83,7 +83,8 @@ INSIPHY makes the biological-to-statistical translation explicit.
    discrete structural characters on a fixed tree. EG presence is
    `present/absent`; EG role is
    `CDS/exon_or_UTR/non_exonic_source/absent`; EG adjacency is
-   `present/absent`; source mixture is
+   `present/absent/copy_variable`, where `copy_variable` means paralogous
+   copies in the same species do not share the same adjacency; source mixture is
    `single_source/multi_source`; copy multiplicity is
    `single_copy/tandem_multi_copy/dispersed_multi_copy/...`.
 3. **Statistical computation**: each character is analyzed with a discrete

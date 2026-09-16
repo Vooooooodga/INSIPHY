@@ -359,10 +359,14 @@ def classify_branch_event(layer, change):
             return "coding_or_exonic_role_loss"
         return "element_role_shift"
     if layer in {"adjacency_state", "element_adjacency_state"}:
-        if src == "absent" and dst == "present":
+        if src == "absent" and dst in {"present", "copy_variable"}:
             return "segment_fusion_or_new_adjacency"
-        if src == "present" and dst == "absent":
+        if src == "present" and dst in {"absent", "copy_variable"}:
             return "segment_split_or_adjacency_loss"
+        if src == "copy_variable" and dst == "absent":
+            return "segment_split_or_adjacency_loss"
+        if src == "copy_variable" and dst == "present":
+            return "segment_fusion_or_new_adjacency"
         return "adjacency_shift"
     if layer == "source_mixture":
         if dst == "multi_source":
@@ -708,8 +712,15 @@ def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_ma
         tips = {}
         for species, vals in by_species.items():
             vals = [norm_state(value) for value in vals]
-            tips[species] = "present" if "present" in vals else "absent" if vals and all(value == "absent" for value in vals) else "unknown"
-        add_character(tree, "element_adjacency_state", pair_id, tips, {"present", "absent"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
+            if "present" in vals and "absent" in vals:
+                tips[species] = "copy_variable"
+            elif "present" in vals:
+                tips[species] = "present"
+            elif vals and all(value == "absent" for value in vals):
+                tips[species] = "absent"
+            else:
+                tips[species] = "unknown"
+        add_character(tree, "element_adjacency_state", pair_id, tips, {"present", "absent", "copy_variable"}, state_rows, branch_rows, model_score_rows, model_fit_rows, hypothesis_rows, bootstrap_rows, stochastic_rows, foreground_rows, bootstrap_replicates, stochastic_maps, seed, foreground_edges)
 
     source_states_by_family_species = defaultdict(list)
     for key in sorted({(row["family_id"], row["species"], row["gene_copy_id"]) for row in occurrences}):
