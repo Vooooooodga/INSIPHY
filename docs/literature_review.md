@@ -1,154 +1,155 @@
-# Biological And Statistical Rationale
+# Biological and Statistical Rationale
 
-INSIPHY is positioned at the intersection of exon evolution, annotation
-completion, gene-structure comparison and discrete-character phylogenetics.
+## Conclusions adopted in v0.11
 
-## Review Conclusion
+The literature supports three separable tasks:
 
-The method direction is biologically defensible: gene-internal segment homology
-should be inferred from genome sequence plus annotation context, and the
-resulting structural characters should be interpreted on the relevant
-phylogenetic tree. Single-copy characters can use the species tree; multi-copy
-structural characters require a copy/gene tree to avoid collapsing paralogs
-within one species. The main remaining biological risk is event ambiguity.
-Exonization, intron
-gain/loss, splice-boundary drift, tandem exon duplication, gene conversion,
-processed-copy insertion and assembly/annotation artifacts can create
-overlapping evidence patterns in one observed gene copy. INSIPHY reports these
-as candidate structural histories with explicit alternative explanations.
+1. establish homology among exon-like sequence units inside an upstream-defined
+   ortholog set;
+2. code observable sequence presence, exonic role, and splice-junction states;
+3. fit explicit evolutionary models on a fixed phylogeny and retain
+   uncertainty in ancestral histories.
 
-## Gene-Internal Homology Evidence
+This separation prevents annotation absence from being equated with biological
+loss and prevents a structural pattern from being promoted automatically to a
+molecular mechanism.
 
-The following evidence classes are important for homologous internal segment
-assignment:
+## Exon and intron evolution
 
-- local nucleotide or protein-to-genome sequence similarity;
-- alignment coverage and segment length ratio;
-- flanking segment context;
-- intron position and intron phase;
-- splice donor/acceptor motif compatibility;
-- strand and frame status;
-- local order inside each gene copy;
-- copy role and source label when the case is a duplicated or chimeric gene.
+Gene structures can change through exon gain/loss, exonization and
+intronization, intron gain/loss, splice-site movement, exon duplication,
+shuffling, splitting, and fusion. Several mechanisms can yield the same
+terminal exon-intron pattern. Comparative sequence and local structure can
+identify the changed unit, while transposon origin, selection, gene conversion,
+or expression consequences usually require additional data.
 
-INSIPHY keeps the upstream homology step separate. OrthoFinder or an equivalent
-workflow supplies the gene/copy set; INSIPHY then evaluates internal structure
-inside that set.
+The v0.11 layers reflect this:
 
-## Annotation Completion
+- sequence presence addresses gain/loss of a homologous unit;
+- exonic role addresses recruitment or loss of an exon role while sequence
+  remains present;
+- splice-junction presence addresses segmentation changes compatible with
+  split/fusion histories.
 
-Genome annotation can miss short exons, shifted splice sites, noncanonical
-transcripts or fragmented gene models. INSIPHY therefore separates observed
-annotation from sequence-supported evidence. Hidden-segment candidates,
-shifted-splice-site candidates and joined-segment candidates are retained as
-evidence classes and then interpreted on the active tree for the structural
-layer.
+Intronic sequence enters exon homology only when it is homologous to an
+exon-like unit in another species or receives sequence-supported exon
+completion evidence. Routine introns remain boundary and spacing context.
 
-## Phylogenetic Structural Inference
+Relevant reviews and models include:
 
-INSIPHY treats intragenic structural observations as phylogenetic structural
-characters. Here "character" means a coded observable variable on tree tips,
-such as EG presence, EG role, EG adjacency, source mixture or copy
-multiplicity. It is not a claim that an exon is a classical phenotype by
-itself. The likelihood calculation follows the Felsenstein pruning logic on the
-active tree recorded for each layer. Structural states evolve under Mk-style
-CTMC models, and branch histories are summarized with stochastic character
-mapping when requested.
+- Keren, Lev-Maor and Ast, 2010, *Alternative splicing and evolution:
+  diversification, exon definition and function*.
+- Irimia and Roy, 2014, *Origin of spliceosomal introns and alternative
+  splicing*.
+- Carmel et al., 2007, probabilistic reconstruction of intron gain and loss:
+  https://doi.org/10.1186/1471-2148-7-192
+- Csűrös, Rogozin and Koonin, 2011, comparison of likelihood, MCMC, and Dollo
+  approaches to ancestral intron reconstruction:
+  https://doi.org/10.1371/journal.pcbi.1002150
 
-The implemented statistics answer different questions:
+## Internal correspondence
 
-- Sankoff reconstruction asks which ancestral structural states minimize event
-  cost.
-- CTMC/Mk likelihood estimates a structural-change rate on the tree.
-- The invariant-model LRT asks whether a character is better explained by
-  structural change than by no change.
-- Bootstrap empirical p values calibrate the LRT on small trees.
-- Stochastic mapping estimates event placement along branches.
-- Foreground/background tests ask whether specified branches have elevated
-  structural-change rates.
+Exon correspondence cannot rely on annotation labels alone. Useful evidence
+includes sequence similarity, aligned coverage, exon phase, splice motifs,
+flanking exon context, strand, order, and agreement among close relatives.
+One-to-many and many-to-one alignments must remain possible because one
+ancestral sequence interval can be partitioned into multiple descendant
+exons, or multiple ancestral intervals can become one exon.
 
-## Event Inventory
+Progressive Cactus demonstrates the general value of ordering difficult
+homology comparisons by a guide phylogeny. INSIPHY applies that principle
+locally within supplied orthologous genes. It does not run whole-genome Cactus
+and does not infer new gene families.
 
-The benchmark and event vocabulary should cover:
+## Phylogenetic likelihood
 
-- gene duplication and post-duplication exon-intron divergence;
-- retroposition or processed-copy insertion, often with intron loss;
-- chimeric new gene formation by source joining;
-- exonization of intronic, transposed-element or intergenic sequence;
-- intron gain, intron loss, intron sliding and intronization;
-- tandem exon duplication and partial exon duplication;
-- exon splitting, exon fusion and splice-boundary shifts;
-- alternative-splicing turnover where annotation supports isoform differences;
-- pseudogenization, frame disruption and copy collapse;
-- high-similarity paralogous segments with mechanism ambiguity;
-- annotation dropout, fragmented assemblies and unresolved paralogy.
+Felsenstein's pruning algorithm supplies the likelihood foundation: sum over
+unobserved internal states while conditioning on a tree and a transition
+model. Pagel's discrete-character framework and Lewis's Mk/Mkv model provide
+direct precedents for finite-state CTMC analysis and variable-site
+ascertainment.
 
-INSIPHY v0.10.0 directly models EG presence, EG role state, EG adjacency state,
-source mixture and copy multiplicity. It reports splice-boundary shifts,
-segment fusion and TE-associated exonization as candidate structural patterns.
-High-identity paralogous segment matches are reported as ambiguous evidence
-because intragenic structure alone cannot distinguish gene conversion, recent
-duplication and unresolved paralogy.
+The PAML manual contributes several operational principles used here:
 
-## Progressive Alignment Idea
+- parameters are shared across many sites rather than fitted independently to
+  every observed pattern;
+- nested hypotheses are defined by parameter constraints;
+- likelihood-ratio tests compare optimized log likelihoods;
+- branch and site models require a priori model specification;
+- ancestral reconstructions are conditional on the fitted model and tree;
+- boundary estimates and weak information require cautious inference.
 
-Progressive whole-genome alignment uses a species tree to organize alignment
-across evolutionary distances. INSIPHY adapts that idea at gene-internal scale:
-segment correspondence is interpreted by tree distance within the supplied
-homologous gene set. This produces close-species, within-clade and deep-tree
-support classes without running whole-genome alignment or searching for new
-gene-level homologs.
+PAML itself models nucleotide, codon, or amino-acid substitution. INSIPHY uses
+the same likelihood discipline for binary homologous gene-structure sites.
 
-Cactus remains relevant as a conceptual example of tree-guided progressive
-alignment. INSIPHY does not require Cactus output as input.
+Core references:
 
-## Visualization Principles
+- Felsenstein, 1981, *Evolutionary trees from DNA sequences: a maximum
+  likelihood approach*.
+- Pagel, 1994, *Detecting correlated evolution on phylogenies*.
+- Lewis, 2001, *A likelihood approach to estimating phylogeny from discrete
+  morphological character data*.
+- Yang, 2007, *PAML 4: phylogenetic analysis by maximum likelihood*.
+- PAML documentation and example control files:
+  https://github.com/abacus-gene/paml
 
-Gene-structure figures should show exon/intron organization, homologous segment
-blocks and event placement on the relevant phylogenetic tree. Current exon-homology and
-gene-structure tools usually promote exon/CDS/UTR units, splice junctions,
-intron positions or protein-domain context as the plotted biological objects;
-intronic intervals are drawn as separators or boundary evidence unless they
-are specifically implicated in exonization or another role-shift event.
-INSIPHY therefore generates:
+## Genome synteny concepts translated to one gene
 
-- a gene-internal synteny map by species and copy, with exon-like blocks linked
-  across homologous tracks;
-- a phylogenetic event map with structural-event support summaries.
+Whole-genome synteny methods ask whether homologous units retain order,
+orientation, adjacency, and ancestral linkage across a tree. At gene scale,
+the homologous units are exon-like sequence intervals and splice junctions.
+The analogous questions are:
 
-The default figures use a colorblind-aware palette plus labels. A pattern mode
-uses texture, line styles and shapes when a color-independent figure is needed.
+- which exon-like units are conserved;
+- whether their order and orientation remain stable;
+- where a unit appears, disappears, or changes exonic role;
+- where a splice junction appears or disappears;
+- which branches have a higher structural transition rate.
 
-## Benchmark Availability
+Whole-genome microsynteny has also been used directly as phylogenetic
+information, as in *Whole-genome microsynteny-based phylogeny of angiosperms*
+(Zhao et al., 2021):
+https://doi.org/10.1038/s41467-021-23665-0
 
-A mature public benchmark for branch-level intragenic synteny histories is not
-available as a single resource. INSIPHY therefore needs a composite benchmark:
+The linked-block visualization used for conserved chromosome synteny provides
+the visual grammar for INSIPHY exon tracks. The tree and homologous connections
+are shown together, while posterior structural changes are placed on branches.
 
-- curated positive cases with literature-supported histories, starting with
-  `jingwei` and `Sdic`;
-- conserved negative controls such as RpL32;
-- duplicated-gene case sets with known exon-intron divergence;
-- simulation under known histories for power, false positives and branch
-  placement accuracy;
-- annotation-dropout perturbations of real or simulated annotations;
-- ablation baselines: annotation-only, sequence-only, exon-position-only and
-  source-label-free models.
+Recent synteny software such as Synolog emphasizes scalable orthology,
+multi-genome synteny clusters, and linked visual outputs:
+https://doi.org/10.64898/2026.04.07.717040
+INSIPHY begins after gene orthology has been supplied and operates at the
+within-gene structural scale.
 
-## Reference Anchors
+## Statistical boundary
 
-- Carmel, Rogozin, Wolf and Koonin developed probabilistic intron gain/loss
-  models with branch, gene and site variation, supporting the choice to model
-  gene-internal structures as tree-indexed discrete observations:
-  https://link.springer.com/article/10.1186/1471-2148-7-192
-- Csűrös, Rogozin and Koonin compared MCMC, maximum-likelihood and Dollo
-  parsimony reconstructions for intron histories, supporting the need to report
-  model-based uncertainty rather than only a parsimony scenario:
-  https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1002150
-- Progressive Cactus validates the general idea of a phylogeny-guided
-  progressive alignment strategy for genome-scale homology, but INSIPHY applies
-  the idea only inside a supplied gene/copy set:
-  https://www.nature.com/articles/s41586-020-2871-y
-- Standard synteny visualization tools show homologous units as linked blocks
-  across ordered tracks. INSIPHY adapts this grammar to exon-like internal gene
-  elements:
-  https://www.dveltri.com/
+The formal model estimates observable structural transitions. It does not
+infer:
+
+- causative transposable elements;
+- adaptive selection;
+- gene conversion;
+- expression or isoform abundance;
+- pathway consequences;
+- gene-level orthology;
+- species-tree uncertainty.
+
+These questions can use INSIPHY outputs as structured evidence in a broader
+study.
+
+## Empirical benchmark strategy
+
+A single public benchmark with known branch-level histories for homologous
+exons is currently unavailable. Evaluation should therefore use:
+
+- deeply curated single-copy genes with established exon/intron histories;
+- conserved single-copy controls;
+- ortholog sets from multiple clades and annotation releases;
+- manual sequence-level review of every proposed gain/loss or split/fusion;
+- sensitivity to transcript choice, aligner, branch lengths, and
+  correspondence thresholds;
+- comparison with annotation-only and sequence-only correspondence.
+
+The current RpL32 control establishes end-to-end execution and conservative
+handling of invariant structure. It does not establish general sensitivity or
+specificity.

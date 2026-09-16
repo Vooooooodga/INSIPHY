@@ -7,18 +7,208 @@ from insiphy.io import read_tsv
 from insiphy.benchmark import benchmark_events
 from insiphy.calibration import calibrate_simulations
 from insiphy.case import build_case, inspect_annotation, scan_hidden_segments
-from insiphy.preprocess import derive_tables, extract_gene
+from insiphy.orthofinder import import_orthofinder
+from insiphy.preprocess import derive_tables, extract_gene, graph_components
 from insiphy.simulate import simulate_dataset
+from insiphy.structural_phylogeny import build_structural_site_matrix, fit_model, infer_single_copy_phylogeny
+from insiphy.tree import SpeciesTree
 from insiphy.visualize import visualize_results
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class SingleCopyPhylogenyTests(unittest.TestCase):
+    def write_structural_case(self, root):
+        input_dir = root / "input"
+        result_dir = root / "result"
+        input_dir.mkdir()
+        result_dir.mkdir()
+        (input_dir / "species_tree.tsv").write_text(
+            "node_id\tparent_id\tlabel\tbranch_length\n"
+            "root\t\troot\t0\n"
+            "ab\troot\tab\t0.5\n"
+            "a\tab\tA\t0.2\n"
+            "b\tab\tB\t0.2\n"
+            "cd\troot\tcd\t0.5\n"
+            "c\tcd\tC\t0.2\n"
+            "d\tcd\tD\t0.2\n"
+        )
+        occurrence_rows = [
+            "occurrence_id\tfamily_id\tspecies\tgene_copy_id\ttranscript_id\tsegment_id\tcontig\tstart\tend\tstrand\trole\tpresence_status\tboundary_state\tevidence"
+        ]
+        element_rows = [
+            "element_id\tfamily_id\thomology_id\toccurrence_id\tspecies\tgene_copy_id\telement_class\tdisplay_role\tsource_label\tsupport_type\tconfidence\tmembership_score\tmembership_call"
+        ]
+        path_rows = [
+            "path_id\tfamily_id\tspecies\tgene_copy_id\ttranscript_id\tpath_rank\toccurrence_id\trole\tcontig\tstart\tend\tstrand\tphase\tpath_status"
+        ]
+        for species in "ABCD":
+            roles = [
+                "CDS",
+                "CDS" if species in "AB" else "intron",
+                "CDS" if species in "AC" else "intron",
+                "CDS" if species in "AD" else "intron",
+            ]
+            for index, role in enumerate(roles, start=1):
+                occurrence = f"{species}_e{index}"
+                occurrence_rows.append(
+                    f"{occurrence}\tfam\t{species}\t{species}_gene\t{species}_tx\te{index}\tchr1\t{index * 100}\t{index * 100 + 50}\t+\t{role}\tpresent\tconserved\ttest_fixture"
+                )
+                element_class = "exon_like" if role == "CDS" else "candidate_source"
+                element_rows.append(
+                    f"EG_{index}\tfam\tH_{index}\t{occurrence}\t{species}\t{species}_gene\t{element_class}\t{role}\tfam\ttest_fixture\thigh\t0.95\tcore_member"
+                )
+                path_rows.append(
+                    f"{species}_p{index}\tfam\t{species}\t{species}_gene\t{species}_tx\t{index}\t{occurrence}\t{role}\tchr1\t{index * 100}\t{index * 100 + 50}\t+\t0\tcanonical_transcript_path"
+                )
+        (input_dir / "segment_occurrences.tsv").write_text("\n".join(occurrence_rows) + "\n")
+        (input_dir / "transcript_paths.tsv").write_text("\n".join(path_rows) + "\n")
+        (result_dir / "element_correspondence.tsv").write_text("\n".join(element_rows) + "\n")
+        return input_dir, result_dir
+
+    def test_single_copy_models_and_posteriors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir = self.write_structural_case(Path(tmp))
+            infer_single_copy_phylogeny(input_dir, result_dir, threads=2)
+            matrix = read_tsv(result_dir / "structural_site_matrix.tsv")
+            tests = read_tsv(result_dir / "model_tests.tsv")
+            fits = read_tsv(result_dir / "model_fits.tsv")
+            nodes = read_tsv(result_dir / "node_state_posteriors.tsv")
+            branches = read_tsv(result_dir / "branch_transition_posteriors.tsv")
+            self.assertEqual({row["layer"] for row in matrix}, {"exon_presence", "exon_role", "splice_junction"})
+            self.assertEqual({row["model"] for row in fits}, {"ER", "ARD"})
+            self.assertTrue(all(row["test_status"] in {"tested", "parameters_not_estimable"} for row in tests))
+            invariant = [row for row in tests if row["layer"] == "exon_presence"][0]
+            self.assertEqual(invariant["p_value"], "NA")
+            self.assertTrue(nodes)
+            self.assertTrue(branches)
+            self.assertTrue(all(0 <= float(row["posterior_probability"]) <= 1 for row in nodes))
+
+    def test_foreground_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir = self.write_structural_case(Path(tmp))
+            foreground = Path(tmp) / "foreground.tsv"
+            foreground.write_text("parent_id\tchild_id\nab\ta\n")
+            infer_single_copy_phylogeny(
+                input_dir,
+                result_dir,
+                model="foreground",
+                foreground_branches=foreground,
+                threads=2,
+            )
+            fits = read_tsv(result_dir / "model_fits.tsv")
+            self.assertIn("ARD_FOREGROUND", {row["model"] for row in fits})
+            self.assertEqual(
+                {row["test_id"] for row in read_tsv(result_dir / "model_tests.tsv")},
+                {"homogeneous_vs_foreground"},
+            )
+
+    def test_sequence_supported_annotation_completion_enters_tip_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir = self.write_structural_case(Path(tmp))
+            (result_dir / "annotation_completion_candidates.tsv").write_text(
+                "evidence_id\tfamily_id\tspecies\tgene_copy_id\thomology_id\tinterval\tannotation_status\tinferred_role\tsupport_score\tcompletion_call\tevidence_status\tinferred_event\tframe_status\n"
+                "ev1\tfam\tC\tC_gene\tH_2\tchr1:200-250:+\tmissing_annotation\tCDS\t0.9\thidden_segment_candidate\tsupports_hidden_segment\thidden_exon\tcoding_frame_preserved\n"
+            )
+            infer_single_copy_phylogeny(input_dir, result_dir)
+            states = [
+                row
+                for row in read_tsv(result_dir / "structural_site_matrix.tsv")
+                if row["layer"] == "exon_role" and row["site_id"] == "EG_2" and row["species"] == "C"
+            ]
+            self.assertEqual(states[0]["state"], "exonic")
+            self.assertIn("sequence_supported_exon_completion", states[0]["evidence"])
+
+    def test_orthofinder_single_copy_import(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            orthofinder = root / "orthofinder" / "Orthogroups"
+            orthofinder.mkdir(parents=True)
+            (orthofinder / "Orthogroups.tsv").write_text(
+                "Orthogroup\tA\tB\nOG0001\tgene_a\tgene_b\n"
+            )
+            resources = root / "genomes.tsv"
+            resources.write_text(
+                "species\tgenome_fasta\tannotation_file\n"
+                "A\t/a.fa\t/a.gff3\n"
+                "B\t/b.fa\t/b.gff3\n"
+            )
+            tree = root / "tree.nwk"
+            tree.write_text("(A:0.1,B:0.1)root;\n")
+            out = root / "imported"
+            import_orthofinder(root / "orthofinder", "OG0001", resources, out, tree)
+            manifest = read_tsv(out / "manifest.tsv")
+            tree_rows = read_tsv(out / "species_tree.tsv")
+            self.assertEqual({row["gene_id"] for row in manifest}, {"gene_a", "gene_b"})
+            self.assertEqual({row["label"] for row in tree_rows if row["parent_id"]}, {"A", "B"})
+
+    def test_one_to_many_correspondence_and_within_element_junction(self):
+        components = graph_components(
+            ["A_left", "A_right", "B_whole"],
+            [("A_left", "B_whole", 0.9), ("A_right", "B_whole", 0.9)],
+        )
+        self.assertEqual(components, [["A_left", "A_right", "B_whole"]])
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            input_dir = root / "input"
+            result_dir = root / "result"
+            input_dir.mkdir()
+            result_dir.mkdir()
+            (input_dir / "segment_occurrences.tsv").write_text(
+                "occurrence_id\tfamily_id\tspecies\tgene_copy_id\ttranscript_id\trole\tpresence_status\n"
+                "A_left\tfam\tA\tA_gene\tA_tx\tCDS\tpresent\n"
+                "A_intron\tfam\tA\tA_gene\tA_tx\tintron\tpresent\n"
+                "A_right\tfam\tA\tA_gene\tA_tx\tCDS\tpresent\n"
+                "B_whole\tfam\tB\tB_gene\tB_tx\tCDS\tpresent\n"
+            )
+            (input_dir / "transcript_paths.tsv").write_text(
+                "path_id\tfamily_id\tspecies\tgene_copy_id\ttranscript_id\tpath_rank\toccurrence_id\trole\n"
+                "p1\tfam\tA\tA_gene\tA_tx\t1\tA_left\tCDS\n"
+                "p2\tfam\tA\tA_gene\tA_tx\t2\tA_intron\tintron\n"
+                "p3\tfam\tA\tA_gene\tA_tx\t3\tA_right\tCDS\n"
+                "p4\tfam\tB\tB_gene\tB_tx\t1\tB_whole\tCDS\n"
+            )
+            (result_dir / "element_correspondence.tsv").write_text(
+                "element_id\tfamily_id\thomology_id\toccurrence_id\tspecies\tgene_copy_id\telement_class\tmembership_call\n"
+                "EG_1\tfam\tH_1\tA_left\tA\tA_gene\texon_like\tcore_member\n"
+                "EG_1\tfam\tH_1\tA_right\tA\tA_gene\texon_like\tcore_member\n"
+                "EG_1\tfam\tH_1\tB_whole\tB\tB_gene\texon_like\tcore_member\n"
+            )
+            matrix, excluded = build_structural_site_matrix(input_dir, result_dir)
+            junctions = {
+                row["species"]: row["state"]
+                for row in matrix
+                if row["site_id"] == "JG_WITHIN_EG_1"
+            }
+            self.assertFalse(excluded)
+            self.assertEqual(junctions, {"A": "present", "B": "absent"})
+
+    def test_variable_site_ascertainment(self):
+        tree = SpeciesTree(
+            [
+                {"node_id": "root", "parent_id": "", "label": "root", "branch_length": 0},
+                {"node_id": "a", "parent_id": "root", "label": "A", "branch_length": 1},
+                {"node_id": "b", "parent_id": "root", "label": "B", "branch_length": 1},
+                {"node_id": "c", "parent_id": "root", "label": "C", "branch_length": 1},
+                {"node_id": "d", "parent_id": "root", "label": "D", "branch_length": 1},
+            ]
+        )
+        patterns = [
+            {"A": 0, "B": 0, "C": 1, "D": 1},
+            {"A": 0, "B": 1, "C": 0, "D": 1},
+            {"A": 0, "B": 1, "C": 1, "D": 0},
+        ]
+        fit = fit_model(tree, patterns, "ER", ascertainment="variable-only")
+        self.assertTrue(fit["converged"])
+        with self.assertRaises(SystemExit):
+            fit_model(tree, [{"A": 1, "B": 1, "C": 1, "D": 1}], "ER", ascertainment="variable-only")
+
+
 class FixtureTests(unittest.TestCase):
     def test_jingwei_case_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
-            run_all(ROOT / "demos" / "jingwei", tmp)
+            run_all(ROOT / "demos" / "jingwei", tmp, analysis_scope="experimental-multicopy")
             rows = read_tsv(Path(tmp) / "case_summary.tsv")
             scores = read_tsv(Path(tmp) / "character_model_scores.tsv")
             tests = read_tsv(Path(tmp) / "hypothesis_tests.tsv")
@@ -56,7 +246,7 @@ class FixtureTests(unittest.TestCase):
 
     def test_sdic_case_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
-            run_all(ROOT / "demos" / "sdic", tmp)
+            run_all(ROOT / "demos" / "sdic", tmp, analysis_scope="experimental-multicopy")
             rows = read_tsv(Path(tmp) / "case_summary.tsv")
             self.assertEqual(rows[0]["family_id"], "sdic")
             self.assertEqual(rows[0]["hidden_segment_candidates"], "1")
@@ -67,7 +257,13 @@ class FixtureTests(unittest.TestCase):
             tmp = Path(tmp)
             out = tmp / "out"
             fig = tmp / "fig"
-            run_all(ROOT / "demos" / "jingwei", out, bootstrap_replicates=2, stochastic_maps=2)
+            run_all(
+                ROOT / "demos" / "jingwei",
+                out,
+                bootstrap_replicates=2,
+                stochastic_maps=2,
+                analysis_scope="experimental-multicopy",
+            )
             visualize_results(ROOT / "demos" / "jingwei", out, fig)
             manifest = read_tsv(fig / "visualization_manifest.tsv")
             self.assertEqual({row["description"] for row in manifest}, {"Exon-like gene-internal synteny by species and copy", "Phylogenetic structural event map", "Integrated phylogenetic and exon-like synteny map"})
@@ -129,7 +325,7 @@ class SimulationBenchmarkTests(unittest.TestCase):
             sim = tmp / "sim"
             out = tmp / "out"
             simulate_dataset(sim, seed=7)
-            run_all(sim, out)
+            run_all(sim, out, analysis_scope="experimental-multicopy")
             benchmark_events(sim, out)
             truth = read_tsv(sim / "truth_events.tsv")
             bench = read_tsv(out / "benchmark_summary.tsv")
@@ -162,7 +358,7 @@ class SimulationBenchmarkTests(unittest.TestCase):
                 sim = tmp / f"sim_{scenario}"
                 out = tmp / f"out_{scenario}"
                 simulate_dataset(sim, seed=19, scenario=scenario)
-                run_all(sim, out)
+                run_all(sim, out, analysis_scope="experimental-multicopy")
                 benchmark_events(sim, out)
                 self.assertTrue(read_tsv(out / "element_correspondence.tsv"))
                 self.assertTrue(read_tsv(out / "candidate_structural_events.tsv", optional=True) or scenario in {"negative_control", "annotation_dropout"})
@@ -174,7 +370,7 @@ class SimulationBenchmarkTests(unittest.TestCase):
             sim = tmp / "sim_compound"
             out = tmp / "out_compound"
             simulate_dataset(sim, seed=23, scenario="compound")
-            run_all(sim, out)
+            run_all(sim, out, analysis_scope="experimental-multicopy")
             benchmark_events(sim, out)
             fig = tmp / "fig_compound"
             visualize_results(sim, out, fig)
@@ -216,7 +412,14 @@ class SimulationBenchmarkTests(unittest.TestCase):
             sim = tmp / "sim_stats"
             out = tmp / "out_stats"
             simulate_dataset(sim, seed=13, scenario="exonization")
-            run_all(sim, out, bootstrap_replicates=5, stochastic_maps=5, seed=13)
+            run_all(
+                sim,
+                out,
+                bootstrap_replicates=5,
+                stochastic_maps=5,
+                seed=13,
+                analysis_scope="experimental-multicopy",
+            )
             benchmark_events(sim, out)
             boot = read_tsv(out / "hypothesis_bootstrap.tsv")
             histories = read_tsv(out / "branch_history_posteriors.tsv")
@@ -242,7 +445,7 @@ class SimulationBenchmarkTests(unittest.TestCase):
             sim = tmp / "sim_dropout"
             out = tmp / "out_dropout"
             simulate_dataset(sim, seed=11, scenario="annotation_dropout")
-            run_all(sim, out)
+            run_all(sim, out, analysis_scope="experimental-multicopy")
             benchmark_events(sim, out)
             annot = read_tsv(out / "annotation_completion_candidates.tsv")
             bench = read_tsv(out / "benchmark_summary.tsv")
@@ -256,7 +459,7 @@ class SimulationBenchmarkTests(unittest.TestCase):
             sim = tmp / "sim_gene_conversion"
             out = tmp / "out_gene_conversion"
             simulate_dataset(sim, seed=17, scenario="gene_conversion")
-            run_all(sim, out)
+            run_all(sim, out, analysis_scope="experimental-multicopy")
             benchmark_events(sim, out)
             events = read_tsv(out / "candidate_structural_events.tsv")
             bench = read_tsv(out / "benchmark_summary.tsv")

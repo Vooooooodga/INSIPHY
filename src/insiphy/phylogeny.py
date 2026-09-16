@@ -703,7 +703,40 @@ def fallback_element_rows(homology, occurrences, input_dir, output_dir):
     return out
 
 
-def infer_phylogeny(input_dir, output_dir, bootstrap_replicates=0, stochastic_maps=0, seed=7, foreground_branches=None):
+def infer_phylogeny(
+    input_dir,
+    output_dir,
+    bootstrap_replicates=0,
+    stochastic_maps=0,
+    seed=7,
+    foreground_branches=None,
+    analysis_scope="single-copy",
+    model="er-ard",
+    branch_length_mode="supplied",
+    ascertainment="all-sites",
+    threads=1,
+):
+    if analysis_scope == "single-copy":
+        if bootstrap_replicates or stochastic_maps:
+            raise SystemExit(
+                "single-copy v0.11 uses analytic likelihood and posterior outputs; "
+                "--bootstrap-replicates and --stochastic-maps must be 0"
+            )
+        if model != "foreground" and foreground_branches:
+            raise SystemExit("--foreground-branches requires --model foreground")
+        if int(threads) < 1:
+            raise SystemExit("--threads must be at least 1")
+        from .structural_phylogeny import infer_single_copy_phylogeny
+
+        return infer_single_copy_phylogeny(
+            input_dir,
+            output_dir,
+            model=model,
+            foreground_branches=foreground_branches,
+            branch_length_mode=branch_length_mode,
+            ascertainment=ascertainment,
+            threads=threads,
+        )
     occurrences = read_tsv(f"{input_dir}/segment_occurrences.tsv", ["occurrence_id", "family_id", "species", "gene_copy_id", "role", "presence_status"])
     homology = read_tsv(f"{input_dir}/segment_homology.tsv", ["homology_id", "occurrence_id", "support_type", "confidence"])
     adjacencies = read_tsv(f"{input_dir}/physical_adjacencies.tsv", ["adjacency_id", "family_id", "species", "gene_copy_id", "left_occurrence_id", "right_occurrence_id", "adjacency_status"])

@@ -1,176 +1,190 @@
-# Statistical Model Notes
+# Statistical Model
 
-INSIPHY currently separates biological evidence from phylogenetic interpretation.
+## 1. Analysis unit
 
-## Current Statistical Layers
+The formal v0.11 analysis accepts a single-copy ortholog set and a fixed rooted
+species tree. Gene-level homology is treated as known input. For each gene
+family and structural layer, homologous sites are conditionally independent
+replicates that share evolutionary parameters.
 
-1. **Evidence scoring for internal correspondence components**: sequence identity, coverage, splice motif,
-   intron phase, strand, boundary class and local order are combined into
-   correspondence scores. These scores describe support for exon-like elements,
-   candidate non-exonic source intervals and their local context. `HC_*` labels
-   in internal tables are graph IDs, not final biological event units.
-2. **Weighted Sankoff reconstruction**: EG presence, EG role state,
-   intragenic adjacency and source mixture are reconstructed on the supplied
-   copy/gene tree when available. Single-copy cases use the species tree.
-   Copy multiplicity is reconstructed on the species tree. Gains, losses and
-   role shifts can have different costs, so the resulting branch calls are
-   interpretable event candidates. Branch placement uses a global root-to-tip
-   backtrace, so multi-copy events are placed on the selected copy/gene lineage
-   rather than on independent node-local state summaries.
-3. **Branch-length-aware CTMC/Mk likelihood**: each structural character is
-   treated as a discrete structural state evolving on its active tree. INSIPHY
-   fits a one-rate continuous-time Markov model by grid search and reports the
-   maximum log likelihood, fitted rate, AIC and BIC. `phylogeny_scope.tsv`
-   records the tree used by each layer.
-4. **Invariant-model LRT**: for each character, INSIPHY compares the fitted
-   CTMC/Mk model against a no-change model. The test reports
-   `lrt_statistic`, `df`, `p_value`, `p_value_method`, null/alternative
-   likelihoods and AIC/BIC values.
-5. **Parametric bootstrap**: when `--bootstrap-replicates` is greater than
-   zero, INSIPHY simulates tip states under the invariant null on the same
-   tree and reports an empirical p value plus Monte Carlo standard error.
-6. **Branch histories**: branch event tables include parsimony change status,
-   CTMC endpoint posteriors and optional stochastic character mapping summaries
-   for complete histories on each branch.
-7. **Multiple-testing correction**: p values from structural-character LRTs are
-   adjusted by Benjamini-Hochberg and reported as q values.
-8. **Event support summary**: event calls are joined to LRT, q value,
-   bootstrap and stochastic-map summaries in `event_support_summary.tsv`.
-9. **Foreground/background rate test**: when the user supplies foreground
-   branches, INSIPHY compares a one-rate CTMC against a two-rate model with a
-   foreground structural-change rate and a background rate.
-10. **EG phylogenetic coverage**: each user-facing exon-like group is
-   summarized as tree-spanning, partial or tip-specific in
-   `element_phylogenetic_coverage.tsv`. Internal evidence clusters remain
-   available in `internal_homology_phylogenetic_coverage.tsv`.
+The observed tip state (x_{is}) for site (i) and species (s) is one of
+`0`, `1`, or `unknown`:
 
-Annotation dropout is represented as evidence uncertainty and hidden-segment
-support. A missing annotation alone is not treated as biological segment loss.
+| layer | state 0 | state 1 | biological observation |
+|---|---|---|---|
+| `exon_presence` | absent | present | homologous exon sequence |
+| `exon_role` | not_exonic | exonic | role of an observed homologous sequence |
+| `splice_junction` | absent | present | splice junction between homologous units |
 
-## Model Comparison
+An absent state requires explicit sequence evidence. Missing coverage,
+ambiguous correspondence, and annotation uncertainty are coded as unknown.
 
-Two lightweight comparisons are reported:
+## 2. Continuous-time Markov model
 
-- strict annotation vs annotation-error model;
-- independent character changes vs one compound chimeric/copy event.
-- annotation-only, sequence-only and synteny-aware phylogenetic baselines.
+Each binary structural site evolves along the supplied tree under
 
-These scores are first-pass evidence summaries. The formal phylogenetic
-statistics are in `model_fit.tsv`, `character_model_scores.tsv` and
-`hypothesis_tests.tsv`. Event tables add `structural_change_type`,
-`structural_pattern` and `call_scope`; only `core_structural_event` calls are
-used by default for event-level precision and recall. Possible biological
-readings are isolated in `interpretation_hints.tsv`.
+```text
+Q = [ -q01   q01 ]
+    [  q10  -q10 ]
+```
 
-## Hypotheses
+where (q_{01}) is the gain rate and (q_{10}) is the loss rate per unit
+branch length. Transition probabilities on a branch of length (t) are
+(P(t)=exp(Qt)). The default root distribution is the stationary distribution
+((q_{10}/(q_{01}+q_{10}), q_{01}/(q_{01}+q_{10}))).
 
-The default hypothesis test is:
+Likelihoods are computed with scaled Felsenstein pruning. At an unknown tip,
+the conditional likelihood vector is ((1,1)), which integrates over both
+states. Scaling prevents numerical underflow on larger trees.
 
-- **H0**: the intragenic character is invariant on the active tree for that
-  layer, allowing a tiny tip observation error for annotation uncertainty.
-- **H1**: the character evolves under a one-rate CTMC/Mk model with transition
-  probabilities scaled by branch length.
+## 3. Shared-parameter likelihood
 
-The LRT uses a boundary-rate chi-square mixture approximation,
-`0.5 * chi-square(df=1)`, because the invariant model fixes the transition rate
-at zero. With only a few closely related species, the p value is an approximate
-model-based tail probability. Publication-level claims should report
-simulation-based operating characteristics for the same tree sizes, missing
-annotation rates and event classes.
+For a gene family (g) and layer (l), one parameter set is fitted to all
+usable homologous sites:
 
-If fewer than two terminal taxa have observed non-unknown states for a
-character, INSIPHY reports `insufficient_observed_tips` and sets the p value to
-`NA`.
+```text
+ln L(theta | X_g,l, T) = sum_i ln P(x_i | theta, T)
+```
 
-Foreground/background tests compare a one-rate model against a two-rate model
-in which a user-specified branch set has its own structural change rate. For
-multi-copy cases, foreground labels should follow the copy/gene tree for EG
-structural layers and the species tree for `copy_multiplicity`. This is the
-direct structural analogue of branch or branch-site tests used in molecular
-evolution. The user-facing question is whether a specified branch or clade shows
-an elevated rate of intragenic structural change compared with the background
-branches.
+A site enters fitting when at least two terminal species have observed states.
+Invariant sites remain in the all-sites likelihood and contribute information
+about low change rates. Sites with fewer than two observations stay in
+`structural_site_matrix.tsv` but do not contribute to parameter fitting.
 
-## Branch Event Posteriors
+This pooling follows the same statistical principle used by sequence
+likelihood methods: model parameters are estimated from a collection of sites,
+then site- and branch-specific histories are conditioned on those shared
+parameters.
 
-`branch_event_probabilities.tsv` values are endpoint posterior summaries. For
-each branch, INSIPHY estimates the posterior probability of the parent and
-child endpoint states under the fitted CTMC and reports `ctmc_change_probability`
-when those endpoint states differ.
+## 4. ER versus ARD
 
-`branch_history_posteriors.tsv` is generated when `--stochastic-maps` is
-greater than zero. INSIPHY samples CTMC histories along each branch conditional
-on observed tips and fitted rates by uniformization, then summarizes:
+The default nested comparison is:
 
-- `map_sample_count`;
-- `posterior_pr_any_change`;
-- `posterior_expected_change_count`;
-- `posterior_most_frequent_transition`;
-- `posterior_transition_probability`;
-- `posterior_change_count_low` and `posterior_change_count_high`;
+- H0, `ER`: (q_{01}=q_{10}=q), one free parameter;
+- H1, `ARD`: (q_{01}) and (q_{10}), two free parameters.
 
-The branch posterior should be reported per character and then summarized per
-biological event class. For example, a `source_mixture` shift to `multi_source`
-and an intragenic adjacency joining two source labels on the same branch should
-increase confidence in one compound chimeric event.
+Rates are optimized on the log scale with bounded L-BFGS-B and several starting
+points. `model_fits.tsv` reports maximum log likelihood, AIC, convergence,
+boundary status, and 95% profile-likelihood intervals.
 
-## Simulation Calibration
+The likelihood-ratio statistic is
 
-Asymptotic LRT p values and branch posterior summaries should be evaluated by
-simulation before being used as manuscript-level significance claims. The
-implemented calibration does the following:
+```text
+LR = 2 * (ln L_ARD - ln L_ER).
+```
 
-1. fit the observed invariant-versus-CTMC test;
-2. simulate many structural datasets on the same species tree;
-3. rerun the same INSIPHY inference;
-4. compute the empirical tail probability of the observed LRT statistic;
-5. report the empirical P value, Monte Carlo standard error and simulation
-   settings;
-6. summarize false positive rate, power, precision/recall and branch placement
-   accuracy across named simulated scenarios with `insiphy calibrate`.
+When both fits converge, at least one site varies among observed tips, and no
+estimate lies on the optimization boundary, `model_tests.tsv` reports the
+asymptotic tail probability from `chi-square(df=1)`.
 
-This is especially important for small trees, sparse observations, missing
-annotation and boundary tests where asymptotic chi-square approximations can be
-optimistic.
+With no observed tip variation, gain and loss directions cannot be identified.
+Boundary estimates also violate the regular chi-square approximation. These
+cases receive `test_status=parameters_not_estimable` and `p_value=NA`.
 
-## Current Outputs
+## 5. Foreground model
 
-- `character_model_scores.tsv`: parsimony score, likelihood score and fitted
-  CTMC rate per character.
-- `model_fit.tsv`: CTMC/Mk likelihood, AIC, BIC and observed-tip count.
-- `hypothesis_tests.tsv`: invariant-model LRT, p value, q value,
-  null/alternative likelihoods and model-selection values.
-- `hypothesis_bootstrap.tsv`: empirical p value, Monte Carlo standard error and
-  simulated null LRT quantiles when bootstrap is requested.
-- `branch_event_probabilities.tsv`: branch-level change candidates, including
-  branch lengths and CTMC endpoint change probabilities when supplied in
-  the active tree.
-- `branch_history_posteriors.tsv`: stochastic character mapping posterior
-  summaries when requested.
-- `foreground_tests.tsv`: optional foreground/background structural-rate tests.
-- `event_support_summary.tsv`: structural change type, call scope, branch
-  scope, support tier and linked statistical evidence.
-- `interpretation_hints.tsv`: possible biological readings and caveats for
-  manual interpretation; this table is not used by the formal tests.
-- `element_correspondence.tsv`: user-facing EG membership table linking
-  occurrence ids, internal homology ids, element class, display role and source
-  label.
-- `element_phylogenetic_coverage.tsv`: tree coverage, MRCA and copy coverage
-  for EGs.
-- `phylogeny_scope.tsv`: tree scope for each statistical layer and warnings
-  when multi-copy structural histories are evaluated with species-tree fallback.
-- `progressive_correspondence.tsv`: tree-distance-aware segment support summary
-  inside the supplied homologous gene set.
-- `progressive_element_correspondence.tsv`: tree-distance-aware EG support
-  summary.
-- `ancestral_element_graph.tsv`: EG coverage, MRCA and present copy summary.
-- `ancestral_intragenic_paths.tsv`: observed extant copy paths and simple
-  family consensus paths.
-- `internal_homology_phylogenetic_coverage.tsv`: internal evidence-component coverage class,
-  MRCA and present species on the supplied tree.
-- `benchmark_summary.tsv` and `benchmark_detailed.tsv`: event-level and
-  branch-aware benchmark summaries for core structural calls, with separate
-  counts for copy-context and ambiguous evidence.
-- `benchmark_calibration.tsv`: bootstrap p-value summary across characters.
-- `calibration_operating_characteristics.tsv`: scenario-level operating
-  characteristics from `insiphy calibrate`.
+The foreground analysis compares:
+
+- H0: one ARD process on all branches;
+- H1: the same gain/loss rates multiplied by (m) on user-specified branches.
+
+The null value is (m=1), and the LRT uses one degree of freedom when regular
+conditions hold. A fitted multiplier above one means the selected branches
+have a higher model-based transition rate. Biological causes remain outside
+the statistical test.
+
+## 6. Ascertainment
+
+`--ascertainment all-sites` is the default and should be used when conserved
+and variable structural sites were retained during correspondence.
+
+`--ascertainment variable-only` applies a Lewis-style Mkv correction:
+
+```text
+ln P(x_i | variable) =
+ln P(x_i) - ln(1 - P(all 0) - P(all 1)).
+```
+
+Every included site must vary among its observed terminal states. This option
+is appropriate only when the data construction deliberately excluded
+invariant sites.
+
+## 7. Node and branch posteriors
+
+After model selection by AIC, inside-outside messages give marginal posterior
+probabilities for every node and the joint endpoint posterior for every
+branch:
+
+```text
+P(X_parent=a, X_child=b | tip states, fitted model).
+```
+
+`node_state_posteriors.tsv` contains node marginals.
+`branch_transition_posteriors.tsv` contains:
+
+- posterior probability of each directed endpoint change;
+- total endpoint change probability;
+- conditional expected numbers of gains and losses along the branch.
+
+The expected count integrates over all CTMC paths conditional on branch
+endpoints. It can exceed the endpoint-change probability because an even
+number of hidden transitions may return to the starting state.
+
+`structural_changes.tsv` gives a compact branch/site view. Its direction label
+records the direction with the larger posterior probability. The accompanying
+probability remains the evidence measure; the label alone does not establish a
+historical event.
+
+## 8. Multiple testing
+
+Benjamini-Hochberg adjustment is applied separately within each `test_id`
+across all valid family-layer tests in one run. A single valid test receives
+`q_value=NA` and `q_value_method=single_test_not_adjusted`.
+
+## 9. Branch lengths
+
+`--branch-length-mode supplied` requires a positive length for every
+non-root branch. Estimated rates then use the same unit as the tree, such as
+substitutions per site or time.
+
+`--branch-length-mode unit` sets every branch length to one. Rates then mean
+expected structural transitions per branch. Unit branches preserve topology
+but discard elapsed-time information.
+
+## 10. Interpretation limits
+
+The model conditions on:
+
+- the upstream single-copy ortholog set;
+- the supplied species-tree topology and branch lengths;
+- the inferred exon correspondence;
+- the structural state coding.
+
+Uncertainty in gene orthology and tree topology is not integrated in v0.11.
+Site independence is an approximation because neighboring exon and junction
+states can be biologically coupled. A small number of exons gives wide
+likelihood intervals and limited LRT power. These limitations should be
+reported directly in gene-level analyses.
+
+## 11. Relation to established phylogenetic statistics
+
+The implementation follows the likelihood logic emphasized in the PAML manual:
+define explicit null and alternative models, estimate shared parameters by
+maximum likelihood on a fixed tree, compare nested models with an LRT when
+regularity conditions hold, and treat ancestral reconstructions as
+model-conditional probabilities.
+
+The binary state process is related to Pagel-style discrete-trait CTMC models
+and Mk/Mkv models. The biological observations here are homologous
+gene-structure sites rather than organismal phenotypes.
+
+## 12. Primary output files
+
+- `structural_site_matrix.tsv`
+- `model_fits.tsv`
+- `model_tests.tsv`
+- `node_state_posteriors.tsv`
+- `branch_transition_posteriors.tsv`
+- `structural_changes.tsv`
+- `run_parameters.json`
+- `excluded_families.tsv`

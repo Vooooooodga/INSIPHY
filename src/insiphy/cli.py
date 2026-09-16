@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 
+from . import __version__
 from .alignment import available_alignment_backends
 from .annotation import complete_annotation
 from .baseline import evaluate_baselines
@@ -10,22 +11,49 @@ from .benchmark import benchmark_events
 from .calibration import DEFAULT_SCENARIOS, calibrate_simulations
 from .case import build_case, inspect_annotation, scan_hidden_segments
 from .correspondence import infer_correspondence
+from .orthofinder import import_orthofinder
 from .phylogeny import infer_phylogeny
 from .preprocess import derive_tables, extract_gene
 from .simulate import simulate_dataset
 from .visualize import visualize_results
 
 
-def run_all(input_dir, output_dir, bootstrap_replicates=0, stochastic_maps=0, seed=7, foreground_branches=None):
+def run_all(
+    input_dir,
+    output_dir,
+    bootstrap_replicates=0,
+    stochastic_maps=0,
+    seed=7,
+    foreground_branches=None,
+    analysis_scope="single-copy",
+    model="er-ard",
+    branch_length_mode="supplied",
+    ascertainment="all-sites",
+    threads=1,
+):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     complete_annotation(input_dir, output_dir)
     infer_correspondence(input_dir, output_dir)
-    infer_phylogeny(input_dir, output_dir, bootstrap_replicates=bootstrap_replicates, stochastic_maps=stochastic_maps, seed=seed, foreground_branches=foreground_branches)
-    evaluate_baselines(input_dir, output_dir)
+    infer_phylogeny(
+        input_dir,
+        output_dir,
+        bootstrap_replicates=bootstrap_replicates,
+        stochastic_maps=stochastic_maps,
+        seed=seed,
+        foreground_branches=foreground_branches,
+        analysis_scope=analysis_scope,
+        model=model,
+        branch_length_mode=branch_length_mode,
+        ascertainment=ascertainment,
+        threads=threads,
+    )
+    if analysis_scope == "experimental-multicopy":
+        evaluate_baselines(input_dir, output_dir)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="insiphy")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     extract = sub.add_parser("extract-gene")
@@ -115,6 +143,13 @@ def main(argv=None):
     case.add_argument("--threads", type=int, default=1)
     case.add_argument("--min-size-ratio", type=float, default=0.25)
 
+    orthofinder = sub.add_parser("import-orthofinder")
+    orthofinder.add_argument("--orthofinder-dir", required=True)
+    orthofinder.add_argument("--orthogroup", required=True)
+    orthofinder.add_argument("--genome-manifest", required=True)
+    orthofinder.add_argument("--species-tree")
+    orthofinder.add_argument("--output-dir", required=True)
+
     hidden = sub.add_parser("scan-hidden-segments")
     hidden.add_argument("--source-fasta", required=True)
     hidden.add_argument("--target-fasta", required=True)
@@ -135,6 +170,15 @@ def main(argv=None):
         cmd = sub.add_parser(name)
         cmd.add_argument("--input-dir", required=True)
         cmd.add_argument("--output-dir", required=True)
+        cmd.add_argument(
+            "--analysis-scope",
+            choices=["single-copy", "experimental-multicopy"],
+            default="single-copy",
+        )
+        cmd.add_argument("--model", choices=["er-ard", "foreground"], default="er-ard")
+        cmd.add_argument("--branch-length-mode", choices=["supplied", "unit"], default="supplied")
+        cmd.add_argument("--ascertainment", choices=["all-sites", "variable-only"], default="all-sites")
+        cmd.add_argument("--threads", type=int, default=1)
         cmd.add_argument("--bootstrap-replicates", type=int, default=0)
         cmd.add_argument("--stochastic-maps", type=int, default=0)
         cmd.add_argument("--seed", type=int, default=7)
@@ -161,6 +205,8 @@ def main(argv=None):
         inspect_annotation(args.annotation, args.output_dir, args.query, args.alias_file, args.species, args.case_id)
     elif args.command == "build-case":
         build_case(args.manifest, args.output_dir, args.identity_threshold, args.species_tree, args.transcript_policy, args.canonical_rule, args.aligner, args.threads, args.min_size_ratio, args.copy_tree, args.gene_tree)
+    elif args.command == "import-orthofinder":
+        import_orthofinder(args.orthofinder_dir, args.orthogroup, args.genome_manifest, args.output_dir, args.species_tree)
     elif args.command == "scan-hidden-segments":
         scan_hidden_segments(args.source_fasta, args.target_fasta, args.output_dir, args.family_id, args.species, args.gene_copy_id, args.min_identity, args.min_coverage, args.aligner, args.threads)
     elif args.command == "complete-annotation":
@@ -171,13 +217,37 @@ def main(argv=None):
         infer_correspondence(args.input_dir, args.output_dir)
     elif args.command == "infer-phylogeny":
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-        infer_phylogeny(args.input_dir, args.output_dir, args.bootstrap_replicates, args.stochastic_maps, args.seed, args.foreground_branches)
+        infer_phylogeny(
+            args.input_dir,
+            args.output_dir,
+            args.bootstrap_replicates,
+            args.stochastic_maps,
+            args.seed,
+            args.foreground_branches,
+            args.analysis_scope,
+            args.model,
+            args.branch_length_mode,
+            args.ascertainment,
+            args.threads,
+        )
     elif args.command == "compare-baselines":
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         evaluate_baselines(args.input_dir, args.output_dir)
     elif args.command == "run":
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-        run_all(args.input_dir, args.output_dir, args.bootstrap_replicates, args.stochastic_maps, args.seed, args.foreground_branches)
+        run_all(
+            args.input_dir,
+            args.output_dir,
+            args.bootstrap_replicates,
+            args.stochastic_maps,
+            args.seed,
+            args.foreground_branches,
+            args.analysis_scope,
+            args.model,
+            args.branch_length_mode,
+            args.ascertainment,
+            args.threads,
+        )
 
 
 if __name__ == "__main__":

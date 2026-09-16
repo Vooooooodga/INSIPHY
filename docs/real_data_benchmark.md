@@ -1,136 +1,70 @@
-# Real-Data Benchmark Plan
+# Real-Data Demonstration
 
-The first benchmark uses accession-level Drosophila genome FASTA and GFF files.
-The cases are young or duplicated genes with described structural histories,
-plus one conserved negative control.
+## RpL32 conserved control
 
-## Priority Cases
+The first formal single-copy demonstration uses RpL32 orthologs from:
 
-1. **jingwei**
-   - Expected biology: chimeric new gene involving `Adh`-derived sequence and
-     `yande/ymp` source sequence, with coding recruitment of previously
-     noncoding or intronic sequence.
-   - INSIPHY target signal: source mixture, source-joining adjacency and
-     role-state change on the branch where the derived copy appears.
+- Drosophila melanogaster, GCF_000001215.4;
+- Drosophila simulans, GCF_016746395.2;
+- Drosophila erecta, GCF_003286155.1;
+- Drosophila yakuba, GCF_016746365.2;
+- Drosophila teissieri, GCF_016746235.2.
 
-2. **Sdic**
-   - Expected biology: young duplicated/chimeric gene family involving
-     `Annexin B10` and `sw`, with copy-number ambiguity and derived coding
-     structure.
-   - INSIPHY target signal: multi-source structure, copy expansion and
-     intragenic adjacency changes.
+Genome FASTA and GFF3 files are stored outside the repository under
+`/data/db/genome`. The repository contains accession-level manifests and the
+species tree.
 
-3. **RpL32 conserved control**
-   - Expected biology: conserved ribosomal protein gene with stable
-     exon-intron organization across close Drosophila species.
-   - INSIPHY target signal: low support for source mixing, exonization and
-     structural novelty.
+## Complete user path
 
-## Available Local Data
+```bash
+insiphy build-case \
+  --manifest examples/real_cases/rpl32_control/manifest.tsv \
+  --species-tree examples/real_cases/rpl32_control/species_tree.tsv \
+  --output-dir work/rpl32_control \
+  --aligner internal \
+  --threads 4
 
-The current R730 data store contains the following complete genome/annotation
-pairs:
+insiphy run \
+  --input-dir work/rpl32_control \
+  --output-dir results/rpl32_control \
+  --analysis-scope single-copy \
+  --model er-ard \
+  --branch-length-mode supplied \
+  --threads 4
 
-- `/data/db/genome/Drosophila_melanogaster/GCF_000001215.4/`
-- `/data/db/genome/Drosophila_simulans/GCF_016746395.2/`
-- `/data/db/genome/Drosophila_erecta/GCF_003286155.1/`
-- `/data/db/genome/Drosophila_yakuba/GCF_016746365.2/`
-- `/data/db/genome/Drosophila_teissieri/GCF_016746235.2/`
-
-The repository stores only manifests, species trees and provenance notes. Large
-genome FASTA and GFF files stay under `/data/db/genome`.
-
-## Full User Scenario
-
-Each real case should exercise:
-
-- `build-case` from real FASTA/GFF manifest;
-- `derive-tables` with `--threads` and at least one external local aligner when
-  available;
-- `run` with CTMC/LRT, BH q values, bootstrap, stochastic maps and foreground
-  branches;
-- `visualize` with colorblind-friendly SVG output;
-- `benchmark` for curated positive cases and negative control expectations.
-
-## Benchmark Questions
-
-For each case, report:
-
-- supplied copies and source loci;
-- hidden or shifted segments supported by sequence;
-- exon-like correspondence groups conserved, gained or role-shifted;
-- branch with strongest event support;
-- core structural, copy-context and ambiguous-evidence call counts;
-- LRT p value, q value, empirical bootstrap p value and fitted CTMC rate;
-- stochastic-map `Pr(any change)` and expected change count on key branches;
-- alternative explanations: annotation dropout, fragmented assembly, paralogy
-  ambiguity, high-similarity paralogous segments or weak sequence support.
-
-## v0.10 Demo Run
-
-The current package was exercised on real local Drosophila inputs under:
-
-```text
-/scratch/projects/intragenic_structure/insiphy_v010_real_demo
+insiphy visualize \
+  --input-dir work/rpl32_control \
+  --result-dir results/rpl32_control \
+  --output-dir figures/rpl32_control
 ```
 
-Settings:
+## v0.11 result
 
-- `build-case` from accession-level genome FASTA/GFF manifests.
-- `--threads 2` with the internal aligner, because minimap2/miniprot were not
-  available on `PATH` in this environment.
-- `run` with `--bootstrap-replicates 10`, `--stochastic-maps 10` and foreground
-  branch files for positive cases.
-- `visualize` with default color encoding; RpL32 was also rendered with
-  pattern encoding.
-- `benchmark` against curated truth tables for jingwei and Sdic.
+The correspondence stage recovered two core exon-like groups spanning all five
+species. Their `exon_presence` states are all present, and their
+`exon_role` states are all exonic. A short D. melanogaster interval forms a
+low-support group and remains unknown in the formal matrix.
 
-Observed results:
+No analyzed site varies among observed tips. Gain/loss asymmetry is therefore
+not identifiable. `model_tests.tsv` reports
+`test_status=parameters_not_estimable` and `p_value=NA` for these layers.
+The ER-based branch endpoint-change probabilities are near zero.
 
-- **RpL32 control**: no hidden-segment candidates, no source-join candidates,
-  no multi-source tips, no branch-event candidates and no copy-context
-  candidates. This is the desired conserved-control behavior.
-- **jingwei**: structural characters used `copy_tree.tsv`; one core event was
-  called, `chimeric_origin_or_source_mixing`, on
-  `adh_yak_dup->Drosophila_yakuba:Dyak_jgw`. The LRT p value was
-  `8.43996e-06`, BH q value `0.000118159`, CTMC branch-change probability
-  `0.973651`, and stochastic-map `Pr(any change)` was `1` with 10 maps.
-  Benchmark against the copy-tree truth table gave precision, recall and branch
-  accuracy of `1`.
-- **Sdic**: structural characters used `copy_tree.tsv`; the expected
-  `chimeric_origin_or_source_mixing` event was called on
-  `sdic_root->sdic_cluster` with branch accuracy `1`. One additional
-  `coding_or_exonic_role_loss` core call was made on an AnxB10 lineage, so core
-  benchmark precision was `0.5` and recall was `1`. This extra call is retained
-  as an unresolved real-data signal requiring closer annotation and orthology
-  review.
-- **Calibration smoke run**: two replicates each of `negative_control`,
-  `exonization` and `source_join` completed. The negative control had
-  false-positive rate `0`; exonization and source-join scenarios had
-  mean precision/recall/F1 of `1` in this tiny smoke run. These values show
-  command behavior, not final publication calibration.
+This is the expected qualitative result for a conserved control: strong
+correspondence, stable structure, and no supported branch-specific change. It
+does not measure sensitivity to true exon gains or losses.
 
-Important limitations:
+## Next real-data set
 
-- The internal aligner is a fallback; publication runs should use minimap2 or
-  another documented local aligner for scalable segment matching.
-- Only 10 bootstrap/stochastic-map replicates were used for the real demo.
-  Empirical p values therefore have coarse Monte Carlo resolution.
-- The Sdic extra role-loss call shows that curated truth tables must separate
-  expected focal events from additional lineage-specific structural variation.
+The next benchmark should contain single-copy genes with independently
+documented structural changes. Candidate cases must satisfy:
 
-## Acceptance For v0.10 Real Run
+- one ortholog per species;
+- assembly and annotation versions available;
+- enough species to distinguish alternative branch placements;
+- sequence-level evidence for the altered exon or junction;
+- a published history that can be reviewed independently of INSIPHY.
 
-A v0.10 real run is acceptable when it can:
-
-- run from accession-level genome FASTA/GFF plus a manifest and species tree;
-- recover expected qualitative event classes for `jingwei` and `Sdic`;
-- include the RpL32 negative control or a clearly documented equivalent
-  OrthoFinder-supported conserved control;
-- save all INSIPHY output tables needed for biological interpretation;
-- generate black-and-white-readable, colorblind-friendly synteny and event-map
-  figures with one correspondence encoding mode per figure;
-- document unresolved uncertainty.
-
-Publication-level claims still require a larger case set and quantified
-false-positive rate.
+Jingwei and Sdic remain useful for future multi-copy development. Their
+duplication histories place them outside the current formal single-copy
+benchmark.

@@ -810,63 +810,12 @@ def inferred_source_label(row, support):
 
 
 def graph_components(nodes, edges, occurrence_by_id=None):
-    if occurrence_by_id:
-        parent = {node: node for node in nodes}
-        members = {
-            node: {occurrence_copy_key(occurrence_by_id[node])}
-            for node in nodes
-            if node in occurrence_by_id
-        }
+    import networkx as nx
 
-        def find(x):
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-
-        def union(a, b):
-            ra, rb = find(a), find(b)
-            if ra == rb:
-                return
-            if members.get(ra, set()) & members.get(rb, set()):
-                return
-            parent[rb] = ra
-            members[ra] = members.get(ra, set()) | members.get(rb, set())
-
-        for left, right, _score in sorted(edges, key=lambda row: row[2], reverse=True):
-            union(left, right)
-        groups = defaultdict(list)
-        for node in nodes:
-            groups[find(node)].append(node)
-        return [sorted(vals) for vals in groups.values()]
-
-    try:
-        import networkx as nx  # type: ignore
-
-        graph = nx.Graph()
-        graph.add_nodes_from(nodes)
-        graph.add_weighted_edges_from(edges)
-        return [sorted(comp) for comp in nx.connected_components(graph)]
-    except Exception:
-        parent = {node: node for node in nodes}
-
-        def find(x):
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-
-        def union(a, b):
-            ra, rb = find(a), find(b)
-            if ra != rb:
-                parent[rb] = ra
-
-        for left, right, _score in edges:
-            union(left, right)
-        groups = defaultdict(list)
-        for node in nodes:
-            groups[find(node)].append(node)
-        return [sorted(vals) for vals in groups.values()]
+    graph = nx.Graph()
+    graph.add_nodes_from(nodes)
+    graph.add_weighted_edges_from(edges)
+    return [sorted(component) for component in nx.connected_components(graph)]
 
 
 def should_align_pair(left, right, seqs, min_size_ratio=0.25):

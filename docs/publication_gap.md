@@ -1,92 +1,90 @@
 # Publication Gap
 
-INSIPHY v0.10.0 is a runnable method prototype. It includes transcript-aware
-extraction, graph-based segment correspondence, source/copy-role propagation,
-branch-length-aware CTMC/Mk fitting, invariant-model LRT p values,
-BH q values, parametric-bootstrap calibration, stochastic-map branch summaries,
-event support tables, internal correspondence coverage summaries,
-colorblind-aware SVG output, optional pattern encoding, copy/gene tree support
-for multi-copy structural characters, optional foreground/background
-structural-rate tests, progressive EG summaries and simulation operating
-characteristic summaries. A manuscript-grade method still requires stronger
-evidence in five areas.
+## Current status
 
-## Current Strengths
+INSIPHY v0.11 is a runnable single-copy method prototype. It accepts an
+upstream ortholog set, reconstructs exon-like correspondence from genome
+sequence and annotation, builds explicit structural sites, and fits ER/ARD or
+foreground CTMC models on a fixed species tree.
 
-- The input model matches the project aim: genome FASTA, GFF/GTF annotation,
-  a species tree and optional copy/gene tree for multi-copy structural histories.
-- The package already separates annotation completion, homologous segment
-  correspondence and phylogenetic structural inference.
-- The outputs report observable structural changes separately from optional
-  interpretation hints. They include likelihood parameters, p values,
-  empirical bootstrap p values and branch posterior summaries for structural
-  characters.
-- Accession-level real-case manifests are available for Drosophila `jingwei`,
-  `Sdic` and a conserved-control direction.
-- Annotation-dropout negative controls are represented in the simulator and
-  benchmark layer.
-- The package is CLI-first. Workflow orchestration and cluster execution
-  records remain outside the method package.
+The code can support a methods manuscript description of the model and the
+RpL32 conserved-control demonstration. General claims of biological accuracy
+still require a broader real-data evaluation.
 
-## Required Before Publication
+## Implemented
 
-1. **Real case studies**: complete accession-level `jingwei`, `Sdic` and RpL32
-   conserved-control analyses using documented genome and annotation versions,
-   then add at least one additional duplicated/chimeric case.
-2. **Statistical calibration**: compare Sankoff scores, CTMC likelihoods, LRT
-   p values, bootstrap p values, stochastic-map posterior summaries and
-   simulated ground truth across many trees, event rates and annotation-error
-   settings.
-3. **Baseline comparisons**: quantify gains over annotation-only,
-   sequence-only and intron/exon-position-only approaches.
-4. **Robustness tests**: simulate missing annotation, fragmented gene models,
-   tandem duplicates and ambiguous paralogy.
-5. **Evidence reporting**: provide manuscript tables for event class, branch,
-   support, model score, alternative explanation and input evidence.
-6. **Branch histories**: evaluate stochastic character mapping calibration and
-   branch placement accuracy under known simulated histories.
+- OrthoFinder single-copy orthogroup import;
+- genome/GFF extraction and annotation-completion candidates;
+- exon-like correspondence using sequence and local structural evidence;
+- explicit `exon_presence`, `exon_role`, and `splice_junction` matrices;
+- Felsenstein pruning with missing-state marginalization;
+- ER/ARD and foreground nested model comparisons;
+- profile-likelihood intervals, LRT P values, and BH q values;
+- node-state and branch-transition posteriors;
+- expected gain/loss counts;
+- continuous-probability phylogenetic visualization;
+- colorblind-aware color and pattern encodings;
+- isolated experimental multi-copy code path.
 
-## Current Implementation Gap
+## Required empirical work
 
-The package includes simulation, calibration and benchmark commands, bootstrap
-summaries, event support summaries and named event scenarios. They should be
-expanded to cover many trees, multiple event rates, real accession-level cases
-and independent simulation generators before claims about broad accuracy are
-made.
+1. **Curated positive single-copy cases**
+   Add genes with literature-supported exon gain/loss, exonization, and
+   split/fusion histories. Confirm every EG correspondence by inspecting the
+   underlying genomic alignment and splice boundaries.
 
-## Benchmark Plan
+2. **Larger conserved controls**
+   Analyze a panel of stable single-copy genes across the same species. Report
+   the frequency of unsupported changes and ambiguous correspondences.
 
-No single public benchmark appears to cover this exact task. The publication
-benchmark should therefore combine:
+3. **Cross-clade evaluation**
+   Include at least one vertebrate, plant, or other metazoan clade to show how
+   sequence divergence affects internal correspondence.
 
-- curated literature-positive cases: `jingwei`, `Sdic`, and one or more young
-  Drosophila chimeric/duplicate genes;
-- conserved negative controls: single-copy genes with stable exon-intron
-  organization across close species;
-- duplicated-gene structure-divergence cases from published exon-intron
-  divergence studies;
-- simulated truth sets for exonization, source joining, exon split/fusion,
-  retrocopy-like intron loss, tandem duplication and annotation dropout;
-- ablations that remove annotation completion, source labels, adjacency
-  evidence or phylogenetic modeling.
+4. **Comparator analyses**
+   Compare annotation-only, sequence-only, and full sequence-plus-structure
+   correspondence. Report which missing annotations are recovered and which
+   exon relationships change.
 
-Primary metrics:
+5. **Sensitivity analyses**
+   Evaluate canonical transcript choice, alignment backend, correspondence
+   threshold, tree branch lengths, and exclusion of ambiguous EG members.
 
-- event-level precision, recall and F1;
-- branch placement accuracy;
-- false positive rate under conserved negative controls;
-- robustness to missing exons and fragmented annotation;
-- calibration of reported P values and branch posterior probabilities.
+6. **Independent biological review**
+   Have domain experts review structural matrices and branch posteriors without
+   relying on software-generated mechanism labels.
 
-## Biological Gaps To Track
+7. **Runtime profiling**
+   Report elapsed time and peak memory as species count, exon count, and
+   candidate pair count increase.
 
-The current event vocabulary should be extended or explicitly labeled for:
+## Statistical limits to report
 
-- splice-boundary shifts and intron sliding;
-- tandem exon duplication and partial exon duplication;
-- transposable-element-associated exonization;
-- high-similarity paralogous segments that may reflect gene conversion, recent
-  duplication or unresolved paralogy;
-- isoform-specific alternative-splicing turnover;
-- processed retrocopy evidence from intron loss and insertion context;
-- tree and branch-length uncertainty.
+- A single gene usually supplies few exon and junction sites, so rate intervals
+  can be wide and LRT power low.
+- An invariant gene can support a low overall transition rate but cannot
+  identify gain/loss asymmetry.
+- Neighboring exon and junction sites are biologically coupled, while the
+  current likelihood treats sites as conditionally independent.
+- Tree topology, branch lengths, and correspondence are conditioned upon.
+- A high branch posterior describes model-conditional event placement and does
+  not establish a molecular cause.
+
+## Multi-copy work deferred
+
+Duplicated genes require a reconciled gene tree, orthology/paralogy-aware
+internal correspondence, and explicit treatment of duplication and loss. The
+existing experimental code is retained for development. Formal multi-copy
+claims should wait until these components have dedicated real-data tests.
+
+## Minimum first-paper claim
+
+A defensible first paper can present:
+
+- a new formalization of gene-internal synteny as homologous exon and junction
+  sites;
+- sequence-assisted annotation completion inside known orthologs;
+- shared-parameter phylogenetic likelihood models and branch posteriors;
+- several deeply curated positive single-copy examples;
+- a larger conserved-control panel;
+- transparent limitations and sensitivity analyses.

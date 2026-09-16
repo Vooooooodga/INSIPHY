@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.11.0 - 2026-09-16
+
+- Made single-copy ortholog analysis the formal default and isolated retained
+  multi-copy routines behind `experimental-multicopy`.
+- Added an OrthoFinder single-copy orthogroup importer without gene-homology
+  re-inference.
+- Defined three biological structural-site layers: exon sequence presence,
+  exonic role and splice-junction presence.
+- Added shared-parameter binary CTMC likelihoods with ER/ARD and homogeneous
+  versus foreground model comparisons.
+- Added continuous optimization, profile-likelihood intervals, regularity
+  checks for LRT P values and BH correction across valid tests.
+- Added marginal node-state posteriors, joint branch endpoint posteriors and
+  expected directional transition counts.
+- Added `structural_site_matrix.tsv`, `model_fits.tsv`, `model_tests.tsv`,
+  `node_state_posteriors.tsv`, `branch_transition_posteriors.tsv`,
+  `structural_changes.tsv`, `excluded_families.tsv` and `run_parameters.json`.
+- Updated phylogenetic figures to use continuous posterior probabilities and
+  retained colorblind-aware color and pattern encodings.
+- Replaced deprecated Biopython `pairwise2` calls with `PairwiseAligner`.
+- Reframed documentation and the real RpL32 demo around the formal
+  single-copy model.
+
 ## 0.10.0 - 2026-09-16
 
 - Moved possible biological readings out of core event/support tables into

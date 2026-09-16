@@ -23,6 +23,8 @@ PALETTE = [
 ]
 
 PATTERNS = ["diagonal", "dots", "cross", "horizontal", "vertical", "grid", "sparse", "solid"]
+
+
 def svg_text(x, y, text, size=11, anchor="start", weight="normal", fill="#222"):
     return f'<text x="{x}" y="{y}" font-family="Arial, sans-serif" font-size="{size}" text-anchor="{anchor}" font-weight="{weight}" fill="{fill}">{escape(str(text))}</text>'
 
@@ -33,7 +35,7 @@ def structural_tree_rows(input_dir, result_dir):
     tree_file = "species_tree.tsv"
     scope_rows = read_tsv(result_dir / "phylogeny_scope.tsv", optional=True)
     for row in scope_rows:
-        if row.get("scope") == "structural_characters" and row.get("tree_file"):
+        if row.get("scope") in {"structural_characters", "single_copy_structural_sites"} and row.get("tree_file"):
             tree_file = row["tree_file"]
             break
     rows = read_tsv(input_dir / tree_file, optional=True)
@@ -44,6 +46,35 @@ def structural_tree_rows(input_dir, result_dir):
         if rows:
             return rows, fallback
     return [], tree_file
+
+
+def phylogenetic_change_rows(result_dir):
+    result_dir = Path(result_dir)
+    rows = read_tsv(result_dir / "structural_changes.tsv", optional=True)
+    if rows:
+        return sorted(
+            rows,
+            key=lambda row: float(row.get("endpoint_change_probability", "0") or 0),
+            reverse=True,
+        )
+    return read_tsv(result_dir / "event_support_summary.tsv", optional=True)
+
+
+def change_probability(row):
+    for field in (
+        "endpoint_change_probability",
+        "ctmc_change_probability",
+        "stochastic_pr_any_change",
+    ):
+        try:
+            return min(1.0, max(0.0, float(row.get(field, "NA"))))
+        except (TypeError, ValueError):
+            continue
+    return 0.0
+
+
+def change_label(row):
+    return row.get("structural_change_type") or row.get("event_class") or "structural_change"
 
 
 def tip_label_for_group(tree, species, copy):
@@ -280,7 +311,7 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
     tree_rows, tree_file = structural_tree_rows(input_dir, result_dir)
-    events = read_tsv(Path(result_dir) / "event_support_summary.tsv", optional=True)
+    events = phylogenetic_change_rows(result_dir)
     if not tree_rows:
         path = output_dir / "phylogenetic_event_map.svg"
         path.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="120"><text x="20" y="40">phylogenetic tree not available</text></svg>\n')
@@ -288,13 +319,10 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
     tree = SpeciesTree(tree_rows)
     x, y = tree_coordinates(tree)
     branch_events = defaultdict(list)
-    other_events = []
     for row in events:
         scope = row.get("branch_scope", "")
-        if "->" in scope and row.get("call_scope") == "core_structural_event":
+        if "->" in scope and row.get("call_scope", "core_structural_event") == "core_structural_event":
             branch_events[scope].append(row)
-        else:
-            other_events.append(row)
     height = max(y.values() or [80]) + 90
     width = 1100
     body = [
@@ -309,16 +337,18 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
         scope = f"{tree.label[parent]}->{tree.label[child]}"
         evs = branch_events.get(scope, [])
         if evs:
-            high = sum(1 for row in evs if row.get("support_tier") == "high")
+            strongest = max(evs, key=change_probability)
+            probability = change_probability(strongest)
             cx = (x[parent] + x[child]) / 2
             cy = y[child]
-            fill = "#D55E00" if high else "#E69F00"
-            if high:
-                body.append(f'<path d="M{cx:.2f},{cy - 9:.2f} L{cx + 9:.2f},{cy:.2f} L{cx:.2f},{cy + 9:.2f} L{cx - 9:.2f},{cy:.2f} Z" fill="{fill}" fill-opacity="0.75" stroke="#111" stroke-width="0.8"/>')
-            else:
-                body.append(f'<rect x="{cx - 7:.2f}" y="{cy - 7:.2f}" width="14" height="14" fill="{fill}" fill-opacity="0.65" stroke="#111" stroke-width="0.8" stroke-dasharray="3 2"/>')
-            label = ",".join(sorted({row.get("event_class", "event") for row in evs})[:2])
-            body.append(svg_text(cx + 12, y[child] - 7, label, 9, fill="#333"))
+            radius = 3.5 + 5.5 * probability
+            opacity = 0.12 + 0.78 * probability
+            fill = "#D55E00" if "loss" in change_label(strongest) or "fusion" in change_label(strongest) else "#0072B2"
+            body.append(
+                f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{radius:.2f}" fill="{fill}" '
+                f'fill-opacity="{opacity:.3f}" stroke="#111" stroke-width="0.7"/>'
+            )
+            body.append(svg_text(cx + radius + 4, y[child] - 6, f"{change_label(strongest)} P={probability:.2f}", 8, fill="#333"))
     for node in tree.preorder():
         if node in tree.leaves:
             body.append(svg_text(x[node] + 8, y[node] + 4, tree.label[node], 11))
@@ -327,18 +357,16 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
             if node != tree.root:
                 body.append(svg_text(x[node] + 6, y[node] - 5, tree.label[node], 9, fill="#555"))
     aside_x = 720
-    body.append(svg_text(aside_x, 58, "Event support summary", 12, weight="bold"))
+    body.append(svg_text(aside_x, 58, "Branch change probabilities", 12, weight="bold"))
     for idx, row in enumerate(events[:12]):
         y0 = 80 + idx * 18
-        tier = row.get("support_tier", "qualitative")
-        fill = {"high": "#D55E00", "moderate": "#E69F00", "qualitative": "#777"}.get(tier, "#777")
-        if tier == "high":
-            body.append(f'<path d="M{aside_x + 5},{y0 - 11} L{aside_x + 10},{y0 - 6} L{aside_x + 5},{y0 - 1} L{aside_x},{y0 - 6} Z" fill="{fill}" stroke="#111" stroke-width="0.7"/>')
-        elif tier == "moderate":
-            body.append(f'<rect x="{aside_x}" y="{y0 - 10}" width="10" height="10" fill="{fill}" stroke="#111" stroke-width="0.7" stroke-dasharray="3 2"/>')
-        else:
-            body.append(f'<circle cx="{aside_x + 5}" cy="{y0 - 5}" r="5" fill="{fill}" stroke="#111" stroke-width="0.7"/>')
-        body.append(svg_text(aside_x + 16, y0, f"{row.get('event_class')} | {row.get('branch_scope')} | {tier}", 9))
+        probability = change_probability(row)
+        fill = "#D55E00" if "loss" in change_label(row) or "fusion" in change_label(row) else "#0072B2"
+        body.append(
+            f'<circle cx="{aside_x + 5}" cy="{y0 - 5}" r="5" fill="{fill}" '
+            f'fill-opacity="{0.12 + 0.78 * probability:.3f}" stroke="#111" stroke-width="0.7"/>'
+        )
+        body.append(svg_text(aside_x + 16, y0, f"{change_label(row)} | {row.get('branch_scope')} | P={probability:.3f}", 9))
     body.append("</svg>")
     path = output_dir / "phylogenetic_event_map.svg"
     path.write_text("\n".join(body))
@@ -350,7 +378,7 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, corresponde
     output_dir = Path(output_dir)
     tree_rows, tree_file = structural_tree_rows(input_dir, result_dir)
     occurrences = read_tsv(input_dir / "segment_occurrences.tsv", optional=True)
-    events = read_tsv(Path(result_dir) / "event_support_summary.tsv", optional=True)
+    events = phylogenetic_change_rows(result_dir)
     path = output_dir / "integrated_phylo_synteny.svg"
     if not tree_rows or not occurrences:
         path.write_text('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="120"><text x="20" y="40">phylogenetic tree or segment data not available</text></svg>\n')
@@ -400,7 +428,7 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, corresponde
     branch_events = defaultdict(list)
     for row in events:
         scope = row.get("branch_scope", "")
-        if "->" in scope and row.get("call_scope") == "core_structural_event":
+        if "->" in scope and row.get("call_scope", "core_structural_event") == "core_structural_event":
             branch_events[scope].append(row)
 
     body = [
@@ -417,11 +445,16 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, corresponde
         scope = f"{tree.label[parent]}->{tree.label[child]}"
         evs = branch_events.get(scope, [])
         if evs:
-            high = any(row.get("support_tier") == "high" for row in evs)
+            strongest = max(evs, key=change_probability)
+            probability = change_probability(strongest)
             cx = (node_x[parent] + node_x[child]) / 2
             cy = node_y[child]
-            fill = "#D55E00" if high else "#777777"
-            body.append(f'<path d="M{cx:.2f},{cy - 7:.2f} L{cx + 7:.2f},{cy:.2f} L{cx:.2f},{cy + 7:.2f} L{cx - 7:.2f},{cy:.2f} Z" fill="{fill}" fill-opacity="0.72" stroke="#111" stroke-width="0.7"/>')
+            fill = "#D55E00" if "loss" in change_label(strongest) or "fusion" in change_label(strongest) else "#0072B2"
+            radius = 3.0 + 4.5 * probability
+            body.append(
+                f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{radius:.2f}" fill="{fill}" '
+                f'fill-opacity="{0.12 + 0.78 * probability:.3f}" stroke="#111" stroke-width="0.7"/>'
+            )
     for leaf in tree.leaves:
         body.append(svg_text(node_x[leaf] + 6, node_y[leaf] + 4, tree.label[leaf], 10))
     for node in tree.preorder():
@@ -463,7 +496,7 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, corresponde
             draw_homology_connector(body, left_box, right_box, styles.get(element_id, {}))
     for args in pending_boxes:
         draw_segment_box(body, *args)
-    body.append(svg_text(24, height - 32, "Core structural events are marked on tree branches; links mark exon-like correspondence; introns are gray context spans.", 10, fill="#555"))
+    body.append(svg_text(24, height - 32, "Branch symbols scale continuously with posterior change probability; links mark exon correspondence; introns are gray context.", 10, fill="#555"))
     body.append("</svg>")
     path.write_text("\n".join(body))
     return path

@@ -1,0 +1,2 @@
+scope	tree_file	tree_scope	layers	note
+single_copy_structural_sites	species_tree.tsv	species_tree	exon_presence;exon_role;splice_junction	All homologous structural sites within each layer share fitted gain/loss parameters.

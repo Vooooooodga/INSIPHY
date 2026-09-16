@@ -5,10 +5,9 @@ FASTA/GFF files under `/data/db/genome`.
 
 Expected signal:
 
-- conserved internal segment structure;
-- low source-mixture support;
-- low copy-expansion support;
-- no high-confidence exonization or source-joining event.
+- conserved exon sequence presence and exonic role;
+- near-zero branch transition probabilities;
+- no ER/ARD P value when all reliable sites are invariant.
 
 Example:
 
@@ -23,9 +22,10 @@ PYTHONPATH=src python3 -m insiphy.cli build-case \
 PYTHONPATH=src python3 -m insiphy.cli run \
   --input-dir work/rpl32_control_case \
   --output-dir results/rpl32_control \
-  --bootstrap-replicates 200 \
-  --stochastic-maps 200 \
-  --seed 7
+  --analysis-scope single-copy \
+  --model er-ard \
+  --branch-length-mode supplied \
+  --threads 4
 
 PYTHONPATH=src python3 -m insiphy.cli visualize \
   --input-dir work/rpl32_control_case \

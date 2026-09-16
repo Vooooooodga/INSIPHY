@@ -1,0 +1,4 @@
+element_id	family_id	homology_ids	member_count	species_count	copy_count	exon_like_members	candidate_source_members	nearest_species_support	within_clade_support	deep_tree_support	best_pair_score	mean_pair_score	progressive_call
+EG_0001	rpl32_control	HC_0001	5	5	5	5	0	2	4	4	1	0.864606	progressive_supported
+EG_0003	rpl32_control	HC_0003	5	5	5	5	0	2	4	4	0.996731	0.92328	progressive_supported
+EG_0006	rpl32_control	HC_0006	1	1	1	1	0	0	0	0	NA	NA	single_tip_or_low_support

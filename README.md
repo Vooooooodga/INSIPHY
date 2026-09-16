@@ -1,217 +1,189 @@
 # INSIPHY
 
-**INSIPHY** means **IN**tragenic **SI**nteny **PHY**logenetics. It is a
-Python method package for reconstructing gene-internal structural evolution
-from genome sequence, genome annotation and fixed phylogenetic trees.
+**INSIPHY** (**IN**tragenic **SI**nteny **PHY**logenetics) 是一个从基因组序列、
+基因注释和固定物种树推断基因内部结构演化的 Python 软件包。
 
-## 中文介绍
+## 项目定位
 
-INSIPHY 面向近缘物种之间的单基因或小型重复基因家族比较。上游流程先给出
-同源基因或候选同源拷贝集合，推荐来源是 OrthoFinder、OMA、OrthoDB 或人工
-整理的 duplication clade。INSIPHY 从这些已给定的 gene/copy 开始，分析每个
-基因内部的 segment 同源关系、局部顺序、邻接关系和系统发育结构事件。多拷贝
-同源集合可以额外提供 `copy_tree.tsv` 或 `gene_tree.tsv`；EG presence、EG
-role、EG adjacency 和 source mixture 会在这棵 gene/copy tree 上推断，copy
-multiplicity 保留在物种树上解释。
+INSIPHY 接收上游已经确定的同源基因集合。推荐使用 OrthoFinder 给出的
+single-copy orthogroup，也支持人工整理的单拷贝直系同源基因集合。软件不在全
+基因组重新搜索基因，也不重新判定基因层级的 orthology。
 
-本项目只使用 genome FASTA、GFF/GTF annotation、gene/copy manifest 和物种树。
-已有注释可能不完整，因此软件会结合基因组序列、剪接边界、phase、局部顺序、
-拷贝背景和同源 segment graph，补全可能的隐藏片段或注释冲突候选。RNA-seq、
-表达量、pathway 富集和全基因组 orthogroup 推断不属于当前输入模型。
+当前正式分析范围为单拷贝直系同源基因。多拷贝代码保留在
+`--analysis-scope experimental-multicopy`，暂不用于正式结论。
 
-核心问题：
+输入只包括：
 
-1. 在上游已确定同源关系的基因集合内，推断外显子、CDS、UTR、候选外显子化来源片段
-   和相邻结构之间的同源性、保守性与局部 synteny。内含子默认作为间隔、
-   splice boundary、phase 和 motif 背景证据处理。
-2. 在系统发育框架下，量化每个 gene-internal structural character 是否支持
-   branch-level 结构变化、变化最可能落在哪条分支、统计支持有多强。INSIPHY
-   报告可观测结构变化和统计证据；gene duplication、source joining、
-   exonization、splice-boundary shift、segment split/fusion、gene conversion
-   等机制解释由用户结合基因树、基因组位置、重复序列、表达或实验资料完成。
+- genome FASTA；
+- GFF3/GTF annotation；
+- 每个物种一个基因的 manifest；
+- 带分支长度的固定物种树。
 
-## Method Frame
+RNA-seq、表达量、pathway 富集和机制判定均不在当前模型中。软件报告结构变化
+及其统计不确定性；转座、选择、基因转换等机制需要使用者结合额外证据解释。
 
-INSIPHY implements five linked stages:
+## 生物学问题
 
-1. **Annotation completion**: genome sequence is checked against annotation to
-   identify hidden segments, shifted splice boundaries and joined-segment
-   candidates.
-2. **Gene-internal element correspondence**: exon-like segment sequence,
-   coverage, splice motif, intron phase, strand, boundary class and local order
-   are combined into internal evidence clusters and then promoted to
-   user-facing EGs when they represent exons, CDS/UTR intervals or
-   sequence-supported candidate exonized source intervals. User-facing event
-   calls and figures are organized around exon-like structural elements,
-   splice boundaries and adjacency.
-3. **Tree-guided progressive correspondence**: pairwise support is summarized
-   by tree distance, promoted to element-level correspondence summaries, and
-   reported as observed copy paths plus ancestral coverage summaries.
-4. **Phylogenetic structural inference**: EG presence, EG role state,
-   adjacency and source mixture are reconstructed on a supplied copy/gene tree
-   when available, with species-tree fallback for single-copy cases. Copy
-   multiplicity is reconstructed on the fixed species tree.
-5. **Simulation calibration**: optional simulated truth sets summarize false
-   positive rate, power, precision/recall, branch placement accuracy and
-   bootstrap behavior. Calibration is kept separate from real-data event calls.
+1. **注释补全**：在给定基因区间内，用序列相似性、剪接边界、阅读框和局部
+   顺序识别漏注释或边界不完整的外显子候选。
+2. **基因内部同源对应**：比较近缘物种的 exon/CDS/UTR 和序列支持的候选
+   外显子区域，建立 exon-like correspondence group (`EG_*`)。内含子作为间隔、
+   剪接连接和边界证据。
+3. **系统发育统计**：把可观察的基因结构编码为三类二状态位点，在固定物种树
+   上联合估计结构获得率和丢失率，计算祖先状态后验及分支变化后验。
 
-The package is a CLI/library. Workflow orchestration, cluster scheduling and
-large project execution records stay outside the package.
+三类结构位点为：
 
-Terminology boundary:
+- `exon_presence`：同源外显子序列明确缺失 / 存在；
+- `exon_role`：同源序列存在时，处于非外显子状态 / 外显子状态；
+- `splice_junction`：一对同源结构单元之间无剪接连接 / 有剪接连接。
 
-- **EG / exon-like group**: the user-facing visual and biological correspondence
-  unit for exons, CDS intervals, UTRs and candidate exonized source intervals.
-- **Internal homology component (`HC_*`)**: an implementation-level graph
-  component retained for reproducibility and debugging. It is not a displayed
-  biological unit.
-- **Intron/context span**: an intronic or non-exonic interval used as splice
-  boundary, phase, motif or source-context evidence. It is drawn as background
-  context unless an event table supports a role-shift interpretation.
+未搜索到、覆盖不足、对应关系含混或注释冲突的观察记为 `unknown`，似然计算对
+未知状态求和。单纯漏注释不会被编码成外显子丢失。
 
-## Real-Data Quick Start
+## 统计模型
 
-A case manifest contains the gene/copy set supplied by upstream homology
-analysis:
+每个结构层内的所有同源位点共享参数，计算采用 Felsenstein pruning 和二状态
+连续时间 Markov 链。该设计对应分子进化软件中“多个序列位点共同估计少量模型
+参数”的基本原则。
+
+默认检验为：
+
+- H0 `ER`：获得率与丢失率相等；
+- H1 `ARD`：分别估计获得率和丢失率；
+- 统计量：`2 * (lnL_ARD - lnL_ER)`；
+- 参考分布：满足可估计条件时使用渐近 `chi-square(df=1)`；
+- 多个基因或结构层的有效检验按检验类型进行 Benjamini-Hochberg 校正。
+
+`--model foreground` 比较全树共享的 ARD 模型和指定前景分支具有倍率参数的
+ARD 模型。零假设下前景倍率为 1。
+
+若叶节点没有结构变化，或最大似然估计落在参数边界，数据无法识别方向性变化
+率，`p_value` 会报告为 `NA`。祖先状态和分支事件均以 posterior probability
+表达，代表给定树、状态编码和模型后的条件不确定性。
+
+## 安装
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e .
+```
+
+运行外部比对时可选择 `minimap2` 或 `miniprot`。默认内部比对器使用 Biopython
+`PairwiseAligner`。软件包内部不包含工作流引擎。
+
+## OrthoFinder 导入
+
+准备一个资源表：
 
 ```text
-case_id	species	family_id	gene_id	gene_copy_id	genome_fasta	annotation_file
+species	genome_fasta	annotation_file	assembly	annotation	release
 ```
 
-Build a real case from genome FASTA and GFF/GTF:
+导入一个 single-copy orthogroup：
 
 ```bash
-PYTHONPATH=src python3 -m insiphy.cli build-case \
-  --manifest examples/real_cases/jingwei/manifest.tsv \
-  --species-tree examples/real_cases/jingwei/species_tree.tsv \
-  --copy-tree examples/real_cases/jingwei/copy_tree.tsv \
-  --output-dir work/jingwei_case \
+insiphy import-orthofinder \
+  --orthofinder-dir path/to/OrthoFinder/Results \
+  --orthogroup OG0001234 \
+  --genome-manifest genomes.tsv \
+  --species-tree SpeciesTree_rooted.txt \
+  --output-dir prepared/OG0001234
+```
+
+该命令生成标准 `manifest.tsv` 和 `species_tree.tsv`。任一目标物种含零个或多个
+基因时，正式单拷贝导入会停止并写出排除原因。
+
+## 完整使用
+
+从真实 genome/annotation 提取基因结构并计算对应关系：
+
+```bash
+insiphy build-case \
+  --manifest prepared/OG0001234/manifest.tsv \
+  --species-tree prepared/OG0001234/species_tree.tsv \
+  --output-dir work/OG0001234 \
   --aligner minimap2 \
-  --threads 4
+  --threads 8
 ```
 
-Run the phylogenetic structural model:
+运行默认 ER/ARD 模型：
 
 ```bash
-PYTHONPATH=src python3 -m insiphy.cli run \
-  --input-dir work/jingwei_case \
-  --output-dir results/jingwei \
-  --bootstrap-replicates 200 \
-  --stochastic-maps 200 \
-  --foreground-branches examples/real_cases/jingwei/foreground_branches.tsv \
-  --seed 7
+insiphy run \
+  --input-dir work/OG0001234 \
+  --output-dir results/OG0001234 \
+  --analysis-scope single-copy \
+  --model er-ard \
+  --branch-length-mode supplied \
+  --threads 8
 ```
 
-Generate colorblind-friendly SVG figures:
+前景分支检验：
 
 ```bash
-PYTHONPATH=src python3 -m insiphy.cli visualize \
-  --input-dir work/jingwei_case \
-  --result-dir results/jingwei \
-  --output-dir results/jingwei_figures
+insiphy infer-phylogeny \
+  --input-dir work/OG0001234 \
+  --output-dir results/OG0001234_foreground \
+  --model foreground \
+  --foreground-branches foreground.tsv \
+  --threads 8
 ```
 
-The default correspondence encoding is color. Use
-`--correspondence-encoding pattern` for texture/line-style encoding when a
-color-independent figure is needed.
+`foreground.tsv` 可提供 `parent_id` 与 `child_id`，或提供
+`branch_scope`（格式为 `parent_label->child_label`）。
 
-Check available local alignment backends:
+生成默认彩色和备选纹理图：
 
 ```bash
-PYTHONPATH=src python3 -m insiphy.cli inspect-aligners
+insiphy visualize \
+  --input-dir work/OG0001234 \
+  --result-dir results/OG0001234 \
+  --output-dir figures/OG0001234
+
+insiphy visualize \
+  --input-dir work/OG0001234 \
+  --result-dir results/OG0001234 \
+  --output-dir figures/OG0001234_pattern \
+  --correspondence-encoding pattern
 ```
 
-Summarize operating characteristics on simulated truth sets:
+默认颜色采用色盲友好调色板，同时保留 `EG_*` 标签和同源连接线。纹理模式使用
+斜线、点、网格和线型。
 
-```bash
-PYTHONPATH=src python3 -m insiphy.cli calibrate \
-  --output-dir results/calibration \
-  --scenario negative_control \
-  --scenario exonization \
-  --replicates 20 \
-  --bootstrap-replicates 100 \
-  --seed 101
-```
+## 正式输出
 
-## Main Outputs
+- `element_correspondence.tsv`：外显子样结构单元及其同源成员；
+- `structural_site_matrix.tsv`：三类结构位点在叶节点的观察状态与证据；
+- `model_fits.tsv`：ER、ARD 或前景模型的参数、profile-likelihood 95% 区间、
+  lnL 和 AIC；
+- `model_tests.tsv`：零假设、备择假设、LRT、P 值、q 值和可估计状态；
+- `node_state_posteriors.tsv`：每个内部节点的状态后验概率；
+- `branch_transition_posteriors.tsv`：每条分支两个方向的端点转移后验及期望转移数；
+- `structural_changes.tsv`：每个位点与分支的变化概率及概率较大的方向；
+- `excluded_families.tsv`：不满足单拷贝要求的家族；
+- `run_parameters.json`：树、模型和运行参数。
 
-- `case_summary.tsv`
-- `annotation_completion_candidates.tsv`
-- `element_correspondence.tsv`
-- `element_phylogenetic_coverage.tsv`
-- `internal_homology_assignments.tsv`
-- `internal_homology_graph_edges.tsv`
-- `segment_conservation.tsv`
-- `segment_correspondence.tsv`
-- `progressive_correspondence.tsv`
-- `progressive_element_correspondence.tsv`
-- `ancestral_element_graph.tsv`
-- `ancestral_intragenic_paths.tsv`
-- `internal_homology_phylogenetic_coverage.tsv`
-- `transcript_paths.tsv`
-- `intron_sites.tsv`
-- `copy_relationships.tsv`
-- `ancestral_state_probabilities.tsv`
-- `branch_event_probabilities.tsv`
-- `candidate_structural_events.tsv`
-- `event_support_summary.tsv`
-- `interpretation_hints.tsv`
-- `character_model_scores.tsv`
-- `model_fit.tsv`
-- `hypothesis_tests.tsv`
-- `hypothesis_bootstrap.tsv`
-- `branch_history_posteriors.tsv`
-- `foreground_tests.tsv`
-- `phylogeny_scope.tsv`
-- `baseline_comparison.tsv`
-- `intragenic_graph_edges.tsv`
-- `alignment_backend_report.tsv`
-- `calibration_operating_characteristics.tsv` from `calibrate`
-- `calibration_replicates.tsv` from `calibrate`
+图形输出包括基因内部 synteny、系统发育结构变化图，以及树与结构条带的整合图。
+树上符号的大小和透明度连续对应分支变化后验概率，不使用人为支持等级。
 
-`hypothesis_tests.tsv` reports the invariant/no-change null model versus a
-one-rate CTMC/Mk model on the active tree for that character, including
-likelihoods, LRT statistic, p value, BH q value, fitted rate, AIC and BIC.
-`phylogeny_scope.tsv` records whether each layer used `copy_tree.tsv`,
-`gene_tree.tsv` or `species_tree.tsv`. The main layers are
-`element_presence`, `element_role_state`, `element_adjacency_state`,
-`source_mixture` and `copy_multiplicity`. `hypothesis_bootstrap.tsv`
-contains empirical p values when bootstrap is requested.
-`branch_history_posteriors.tsv` contains stochastic-map summaries for event
-placement along branches. `candidate_structural_events.tsv` and
-`event_support_summary.tsv` report `structural_change_type`,
-`structural_pattern` and `call_scope`, so core structural events, copy-context
-evidence and ambiguous paralogous-similarity evidence remain separable.
-`interpretation_hints.tsv` is a non-statistical helper table with possible
-biological readings and caveats; it is not used for p values, q values,
-support tiers or benchmark scores.
+## 真实 Demo
 
-`element_correspondence.tsv` and `element_phylogenetic_coverage.tsv` are the
-primary biological correspondence tables. `progressive_element_correspondence.tsv`
-summarizes near-species, within-clade and deep-tree support for each EG.
-`internal_homology_*` tables expose implementation-level graph components for
-reproducibility and debugging.
+`examples/real_cases/rpl32_control` 是五种果蝇的真实单拷贝保守对照，数据来自本地
+保存的公开 genome assembly 和 annotation。它用于展示：可靠对应的 RpL32 外显子
+在五个物种中保持存在和外显子角色；叶节点没有可识别的方向性结构变化时，软件
+报告近零分支变化概率，并将 ER/ARD 检验标记为参数不可识别。
 
-Visualization outputs:
+Jingwei 和 Sdic 的多拷贝材料保留为实验性开发案例，当前版本不将它们作为正式
+单拷贝方法的性能证据。
 
-- `intragenic_synteny.svg`: gene-internal exon-like structure by species/copy.
-  EG labels mark exon-like correspondence groups, gray spans mark introns or
-  other context, and links/ribbons connect corresponding blocks across tracks.
-  The default encoding uses a colorblind-aware palette plus labels;
-  `--correspondence-encoding pattern` switches to texture, line style and labels.
-- `phylogenetic_event_map.svg`: active phylogenetic tree with structural-event
-  markers and support summaries.
-- `integrated_phylo_synteny.svg`: active phylogenetic tree and exon-like
-  synteny tracks in one figure.
-- `visualization_manifest.tsv`: figure inventory.
+本次运行的小型结果表和 SVG 图保存在 `demo_results/rpl32_control`。
 
-## Documentation
+## 文档
 
-- `docs/input_format.md`: manifest and TSV input formats.
-- `docs/method.md`: biological model and computational stages.
-- `docs/statistical_model.md`: p values, q values, bootstrap and branch
-  posterior interpretation.
-- `docs/real_data_benchmark.md`: accession-level Drosophila benchmark plan.
-- `docs/algorithm_engineering.md`: runtime, memory, multithreading and code
-  quality policy.
-- `docs/publication_gap.md`: remaining work before manuscript-scale claims.
+- `docs/method.md`：生物学状态、对应关系和计算阶段；
+- `docs/statistical_model.md`：似然、模型比较和后验量的数学定义；
+- `docs/input_format.md`：输入文件约定；
+- `docs/algorithm_engineering.md`：复杂度、并行和内存策略；
+- `docs/literature_review.md`：方法所依据的系统发育与基因结构文献；
+- `docs/publication_gap.md`：当前可支持的结论及发表前仍需完成的实证工作。

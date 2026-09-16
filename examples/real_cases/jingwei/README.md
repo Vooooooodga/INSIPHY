@@ -1,5 +1,8 @@
 # jingwei Real Case
 
+This is an experimental multi-copy development case. It is outside the formal
+v0.11 single-copy method.
+
 This accession-level case uses local Drosophila NCBI RefSeq genome FASTA/GFF
 files under `/data/db/genome`.
 
@@ -23,6 +26,7 @@ PYTHONPATH=src python3 -m insiphy.cli build-case \
 PYTHONPATH=src python3 -m insiphy.cli run \
   --input-dir work/jingwei_case \
   --output-dir results/jingwei \
+  --analysis-scope experimental-multicopy \
   --bootstrap-replicates 200 \
   --stochastic-maps 200 \
   --foreground-branches examples/real_cases/jingwei/foreground_branches.tsv \

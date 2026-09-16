@@ -237,10 +237,71 @@ def _external_miniprot_stats(query: str, target: str, threads: int = 1) -> Align
 
 
 def available_alignment_backends():
-    rows = [{"aligner": "internal", "available": 1, "notes": "pure-python/Biopython fallback"}]
+    rows = [{"aligner": "internal", "available": 1, "notes": "Biopython PairwiseAligner with pure-Python fallback"}]
     rows.append({"aligner": "minimap2", "available": int(shutil.which("minimap2") is not None), "notes": "external nucleotide aligner"})
     rows.append({"aligner": "miniprot", "available": int(shutil.which("miniprot") is not None), "notes": "external protein-to-genome aligner"})
     return rows
+
+
+def _pairwise_aligner_stats(seq_a: str, seq_b: str, mode: str) -> AlignmentStats:
+    from Bio.Align import PairwiseAligner
+
+    seq_a = (seq_a or "").upper()
+    seq_b = (seq_b or "").upper()
+    if not seq_a or not seq_b:
+        return AlignmentStats(0.0, 0.0, 0.0, query_end=len(seq_a), target_end=len(seq_b))
+    aligner = PairwiseAligner()
+    aligner.mode = mode
+    aligner.match_score = 2.0
+    aligner.mismatch_score = -1.0
+    aligner.open_gap_score = -2.0
+    aligner.extend_gap_score = -0.5
+    alignments = aligner.align(seq_a, seq_b)
+    if len(alignments) == 0:
+        return AlignmentStats(0.0, 0.0, 0.0)
+    alignment = alignments[0]
+    coordinates = alignment.coordinates
+    operations = []
+    matches = 0
+    aligned = 0
+    for index in range(coordinates.shape[1] - 1):
+        a_start, a_end = int(coordinates[0, index]), int(coordinates[0, index + 1])
+        b_start, b_end = int(coordinates[1, index]), int(coordinates[1, index + 1])
+        a_span = a_end - a_start
+        b_span = b_end - b_start
+        if a_span and b_span:
+            span = min(a_span, b_span)
+            aligned += span
+            matches += sum(
+                1
+                for left, right in zip(seq_a[a_start:a_end], seq_b[b_start:b_end])
+                if left == right and left != "N"
+            )
+            operations.extend("M" for _ in range(span))
+        elif a_span:
+            operations.extend("D" for _ in range(a_span))
+        elif b_span:
+            operations.extend("I" for _ in range(b_span))
+    query_start = int(coordinates[0, 0]) + 1
+    query_end = int(coordinates[0, -1])
+    target_start = int(coordinates[1, 0]) + 1
+    target_end = int(coordinates[1, -1])
+    query_used = max(0, query_end - query_start + 1)
+    target_used = max(0, target_end - target_start + 1)
+    if mode == "global":
+        coverage = min(query_used / len(seq_a), target_used / len(seq_b))
+    else:
+        coverage = query_used / len(seq_a)
+    return AlignmentStats(
+        identity=matches / max(1, aligned),
+        coverage=coverage,
+        score=float(alignment.score),
+        query_start=query_start,
+        query_end=query_end,
+        target_start=target_start,
+        target_end=target_end,
+        cigar=_compress_ops(operations),
+    )
 
 
 def global_alignment_stats(seq_a: str, seq_b: str, backend: str = "internal", threads: int = 1) -> AlignmentStats:
@@ -252,33 +313,14 @@ def global_alignment_stats(seq_a: str, seq_b: str, backend: str = "internal", th
     if backend != "internal":
         raise AlignmentBackendError(f"unsupported alignment backend: {backend}")
     try:
-        from Bio import pairwise2  # type: ignore
-
         seq_a = (seq_a or "").upper()
         seq_b = (seq_b or "").upper()
         if not seq_a or not seq_b:
             return AlignmentStats(0.0, 0.0, 0.0, query_end=len(seq_a), target_end=len(seq_b))
         if len(seq_a) * len(seq_b) > MAX_INTERNAL_DP_CELLS:
             return _fallback_global(seq_a, seq_b)
-        aln = pairwise2.align.globalms(seq_a, seq_b, 2, -1, -2, -0.5, one_alignment_only=True)[0]
-        a, b, score, _, _ = aln
-        aligned = matches = q_used = t_used = 0
-        ops = []
-        for ca, cb in zip(a, b):
-            if ca != "-":
-                q_used += 1
-            if cb != "-":
-                t_used += 1
-            if ca != "-" and cb != "-":
-                aligned += 1
-                matches += int(ca == cb and ca != "N" and cb != "N")
-                ops.append("M")
-            elif ca != "-":
-                ops.append("D")
-            else:
-                ops.append("I")
-        return AlignmentStats(matches / max(1, aligned), min(q_used / max(1, len(seq_a)), t_used / max(1, len(seq_b))), float(score), query_end=len(seq_a), target_end=len(seq_b), cigar=_compress_ops(ops))
-    except Exception:
+        return _pairwise_aligner_stats(seq_a, seq_b, "global")
+    except ImportError:
         return _fallback_global(seq_a, seq_b)
 
 
@@ -350,47 +392,14 @@ def local_alignment_stats(query: str, target: str, backend: str = "internal", th
     if backend != "internal":
         raise AlignmentBackendError(f"unsupported alignment backend: {backend}")
     try:
-        from Bio import pairwise2  # type: ignore
-
         query = (query or "").upper()
         target = (target or "").upper()
         if not query or not target:
             return AlignmentStats(0.0, 0.0, 0.0)
         if len(query) * len(target) > MAX_INTERNAL_DP_CELLS:
             return best_ungapped_hit(query, target)
-        aln = pairwise2.align.localms(query, target, 2, -1, -2, -0.5, one_alignment_only=True)[0]
-        a, b, score, start, end = aln
-        matches = aligned = q_used = 0
-        t_used = 0
-        target_before = 0
-        target_after = 0
-        in_aln = False
-        ops = []
-        for idx, (ca, cb) in enumerate(zip(a, b)):
-            if idx == start:
-                in_aln = True
-            if idx == end:
-                in_aln = False
-            if cb != "-" and not in_aln and idx < start:
-                target_before += 1
-            if cb != "-" and not in_aln and idx >= end:
-                target_after += 1
-            if not in_aln:
-                continue
-            if ca != "-":
-                q_used += 1
-            if cb != "-":
-                t_used += 1
-            if ca != "-" and cb != "-":
-                aligned += 1
-                matches += int(ca == cb and ca != "N" and cb != "N")
-                ops.append("M")
-            elif ca != "-":
-                ops.append("D")
-            else:
-                ops.append("I")
-        return AlignmentStats(matches / max(1, aligned), q_used / max(1, len(query)), float(score), 1, q_used, target_before + 1, len(target) - target_after, _compress_ops(ops))
-    except Exception:
+        return _pairwise_aligner_stats(query, target, "local")
+    except ImportError:
         return _fallback_local(query, target)
 
 

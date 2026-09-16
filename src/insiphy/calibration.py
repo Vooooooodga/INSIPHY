@@ -33,6 +33,7 @@ def _run_case(input_dir, output_dir, bootstrap_replicates=0, stochastic_maps=0, 
         bootstrap_replicates=bootstrap_replicates,
         stochastic_maps=stochastic_maps,
         seed=seed,
+        analysis_scope="experimental-multicopy",
     )
     evaluate_baselines(input_dir, output_dir)
     benchmark_events(input_dir, output_dir)
