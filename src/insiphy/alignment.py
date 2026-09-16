@@ -16,6 +16,7 @@ from pathlib import Path
 
 DNA_COMPLEMENT = str.maketrans("ACGTNacgtn", "TGCANtgcan")
 MAX_INTERNAL_DP_CELLS = 250_000
+MAX_MAFFT_PAIR_CELLS = 25_000_000
 
 
 @dataclass
@@ -311,7 +312,8 @@ def _external_mafft_stats(query: str, target: str, threads: int = 1) -> Alignmen
 
 
 def available_alignment_backends():
-    rows = [{"aligner": "internal", "available": 1, "notes": "Biopython PairwiseAligner with pure-Python fallback"}]
+    rows = [{"aligner": "auto", "available": 1, "notes": "sequence-length-aware global alignment selection"}]
+    rows.append({"aligner": "internal", "available": 1, "notes": "Biopython PairwiseAligner with pure-Python fallback"})
     rows.append({"aligner": "minimap2", "available": int(shutil.which("minimap2") is not None), "notes": "external nucleotide aligner"})
     rows.append({"aligner": "miniprot", "available": int(shutil.which("miniprot") is not None), "notes": "external protein-to-genome aligner"})
     rows.append({"aligner": "mafft", "available": int(shutil.which("mafft") is not None), "notes": "external progressive multiple-sequence aligner"})
@@ -384,6 +386,13 @@ def _pairwise_aligner_stats(seq_a: str, seq_b: str, mode: str) -> AlignmentStats
 
 def global_alignment_stats(seq_a: str, seq_b: str, backend: str = "internal", threads: int = 1) -> AlignmentStats:
     backend = (backend or "internal").lower()
+    if backend == "auto":
+        cells = len(seq_a or "") * len(seq_b or "")
+        if cells <= MAX_INTERNAL_DP_CELLS:
+            return global_alignment_stats(seq_a, seq_b, "internal", threads)
+        if cells <= MAX_MAFFT_PAIR_CELLS:
+            return global_alignment_stats(seq_a, seq_b, "mafft", threads)
+        return global_alignment_stats(seq_a, seq_b, "minimap2", threads)
     if backend == "minimap2":
         return _external_minimap2_stats(seq_a, seq_b, "global", threads)
     if backend == "miniprot":

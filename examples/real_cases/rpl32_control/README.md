@@ -16,7 +16,7 @@ PYTHONPATH=src python3 -m insiphy.cli build-case \
   --manifest examples/real_cases/rpl32_control/manifest.tsv \
   --species-tree examples/real_cases/rpl32_control/species_tree.tsv \
   --output-dir work/rpl32_control_case \
-  --aligner minimap2 \
+  --aligner auto \
   --threads 4
 
 PYTHONPATH=src python3 -m insiphy.cli run \

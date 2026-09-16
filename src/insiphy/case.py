@@ -10,7 +10,7 @@ from .preprocess import extract_gene, derive_tables, read_annotation, translate_
 
 def split_aliases(value):
     tokens = []
-    for part in str(value or "").replace("|", ";").replace(",", ";").split(";"):
+    for part in str(value or "").replace(",", ";").split(";"):
         part = part.strip()
         if part:
             tokens.append(part)
@@ -178,7 +178,7 @@ def build_case(
     species_tree=None,
     transcript_policy="canonical",
     canonical_rule="longest_cds",
-    aligner="internal",
+    aligner="auto",
     threads=1,
     min_size_ratio=0.25,
     copy_tree=None,

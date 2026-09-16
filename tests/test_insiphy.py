@@ -314,6 +314,12 @@ class PreprocessTests(unittest.TestCase):
         self.assertAlmostEqual(stats.coverage, 0.5)
         self.assertEqual(stats.aligned_pairs, 4)
 
+    def test_auto_alignment_uses_exact_global_alignment_for_short_exons(self):
+        stats = global_alignment_stats("ACGT" * 25, "ACGT" * 25, backend="auto")
+        self.assertEqual(stats.backend, "internal")
+        self.assertEqual(stats.identity, 1.0)
+        self.assertEqual(stats.coverage, 1.0)
+
     def test_internal_alignment_refuses_oversized_dynamic_program(self):
         with self.assertRaises(AlignmentBackendError):
             global_alignment_stats("A" * 501, "A" * 501)
@@ -354,6 +360,27 @@ class PreprocessTests(unittest.TestCase):
             exons = [row for row in read_tsv(output / "segment_occurrences.tsv") if row["role"] == "exon"]
             ordered = sorted(exons, key=lambda row: int(row["transcript_order"]))
             self.assertEqual([int(row["start"]) for row in ordered], [140, 20])
+
+    def test_gff_identifier_with_pipe_preserves_parent_relationship(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            genome = tmp / "genome.fa"
+            annotation = tmp / "annotation.gff3"
+            output = tmp / "out"
+            genome.write_text(">chr1\n" + "ACGT" * 100 + "\n")
+            transcript_id = "rna-gnl|WGS:TEST|tx1"
+            annotation.write_text(
+                "chr1\ttest\tgene\t20\t180\t.\t+\t.\tID=gene-g1;Name=g1\n"
+                f"chr1\ttest\tmRNA\t20\t180\t.\t+\t.\tID={transcript_id};Parent=gene-g1\n"
+                f"chr1\ttest\texon\t20\t60\t.\t+\t.\tID=e1;Parent={transcript_id}\n"
+                f"chr1\ttest\tCDS\t30\t60\t.\t+\t0\tID=c1;Parent={transcript_id}\n"
+                f"chr1\ttest\texon\t140\t180\t.\t+\t.\tID=e2;Parent={transcript_id}\n"
+                f"chr1\ttest\tCDS\t140\t170\t.\t+\t0\tID=c2;Parent={transcript_id}\n"
+            )
+            extract_gene(genome, annotation, "g1", "fam", "Sp", "g1", output)
+            exons = [row for row in read_tsv(output / "segment_occurrences.tsv") if row["role"] == "exon"]
+            self.assertEqual(len(exons), 2)
+            self.assertEqual({row["transcript_id"] for row in exons}, {transcript_id})
 
     def test_extract_gene_and_derive_tables(self):
         with tempfile.TemporaryDirectory() as tmp:

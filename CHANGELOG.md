@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.1 - 2026-09-16
+
+- Preserve literal pipe characters in GFF/GTF feature identifiers and parent
+  links, including GenBank WGS transcript identifiers.
+- Add an `auto` correspondence aligner that uses exact global alignment for
+  short exons, MAFFT for medium sequence pairs, and minimap2 for long pairs.
+- Make `auto` the default for case construction and record the backend selected
+  for every pairwise comparison.
+
 ## 0.12.0 - 2026-09-16
 
 - Made complete exon intervals the primary structural observations, with CDS,

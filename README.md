@@ -106,7 +106,7 @@ insiphy build-case \
   --manifest prepared/OG0001234/manifest.tsv \
   --species-tree prepared/OG0001234/species_tree.tsv \
   --output-dir work/OG0001234 \
-  --aligner minimap2 \
+  --aligner auto \
   --threads 8
 ```
 

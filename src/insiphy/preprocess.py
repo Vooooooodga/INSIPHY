@@ -107,7 +107,7 @@ def parse_attributes(raw):
 
 def split_ids(value):
     out = []
-    for part in str(value or "").replace("|", ",").replace(";", ",").split(","):
+    for part in str(value or "").replace(";", ",").split(","):
         part = part.strip().strip('"')
         if part:
             out.append(part)
@@ -867,7 +867,7 @@ def cheap_match_evidence(left, right, context, alignment_backend="prefilter"):
     }
 
 
-def match_evidence(left, right, seqs, context, aligner="internal", threads=1):
+def match_evidence(left, right, seqs, context, aligner="auto", threads=1):
     left_seq = seqs.get(left["occurrence_id"], "")
     right_seq = seqs.get(right["occurrence_id"], "")
     aln = global_alignment_stats(left_seq, right_seq, backend=aligner, threads=threads)
@@ -1054,7 +1054,7 @@ def _species_tree_distances(path):
     return result
 
 
-def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=None, aligner="internal", threads=1, min_size_ratio=0.25, species_distances=None):
+def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=None, aligner="auto", threads=1, min_size_ratio=0.25, species_distances=None):
     context = copy_order_context(occurrences)
     distance_lookup = load_distance_table(distance_table)
     occurrence_by_id = {row["occurrence_id"]: row for row in occurrences}
@@ -1176,7 +1176,7 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
     return homology, matches
 
 
-def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_table=None, aligner="internal", threads=1, min_size_ratio=0.25):
+def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_table=None, aligner="auto", threads=1, min_size_ratio=0.25):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir or input_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

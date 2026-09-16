@@ -80,7 +80,7 @@ def main(argv=None):
     derive.add_argument("--output-dir")
     derive.add_argument("--identity-threshold", type=float, default=0.7)
     derive.add_argument("--distance-table")
-    derive.add_argument("--aligner", choices=["internal", "mafft", "minimap2"], default="internal")
+    derive.add_argument("--aligner", choices=["auto", "internal", "mafft", "minimap2"], default="auto")
     derive.add_argument("--threads", type=int, default=1)
     derive.add_argument("--min-size-ratio", type=float, default=0.25)
 
@@ -144,7 +144,7 @@ def main(argv=None):
     case.add_argument("--gene-tree")
     case.add_argument("--transcript-policy", choices=["canonical", "all"], default="canonical")
     case.add_argument("--canonical-rule", choices=["longest_cds", "longest_span"], default="longest_cds")
-    case.add_argument("--aligner", choices=["internal", "mafft", "minimap2"], default="internal")
+    case.add_argument("--aligner", choices=["auto", "internal", "mafft", "minimap2"], default="auto")
     case.add_argument("--threads", type=int, default=1)
     case.add_argument("--min-size-ratio", type=float, default=0.25)
 
