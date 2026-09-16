@@ -98,9 +98,15 @@ alignment. INSIPHY does not require Cactus output as input.
 ## Visualization Principles
 
 Gene-structure figures should show exon/intron organization, homologous segment
-blocks and event placement on the species tree. INSIPHY therefore generates:
+blocks and event placement on the species tree. Current exon-homology and
+gene-structure tools usually promote exon/CDS/UTR units, splice junctions,
+intron positions or protein-domain context as the plotted biological objects;
+intronic intervals are drawn as separators or boundary evidence unless they
+are specifically implicated in exonization or another role-shift event.
+INSIPHY therefore generates:
 
-- a gene-internal synteny map by species and copy;
+- a gene-internal synteny map by species and copy, with exon-like blocks linked
+  across homologous tracks;
 - a species-tree event map with structural-event support summaries.
 
 The figures use texture, labels, line styles and shapes before color, so the

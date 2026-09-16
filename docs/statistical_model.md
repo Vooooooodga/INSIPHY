@@ -4,13 +4,12 @@ INSIPHY currently separates biological evidence from phylogenetic interpretation
 
 ## Current Statistical Layers
 
-1. **Evidence scoring for HSGs**: sequence identity, coverage, splice motif,
+1. **Evidence scoring for internal correspondence clusters**: sequence identity, coverage, splice motif,
    intron phase, strand, boundary class and local order are combined into
-   homologous segment group scores. These scores describe segment
-   correspondence strength. Real-case clustering also requires role-compatible
-   sequence support and constrains each HSG component to contain at most one
-   segment from the same gene copy.
-2. **Weighted Sankoff reconstruction**: segment presence, segment role,
+   correspondence scores. These scores describe support for exon-like elements,
+   candidate non-exonic source intervals and their local context. HSG labels in
+   intermediate tables are graph IDs, not final biological event units.
+2. **Weighted Sankoff reconstruction**: exon-like element presence, role state,
    intragenic adjacency, source mixture and copy multiplicity are reconstructed
    on a fixed species tree. Gains, losses and role shifts can have different
    costs, so the resulting branch calls are interpretable event candidates.
@@ -35,8 +34,10 @@ INSIPHY currently separates biological evidence from phylogenetic interpretation
 9. **Foreground/background rate test**: when the user supplies foreground
    branches, INSIPHY compares a one-rate CTMC against a two-rate model with a
    foreground structural-change rate and a background rate.
-10. **HSG phylogenetic coverage**: each HSG is summarized as tree-spanning,
-   partial or tip-specific in `hsg_phylogenetic_coverage.tsv`.
+10. **Evidence-cluster phylogenetic coverage**: each internal correspondence
+   cluster is summarized as tree-spanning, partial or tip-specific in
+   `hsg_phylogenetic_coverage.tsv`; biological reporting emphasizes exon-like
+   groups and structural events.
 
 Annotation dropout is represented as evidence uncertainty and hidden-segment
 support. A missing annotation alone is not treated as biological segment loss.
@@ -140,8 +141,8 @@ optimistic.
   scope, branch scope, support tier and linked statistical evidence.
 - `progressive_correspondence.tsv`: tree-distance-aware segment support summary
   inside the supplied homologous gene set.
-- `hsg_phylogenetic_coverage.tsv`: HSG coverage class, MRCA and present species
-  on the supplied tree.
+- `hsg_phylogenetic_coverage.tsv`: internal evidence-cluster coverage class,
+  MRCA and present species on the supplied tree.
 - `benchmark_summary.tsv` and `benchmark_detailed.tsv`: event-level and
   branch-aware benchmark summaries for core structural calls, with separate
   counts for copy-context and ambiguous evidence.

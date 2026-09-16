@@ -18,8 +18,9 @@ INSIPHY 面向近缘物种之间的单基因或小型重复基因家族比较。
 
 核心问题：
 
-1. 在上游已确定同源关系的基因集合内，推断外显子、CDS、UTR、内含子来源片段
-   和相邻结构之间的同源性、保守性与局部 synteny。
+1. 在上游已确定同源关系的基因集合内，推断外显子、CDS、UTR、候选外显子化来源片段
+   和相邻结构之间的同源性、保守性与局部 synteny。内含子默认作为间隔、
+   splice boundary、phase 和 motif 背景证据处理。
 2. 在物种树框架下，判断演化事件是否涉及基因内部结构变化，并解释这些变化如何
    支持 gene duplication、source joining、exonization、splice-boundary shift、
    segment split/fusion 或 copy-context 解释。高相似 paralog 片段会作为
@@ -32,9 +33,11 @@ INSIPHY implements four linked stages:
 1. **Annotation completion**: genome sequence is checked against annotation to
    identify hidden segments, shifted splice boundaries and joined-segment
    candidates.
-2. **Gene-internal segment correspondence**: segment sequence, coverage,
-   splice motif, intron phase, strand, boundary class and local order are
-   combined into homologous segment groups.
+2. **Gene-internal segment correspondence**: exon-like segment sequence,
+   coverage, splice motif, intron phase, strand, boundary class and local order
+   are combined into internal evidence clusters. User-facing event calls and
+   figures are organized around exon-like structural elements, splice
+   boundaries and adjacency.
 3. **Tree-guided progressive interpretation**: pairwise segment support is
    summarized by species-tree distance, so close-species support and deep-tree
    support can be interpreted separately inside the supplied gene set.
@@ -45,6 +48,17 @@ INSIPHY implements four linked stages:
 The package is a CLI/library. It does not require Nextflow, Snakemake or a
 workflow engine. On the R730 server, formal project runs can still be recorded
 with external Nextflow/Slurm workflows according to local project standards.
+
+Terminology boundary:
+
+- **EG / exon-like group**: the user-facing visual and biological correspondence
+  unit for exons, CDS intervals, UTRs and candidate exonized source intervals.
+- **HSG**: an internal evidence-graph identifier retained in TSV outputs for
+  reproducibility and downstream debugging. It should not be read as a final
+  biological unit.
+- **Intron/context span**: an intronic or non-exonic interval used as splice
+  boundary, phase, motif or source-context evidence. It is drawn as background
+  context unless an event table supports a role-shift interpretation.
 
 ## Real-Data Quick Start
 
@@ -85,7 +99,7 @@ PYTHONPATH=src python3 -m insiphy.cli visualize \
   --input-dir work/jingwei_case \
   --result-dir results/jingwei \
   --output-dir results/jingwei_figures \
-  --hsg-encoding pattern
+  --correspondence-encoding pattern
 ```
 
 Check available local alignment backends:
@@ -132,15 +146,21 @@ placement along branches. `candidate_structural_events.tsv` and
 copy-context evidence and ambiguous paralogous-similarity evidence remain
 separable.
 
+Tables beginning with `hsg_` expose the internal evidence graph. They are
+useful for reproducibility and debugging, while biological interpretation
+should start from exon-like groups in the figures and from event tables.
+
 Visualization outputs:
 
-- `intragenic_synteny.svg`: gene-internal segment structure by species/copy.
-  Homologous segment groups are encoded with one selected mode. The default is
-  texture, line style and labels; `--hsg-encoding color` switches to color.
+- `intragenic_synteny.svg`: gene-internal exon-like structure by species/copy.
+  EG labels mark exon-like correspondence groups, gray spans mark introns or
+  other context, and links/ribbons connect corresponding blocks across tracks.
+  The default encoding uses texture, line style and labels;
+  `--correspondence-encoding color` switches to color.
 - `phylogenetic_event_map.svg`: species tree with structural-event markers and
   support summaries.
-- `integrated_phylo_synteny.svg`: species tree and gene-internal synteny tracks
-  in one figure.
+- `integrated_phylo_synteny.svg`: species tree and exon-like synteny tracks in
+  one figure.
 - `visualization_manifest.tsv`: figure inventory.
 
 ## Documentation

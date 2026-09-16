@@ -1,13 +1,22 @@
 # INSIPHY Method Overview
 
-INSIPHY treats each supplied gene copy as an ordered set of internal structural
-segments. Segments can be annotated exons, CDS intervals, UTRs, introns or
-sequence-supported hidden candidates. The method reconstructs how these
-segments and their adjacencies changed on a fixed species tree.
+INSIPHY treats each supplied gene copy as an ordered set of biological
+structural elements. The primary elements are annotated exons, CDS intervals,
+UTRs and sequence-supported candidate exonic regions. Introns are represented
+as intervals, splice boundaries, phase and motif context. A non-exonic sequence
+interval becomes a primary event object only when sequence and boundary
+evidence support a candidate exonization, hidden exon or role-shift history.
 
 The compared gene/copy set is supplied by an upstream homology workflow or a
 curated case definition. INSIPHY starts from that set and analyzes structure
 inside the homologous genes.
+
+The key biological unit in interpretation is the exon-like structural element.
+HSG labels in intermediate files are evidence-graph components used to assemble
+correspondence; they are not the named biological unit in figures or manuscript
+claims. This distinction matters for introns: an intronic interval can support
+splice-boundary conservation, phase compatibility or exonization evidence, but
+it is not promoted to a displayed homologous block without role-shift support.
 
 ## Evidence Layers
 
@@ -15,14 +24,18 @@ inside the homologous genes.
    UTRs, transcript paths and introns for each target copy.
 2. **Sequence-supported completion**: local sequence evidence marks missing
    annotated segments, shifted splice boundaries or joined-segment candidates.
-3. **Homologous segment grouping**: pairwise segment similarity, boundary
+3. **Correspondence evidence graph**: pairwise similarity, boundary
    compatibility, intron phase, splice motif, strand, flanking context and
-   local order are combined into graph-based HSG assignments.
+   local order are combined into graph-based evidence clusters. HSG identifiers
+   are internal graph labels. Biological interpretation is made through
+   exon-like elements, splice boundaries, adjacencies and source-copy context.
 4. **Tree-guided progressive interpretation**: segment support is summarized by
    species-tree distance. Close-species support, within-clade support and
    deep-tree support are kept visible in `progressive_correspondence.tsv`.
-5. **Intragenic synteny graph**: ordered HSG adjacencies describe the internal
-   synteny of each gene copy.
+5. **Intragenic synteny graph**: ordered exon-like elements and their
+   adjacencies describe the internal synteny of each gene copy. Introns
+   contribute boundary and phase evidence without becoming default homologous
+   blocks in the user-facing graph.
 6. **Phylogenetic reconstruction**: segment presence, role state, adjacency,
    source mixture and copy multiplicity are optimized on the species tree.
 
@@ -58,14 +71,15 @@ evidence.
 INSIPHY makes the biological-to-statistical translation explicit.
 
 1. **Biological meaning**: a gene-internal event is a change in which internal
-   pieces exist, what role they play, where they sit relative to neighboring
-   pieces, and which source copy they resemble. For example, a chimeric gene is
-   represented by adjacent HSGs with different source labels; copy expansion is
-   represented by multiple related copies in the same species; exonization is
-   represented by a role shift from intron/noncoding to exon/CDS.
+   exon-like elements exist, what role they play, where they sit relative to
+   neighboring elements, and which source copy they resemble. For example, a
+   chimeric gene is represented by adjacent exon-like elements with different
+   source labels; copy expansion is represented by multiple related copies in
+   the same species; exonization is represented by a non-exonic source interval
+   acquiring exon/CDS status.
 2. **Mathematical object**: each biological question becomes one or more
-   discrete structural characters on a fixed tree. HSG presence is
-   `present/absent`; role is `CDS/exon_or_UTR/intron_or_noncoding/absent`;
+   discrete structural characters on a fixed tree. Exon-like element presence
+   is `present/absent`; role is `CDS/exon_or_UTR/non_exonic_source/absent`;
    adjacency is `present/absent`; source mixture is
    `single_source/multi_source`; copy multiplicity is
    `single_copy/tandem_multi_copy/dispersed_multi_copy/...`.
@@ -82,9 +96,10 @@ points back to the structural character, and `event_support_summary.tsv` joins
 that event to p values, q values, bootstrap evidence and branch-history support
 where available.
 
-`hsg_phylogenetic_coverage.tsv` summarizes whether each HSG is tree-spanning,
-partial or tip-specific on the supplied species tree. This gives a tree-aware
-view of conserved and lineage-restricted gene-internal structure.
+`hsg_phylogenetic_coverage.tsv` remains an internal evidence-coverage table.
+For biological interpretation, exon-like groups and event tables are the main
+objects. Figures label displayed exon-like correspondence groups as `EG_*`
+and draw introns as gray context spans.
 
 ## Statistical Mapping
 

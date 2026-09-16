@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0 - 2026-09-16
+
+- Reworked SVG synteny figures around exon-like biological units instead of
+  exposing raw HSG graph IDs as primary visual objects.
+- Added link/ribbon-style correspondence between exon-like blocks across
+  species/copy tracks.
+- Rendered introns and other non-exonic intervals as gray context spans, with
+  dashed candidate-source boxes only when connected to exon-like evidence.
+- Clarified that HSGs are internal correspondence-evidence clusters, while
+  biological modeling and figures should be read through exon-like elements,
+  splice boundaries, adjacencies and event tables.
+
 ## 0.7.0 - 2026-09-16
 
 - Split event reporting into observable `structural_pattern`,

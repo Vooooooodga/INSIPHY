@@ -4,7 +4,7 @@ INSIPHY v0.7.0 is a runnable method prototype. It includes transcript-aware
 extraction, graph-based segment correspondence, source/copy-role propagation,
 branch-length-aware CTMC/Mk fitting, invariant-model LRT p values,
 BH q values, parametric-bootstrap calibration, stochastic-map branch summaries,
-event support tables, HSG phylogenetic coverage summaries,
+event support tables, internal correspondence coverage summaries,
 colorblind-friendly SVG output and optional foreground/background
 structural-rate tests. A manuscript-grade method still requires stronger
 evidence in five areas.

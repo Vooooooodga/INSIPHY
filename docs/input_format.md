@@ -77,7 +77,7 @@ background copy, for example `Adh`, `ymp`, `AnxB10` or `sw`. `copy_role` can be
 `source`, `background`, `derived` or `candidate`. If `source_label` and
 `copy_role` are absent, `build-case` attempts conservative inference from
 `role_hint`, `gene_symbol` and `gene_copy_id`. Derived copies receive source
-labels segment-by-segment from their strongest source-copy HSG matches.
+labels segment-by-segment from their strongest internal correspondence matches.
 
 Example:
 

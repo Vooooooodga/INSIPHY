@@ -6,7 +6,7 @@ Date: 2026-09-15
 
 INSIPHY v0.7.0 has the correct core frame for a first method paper: upstream
 gene/copy homology is supplied by tools or curation, INSIPHY infers
-gene-internal homologous segment groups from genome sequence and annotation, and
+gene-internal exon-like structural correspondence from genome sequence and annotation, and
 then analyzes structural characters on a species tree. The remaining gap is
 evidence strength and benchmark scale. The method needs larger real-case
 evaluation, simulation-based statistical calibration and clearer branch-history
@@ -31,7 +31,7 @@ Partially covered:
 - processed-copy or retrocopy-like events through copy relationship classes and
   intron-loss-like patterns;
 - splice-boundary shifts through hidden-segment and phase/splice evidence;
-- many-to-many segment relationships through HSG graph structure.
+- many-to-many segment relationships through the internal correspondence graph.
 
 Missing or under-modeled:
 

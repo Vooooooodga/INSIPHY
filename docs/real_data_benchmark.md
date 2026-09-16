@@ -58,7 +58,7 @@ For each case, report:
 
 - supplied copies and source loci;
 - hidden or shifted segments supported by sequence;
-- HSGs conserved, gained or role-shifted;
+- exon-like correspondence groups conserved, gained or role-shifted;
 - branch with strongest event support;
 - core structural, copy-context and ambiguous-evidence call counts;
 - LRT p value, q value, empirical bootstrap p value and fitted CTMC rate;
@@ -76,7 +76,7 @@ A v0.7 real run is acceptable when it can:
   OrthoFinder-supported conserved control;
 - save all INSIPHY output tables needed for biological interpretation;
 - generate black-and-white-readable, colorblind-friendly synteny and event-map
-  figures with one HSG identity encoding mode per figure;
+  figures with one correspondence encoding mode per figure;
 - document unresolved uncertainty.
 
 Publication-level claims still require a larger case set and quantified

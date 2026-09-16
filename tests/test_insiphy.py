@@ -51,9 +51,12 @@ class FixtureTests(unittest.TestCase):
             run_all(ROOT / "demos" / "jingwei", out, bootstrap_replicates=2, stochastic_maps=2)
             visualize_results(ROOT / "demos" / "jingwei", out, fig)
             manifest = read_tsv(fig / "visualization_manifest.tsv")
-            self.assertEqual({row["description"] for row in manifest}, {"Gene-internal synteny by species and copy", "Species-tree structural event map", "Integrated species-tree and gene-internal synteny map"})
+            self.assertEqual({row["description"] for row in manifest}, {"Exon-like gene-internal synteny by species and copy", "Species-tree structural event map", "Integrated species-tree and exon-like synteny map"})
             synteny_svg = (fig / "intragenic_synteny.svg").read_text()
             self.assertIn("<pattern", synteny_svg)
+            self.assertIn('stroke-dasharray="2 2"', synteny_svg)
+            self.assertIn("EG_", synteny_svg)
+            self.assertNotIn("HSG_", synteny_svg)
             self.assertNotIn("#0072B2", synteny_svg)
             self.assertTrue((fig / "integrated_phylo_synteny.svg").exists())
 
