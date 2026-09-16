@@ -2,6 +2,12 @@
 
 from collections import Counter, defaultdict
 
+from .elements import (
+    collect_element_profiles,
+    element_class_for_occurrence,
+    element_role_from_occurrences,
+    membership_call,
+)
 from .alignment import global_alignment_stats
 from .io import parse_fasta, read_tsv, to_float, uniq, write_tsv
 from .tree import SpeciesTree
@@ -125,15 +131,20 @@ def infer_correspondence(input_dir, output_dir):
     homology = read_tsv(f"{input_dir}/segment_homology.tsv", ["homology_id", "occurrence_id", "support_type", "confidence"])
     occurrences = read_tsv(f"{input_dir}/segment_occurrences.tsv", ["occurrence_id", "family_id", "species", "gene_copy_id", "role", "presence_status"])
     matches = read_tsv(f"{input_dir}/segment_matches.tsv", ["match_id", "query_occurrence_id", "subject_occurrence_id", "match_status"], optional=True)
+    evidence_rows = read_tsv(f"{input_dir}/sequence_synteny_evidence.tsv", optional=True)
+    annotation_rows = read_tsv(f"{output_dir}/annotation_completion_candidates.tsv", optional=True)
     seqs = parse_fasta(f"{input_dir}/segment_sequences.fasta")
     occ_by_id = {row["occurrence_id"]: row for row in occurrences}
     distances = tree_distances(input_dir)
+    profiles, element_by_homology = collect_element_profiles(homology, occurrences, evidence_rows + annotation_rows)
 
     hsg_rows = []
+    element_rows = []
     by_hsg = defaultdict(list)
     for row in homology:
         occ = occ_by_id.get(row["occurrence_id"], {})
         by_hsg[row["homology_id"]].append(row["occurrence_id"])
+        score, call = membership_call(row.get("confidence"), 0)
         hsg_rows.append(
             {
                 "homology_id": row["homology_id"],
@@ -144,10 +155,30 @@ def infer_correspondence(input_dir, output_dir):
                 "source_label": row.get("source_label", "NA"),
                 "support_type": row.get("support_type", "NA"),
                 "confidence": row.get("confidence", "NA"),
-                "membership_score": row.get("confidence", "NA"),
-                "membership_call": "core_member" if to_float(row.get("confidence"), 0.0) >= 0.7 else "ambiguous_member",
+                "membership_score": f"{score:.6g}",
+                "membership_call": call,
             }
         )
+        element_id = element_by_homology.get(row["homology_id"])
+        if element_id:
+            element_class = element_class_for_occurrence(occ, row["homology_id"], profiles, element_by_homology)
+            element_rows.append(
+                {
+                    "element_id": element_id,
+                    "family_id": occ.get("family_id", "NA"),
+                    "homology_id": row["homology_id"],
+                    "occurrence_id": row["occurrence_id"],
+                    "species": occ.get("species", "NA"),
+                    "gene_copy_id": occ.get("gene_copy_id", "NA"),
+                    "element_class": element_class,
+                    "display_role": element_role_from_occurrences([occ]),
+                    "source_label": row.get("source_label", "NA"),
+                    "support_type": row.get("support_type", "NA"),
+                    "confidence": row.get("confidence", "NA"),
+                    "membership_score": f"{score:.6g}",
+                    "membership_call": call,
+                }
+            )
 
     conservation = []
     for hsg, occ_ids in sorted(by_hsg.items()):
@@ -251,12 +282,17 @@ def infer_correspondence(input_dir, output_dir):
 
     for row in hsg_rows:
         deg = degree.get(row["occurrence_id"], 0)
-        base = to_float(row.get("membership_score"), 0.5)
-        adjusted = min(1.0, 0.75 * base + 0.25 * min(1.0, deg / 2))
+        adjusted, call = membership_call(row.get("confidence"), deg)
         row["membership_score"] = f"{adjusted:.6g}"
-        row["membership_call"] = "core_member" if adjusted >= 0.7 else "ambiguous_member"
+        row["membership_call"] = call
+    element_by_occ = {row["occurrence_id"]: row for row in element_rows}
+    for occ_id, row in element_by_occ.items():
+        adjusted, call = membership_call(row.get("confidence"), degree.get(occ_id, 0))
+        row["membership_score"] = f"{adjusted:.6g}"
+        row["membership_call"] = call
 
     write_tsv(f"{output_dir}/hsg_assignments.tsv", hsg_rows, ["homology_id", "occurrence_id", "family_id", "species", "gene_copy_id", "source_label", "support_type", "confidence", "membership_score", "membership_call"])
+    write_tsv(f"{output_dir}/element_correspondence.tsv", element_rows, ["element_id", "family_id", "homology_id", "occurrence_id", "species", "gene_copy_id", "element_class", "display_role", "source_label", "support_type", "confidence", "membership_score", "membership_call"])
     write_tsv(f"{output_dir}/segment_conservation.tsv", conservation, ["homology_id", "occurrence_count", "species_count", "mean_pairwise_identity", "role_spectrum", "conservation_call"])
     write_tsv(
         f"{output_dir}/segment_correspondence.tsv",

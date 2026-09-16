@@ -26,9 +26,11 @@ it is not promoted to a displayed homologous block without role-shift support.
    annotated segments, shifted splice boundaries or joined-segment candidates.
 3. **Correspondence evidence graph**: pairwise similarity, boundary
    compatibility, intron phase, splice motif, strand, flanking context and
-   local order are combined into graph-based evidence clusters. HSG identifiers
-   are internal graph labels. Biological interpretation is made through
-   exon-like elements, splice boundaries, adjacencies and source-copy context.
+   local order are combined into graph-based evidence clusters. These clusters
+   are promoted to EGs when they correspond to exons, CDS/UTR intervals or
+   sequence-supported candidate exonized source intervals. HSG identifiers are
+   internal graph labels. Biological interpretation is made through EGs, splice
+   boundaries, adjacencies and source-copy context.
 4. **Tree-guided progressive interpretation**: segment support is summarized by
    species-tree distance. Close-species support, within-clade support and
    deep-tree support are kept visible in `progressive_correspondence.tsv`.
@@ -36,7 +38,7 @@ it is not promoted to a displayed homologous block without role-shift support.
    adjacencies describe the internal synteny of each gene copy. Introns
    contribute boundary and phase evidence without becoming default homologous
    blocks in the user-facing graph.
-6. **Phylogenetic reconstruction**: segment presence, role state, adjacency,
+6. **Phylogenetic reconstruction**: EG presence, EG role state, adjacency,
    source mixture and copy multiplicity are optimized on the species tree.
 
 The sequence layer can use the internal fallback aligner, minimap2 for
@@ -78,9 +80,10 @@ INSIPHY makes the biological-to-statistical translation explicit.
    the same species; exonization is represented by a non-exonic source interval
    acquiring exon/CDS status.
 2. **Mathematical object**: each biological question becomes one or more
-   discrete structural characters on a fixed tree. Exon-like element presence
-   is `present/absent`; role is `CDS/exon_or_UTR/non_exonic_source/absent`;
-   adjacency is `present/absent`; source mixture is
+   discrete structural characters on a fixed tree. EG presence is
+   `present/absent`; EG role is
+   `CDS/exon_or_UTR/non_exonic_source/absent`; EG adjacency is
+   `present/absent`; source mixture is
    `single_source/multi_source`; copy multiplicity is
    `single_copy/tandem_multi_copy/dispersed_multi_copy/...`.
 3. **Statistical computation**: each character is analyzed with a discrete
@@ -96,10 +99,10 @@ points back to the structural character, and `event_support_summary.tsv` joins
 that event to p values, q values, bootstrap evidence and branch-history support
 where available.
 
-`hsg_phylogenetic_coverage.tsv` remains an internal evidence-coverage table.
-For biological interpretation, exon-like groups and event tables are the main
-objects. Figures label displayed exon-like correspondence groups as `EG_*`
-and draw introns as gray context spans.
+`element_correspondence.tsv` and `element_phylogenetic_coverage.tsv` are the
+main correspondence and tree-coverage tables. `hsg_phylogenetic_coverage.tsv`
+remains an internal evidence-coverage table. Figures label displayed exon-like
+correspondence groups as `EG_*` and draw introns as gray context spans.
 
 ## Statistical Mapping
 

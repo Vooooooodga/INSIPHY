@@ -9,7 +9,7 @@ INSIPHY currently separates biological evidence from phylogenetic interpretation
    correspondence scores. These scores describe support for exon-like elements,
    candidate non-exonic source intervals and their local context. HSG labels in
    intermediate tables are graph IDs, not final biological event units.
-2. **Weighted Sankoff reconstruction**: exon-like element presence, role state,
+2. **Weighted Sankoff reconstruction**: EG presence, EG role state,
    intragenic adjacency, source mixture and copy multiplicity are reconstructed
    on a fixed species tree. Gains, losses and role shifts can have different
    costs, so the resulting branch calls are interpretable event candidates.
@@ -34,10 +34,10 @@ INSIPHY currently separates biological evidence from phylogenetic interpretation
 9. **Foreground/background rate test**: when the user supplies foreground
    branches, INSIPHY compares a one-rate CTMC against a two-rate model with a
    foreground structural-change rate and a background rate.
-10. **Evidence-cluster phylogenetic coverage**: each internal correspondence
-   cluster is summarized as tree-spanning, partial or tip-specific in
-   `hsg_phylogenetic_coverage.tsv`; biological reporting emphasizes exon-like
-   groups and structural events.
+10. **EG phylogenetic coverage**: each user-facing exon-like group is
+   summarized as tree-spanning, partial or tip-specific in
+   `element_phylogenetic_coverage.tsv`. Internal evidence clusters remain
+   available in `hsg_phylogenetic_coverage.tsv`.
 
 Annotation dropout is represented as evidence uncertainty and hidden-segment
 support. A missing annotation alone is not treated as biological segment loss.
@@ -139,6 +139,11 @@ optimistic.
 - `foreground_tests.tsv`: optional foreground/background structural-rate tests.
 - `event_support_summary.tsv`: structural pattern, mechanism hypothesis, call
   scope, branch scope, support tier and linked statistical evidence.
+- `element_correspondence.tsv`: user-facing EG membership table linking
+  occurrence ids, internal homology ids, element class, display role and source
+  label.
+- `element_phylogenetic_coverage.tsv`: tree coverage, MRCA and copy coverage
+  for EGs.
 - `progressive_correspondence.tsv`: tree-distance-aware segment support summary
   inside the supplied homologous gene set.
 - `hsg_phylogenetic_coverage.tsv`: internal evidence-cluster coverage class,

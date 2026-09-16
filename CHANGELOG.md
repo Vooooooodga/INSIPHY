@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.0 - 2026-09-16
+
+- Promoted exon-like groups (EGs) from display labels to the main public
+  correspondence and phylogenetic-statistical objects.
+- Added `element_correspondence.tsv` and
+  `element_phylogenetic_coverage.tsv`; retained `hsg_*` tables as internal
+  evidence-graph records.
+- Switched primary structural layers to `element_presence`,
+  `element_role_state` and `element_adjacency_state`.
+- Updated event object ids, synteny graph edges and visual links to use EG ids.
+- Expanded simulation scenarios to cover exonization, TE-associated
+  exonization, splice-boundary shift, split/fusion, source joining, tandem
+  duplication, dispersed processed-copy context, annotation dropout, negative
+  control and ambiguous paralogous similarity.
+- Added a formal real+simulation demo workflow for server-side Nextflow/Slurm
+  runs while keeping the package itself CLI-first.
+
 ## 0.8.0 - 2026-09-16
 
 - Reworked SVG synteny figures around exon-like biological units instead of

@@ -53,7 +53,25 @@ def main(argv=None):
     sim = sub.add_parser("simulate")
     sim.add_argument("--output-dir", required=True)
     sim.add_argument("--seed", type=int, default=7)
-    sim.add_argument("--scenario", choices=["compound", "exonization", "source_join", "tandem_duplication", "segment_split_fusion", "splice_boundary_shift", "te_exonization", "gene_conversion", "negative_control", "annotation_dropout"], default="compound")
+    sim.add_argument(
+        "--scenario",
+        choices=[
+            "compound",
+            "exonization",
+            "source_join",
+            "tandem_duplication",
+            "processed_copy_or_intron_loss",
+            "segment_split",
+            "segment_fusion",
+            "segment_split_fusion",
+            "splice_boundary_shift",
+            "te_exonization",
+            "gene_conversion",
+            "negative_control",
+            "annotation_dropout",
+        ],
+        default="compound",
+    )
 
     bench = sub.add_parser("benchmark")
     bench.add_argument("--input-dir", required=True)

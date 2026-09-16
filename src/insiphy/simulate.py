@@ -3,7 +3,8 @@
 import random
 from pathlib import Path
 
-from .io import read_tsv, write_tsv
+from .elements import element_id_from_homology
+from .io import write_tsv
 
 
 def mutate(seq, rng, rate=0.05):
@@ -129,30 +130,15 @@ def simulate_negative_dataset(output_dir, seed=7, hidden_dropout=False):
     write_tsv(output_dir / "sequence_synteny_evidence.tsv", evidence, ["evidence_id", "family_id", "species", "gene_copy_id", "homology_id", "annotation_status", "evidence_status", "inferred_role", "contig", "start", "end", "strand", "sequence_score", "left_synteny_score", "right_synteny_score", "splice_motif_score", "phase_compatibility", "inferred_event", "frame_status"])
     write_tsv(output_dir / "segment_matches.tsv", matches, ["match_id", "query_occurrence_id", "subject_occurrence_id", "alignment_score", "coverage_score", "left_context_score", "right_context_score", "boundary_score", "phase_score", "order_score", "strand_score", "splice_score", "size_ratio", "total_score", "match_status"])
     write_tsv(output_dir / "truth_events.tsv", [], ["family_id", "event_class", "branch_scope", "object_id", "notes"])
-    write_tsv(output_dir / "simulation_truth_segments.tsv", [{"family_id": family, "homology_id": f"H_neg_{seg}", "truth_state": "conserved_present"} for seg in ["A", "B"]], ["family_id", "homology_id", "truth_state"])
+    write_tsv(
+        output_dir / "simulation_truth_segments.tsv",
+        [{"family_id": family, "homology_id": f"H_neg_{seg}", "element_id": element_id_from_homology(f"H_neg_{seg}"), "truth_state": "conserved_present"} for seg in ["A", "B"]],
+        ["family_id", "homology_id", "element_id", "truth_state"],
+    )
     with (output_dir / "segment_sequences.fasta").open("w") as handle:
         for name, seq in sorted(fasta_records.items()):
             handle.write(f">{name}\n{seq}\n")
     return []
-
-
-SCENARIO_TRUTH_FILTERS = {
-    "exonization": {"exonization_candidate"},
-    "source_join": {"segment_fusion_or_new_adjacency"},
-    "tandem_duplication": {"copy_duplication_or_expansion"},
-    "segment_split_fusion": {"segment_fusion_or_new_adjacency", "segment_split_or_adjacency_loss"},
-    "splice_boundary_shift": {"splice_boundary_shift"},
-    "te_exonization": {"te_associated_exonization"},
-    "gene_conversion": {"ambiguous_paralogous_similarity"},
-}
-
-
-def filter_truth_events(output_dir, allowed_classes):
-    output_dir = Path(output_dir)
-    truth = read_tsv(output_dir / "truth_events.tsv", optional=True)
-    kept = [row for row in truth if row.get("event_class") in allowed_classes]
-    write_tsv(output_dir / "truth_events.tsv", kept, ["family_id", "event_class", "branch_scope", "object_id", "notes"])
-    return kept
 
 
 def simulate_dataset(output_dir, seed=7, scenario="compound"):
@@ -183,7 +169,9 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
     evidence = []
     matches = []
     family = "sim_gene"
-    copy_map = {"Sp1": ["copy1"], "Sp2": ["copy1"], "Sp3": ["copy1", "copy2"], "Sp4": ["copy1", "copy2"]}
+    multi_copy = scenario in {"compound", "tandem_duplication", "processed_copy_or_intron_loss", "gene_conversion"}
+    add_c_segment = scenario not in {"tandem_duplication", "processed_copy_or_intron_loss", "gene_conversion"}
+    copy_map = {"Sp1": ["copy1"], "Sp2": ["copy1"], "Sp3": ["copy1", "copy2"] if multi_copy else ["copy1"], "Sp4": ["copy1", "copy2"] if multi_copy else ["copy1"]}
     role_by_species = {"Sp1": {"A": "CDS", "B": "CDS"}, "Sp2": {"A": "CDS", "B": "CDS"}, "Sp3": {"A": "CDS", "B": "CDS", "C": "CDS"}, "Sp4": {"A": "CDS", "B": "CDS", "C": "CDS"}}
     inferred_event_by_scenario = {
         "splice_boundary_shift": "shifted_splice_site",
@@ -191,14 +179,21 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
         "gene_conversion": "gene_conversion_like_homogenization",
     }
     for species, copies in copy_map.items():
-        copy_class = "single_copy" if len(copies) == 1 else "tandem_multi_copy"
+        if len(copies) == 1:
+            copy_class = "single_copy"
+        elif scenario == "processed_copy_or_intron_loss":
+            copy_class = "dispersed_multi_copy"
+        else:
+            copy_class = "tandem_multi_copy"
         for copy in copies:
             copy_context.append({"family_id": family, "species": species, "gene_copy_id": copy, "copy_class": copy_class, "copy_subclass": copy_class, "copy_span": f"{species}_chr1:100-330"})
         if len(copies) > 1:
-            copy_relationships.append({"family_id": family, "species": species, "query_copy_id": copies[0], "subject_copy_id": copies[1], "relationship_class": "tandem_duplication_candidate", "synteny_score": "0.9", "distance_bp": "1000", "evidence": "simulation_truth"})
+            rel = "dispersed_or_retrocopy_candidate" if scenario == "processed_copy_or_intron_loss" else "tandem_duplication_candidate"
+            distance = "50000" if rel == "dispersed_or_retrocopy_candidate" else "1000"
+            copy_relationships.append({"family_id": family, "species": species, "query_copy_id": copies[0], "subject_copy_id": copies[1], "relationship_class": rel, "synteny_score": "0.9", "distance_bp": distance, "evidence": "simulation_truth"})
         for copy in copies:
             segments = ["A", "B"]
-            if species in {"Sp3", "Sp4"} and copy == "copy1":
+            if add_c_segment and species in {"Sp3", "Sp4"} and copy == "copy1":
                 segments = ["A", "C", "B"]
             prev = None
             for idx, seg in enumerate(segments, start=1):
@@ -227,7 +222,14 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
                         "frame_status": "coding_frame_annotated",
                     }
                 )
-                source = "ancestral_source" if seg in {"A", "B"} else "intronic_source"
+                if seg in {"A", "B"}:
+                    source = "recipient_source" if scenario in {"source_join", "compound"} else "ancestral_source"
+                elif scenario in {"source_join", "compound"}:
+                    source = "donor_source"
+                elif scenario == "te_exonization":
+                    source = "te_source"
+                else:
+                    source = "intronic_source"
                 homology.append({"homology_id": f"H_sim_{seg}", "occurrence_id": occ_id, "support_type": "simulation_truth", "confidence": "1.0", "source_label": source})
                 fasta_records[occ_id] = mutate(base[seg], rng)
                 evidence.append(
@@ -256,7 +258,9 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
                 if prev:
                     adj.append({"adjacency_id": f"{species}_{copy}_{prev}_{seg}", "family_id": family, "species": species, "gene_copy_id": copy, "left_occurrence_id": f"{species}_{copy}_{prev}", "right_occurrence_id": occ_id, "adjacency_status": "present"})
                 prev = seg
-            if species in {"Sp1", "Sp2"} and copy == "copy1":
+            if add_c_segment and species in {"Sp3", "Sp4"} and copy == "copy1":
+                adj.append({"adjacency_id": f"{species}_{copy}_A_B_absent", "family_id": family, "species": species, "gene_copy_id": copy, "left_occurrence_id": f"{species}_{copy}_A", "right_occurrence_id": f"{species}_{copy}_B", "adjacency_status": "absent"})
+            if add_c_segment and species in {"Sp1", "Sp2"} and copy == "copy1":
                 occ_id = f"{species}_{copy}_C_absent"
                 rows.append(
                     {
@@ -306,17 +310,33 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
                         "match_status": "mapped",
                     }
                 )
-    truth = [
-        {"family_id": family, "event_class": "exonization_candidate", "branch_scope": "root->clade34", "object_id": "H_sim_C", "notes": "simulated hidden intronic-source segment becomes CDS"},
-        {"family_id": family, "event_class": "segment_fusion_or_new_adjacency", "branch_scope": "root->clade34", "object_id": "H_sim_A__H_sim_C", "notes": "simulated new internal adjacency"},
-        {"family_id": family, "event_class": "copy_duplication_or_expansion", "branch_scope": "root->clade34", "object_id": family, "notes": "simulated extra copy in the derived clade"},
-    ]
+    truth = []
+    if add_c_segment:
+        truth.extend(
+            [
+                {"family_id": family, "event_class": "segment_gain", "branch_scope": "root->clade34", "object_id": "EG_sim_C", "notes": "simulated derived EG C appears in clade34"},
+                {"family_id": family, "event_class": "exonization_candidate", "branch_scope": "root->clade34", "object_id": "EG_sim_C", "notes": "simulated hidden source segment becomes CDS"},
+                {"family_id": family, "event_class": "segment_fusion_or_new_adjacency", "branch_scope": "root->clade34", "object_id": "EG_sim_A__EG_sim_C", "notes": "simulated new internal adjacency"},
+                {"family_id": family, "event_class": "segment_split_or_adjacency_loss", "branch_scope": "root->clade34", "object_id": "EG_sim_A__EG_sim_B", "notes": "simulated ancestral A-B adjacency is split by a derived internal segment"},
+            ]
+        )
+    if scenario in {"source_join", "compound"}:
+        truth.extend(
+            [
+                {"family_id": family, "event_class": "chimeric_source_join_candidate", "branch_scope": "root->clade34", "object_id": "EG_sim_A__EG_sim_C", "notes": "simulated derived adjacency joins different informative source labels"},
+                {"family_id": family, "event_class": "chimeric_origin_or_source_mixing", "branch_scope": "root->clade34", "object_id": family, "notes": "simulated derived copy contains multiple informative source labels"},
+            ]
+        )
+    if scenario in {"compound", "tandem_duplication"}:
+        truth.append({"family_id": family, "event_class": "copy_duplication_or_expansion", "branch_scope": "root->clade34", "object_id": family, "notes": "simulated extra copy in the derived clade"})
+    if scenario == "processed_copy_or_intron_loss":
+        truth = [{"family_id": family, "event_class": "retrocopy_or_dispersed_duplication_candidate", "branch_scope": "root->clade34", "object_id": family, "notes": "simulated dispersed processed-copy context"}]
     if scenario == "splice_boundary_shift":
-        truth = [{"family_id": family, "event_class": "splice_boundary_shift", "branch_scope": "root->clade34", "object_id": "H_sim_C", "notes": "simulated hidden segment is best interpreted as shifted splice boundary"}]
+        truth.append({"family_id": family, "event_class": "splice_boundary_shift", "branch_scope": "root->clade34", "object_id": "EG_sim_C", "notes": "simulated hidden segment is best interpreted as shifted splice boundary"})
     elif scenario == "te_exonization":
-        truth = [{"family_id": family, "event_class": "te_associated_exonization", "branch_scope": "root->clade34", "object_id": "H_sim_C", "notes": "simulated TE-like hidden segment becomes exon or CDS"}]
+        truth.append({"family_id": family, "event_class": "te_associated_exonization", "branch_scope": "root->clade34", "object_id": "EG_sim_C", "notes": "simulated TE-like hidden segment becomes exon or CDS"})
     elif scenario == "gene_conversion":
-        truth = [{"family_id": family, "event_class": "ambiguous_paralogous_similarity", "branch_scope": "root->clade34", "object_id": "H_sim_A", "notes": "simulated paralogous copies are unusually similar; mechanism remains ambiguous"}]
+        truth = [{"family_id": family, "event_class": "ambiguous_paralogous_similarity", "branch_scope": "root->clade34", "object_id": "EG_sim_A", "notes": "simulated paralogous copies are unusually similar; mechanism remains ambiguous"}]
     write_tsv(output_dir / "species_tree.tsv", species_tree, ["node_id", "parent_id", "label"])
     write_tsv(output_dir / "segment_occurrences.tsv", rows, ["occurrence_id", "family_id", "species", "gene_copy_id", "transcript_id", "role", "role_set", "presence_status", "contig", "start", "end", "strand", "phase", "source_feature_id", "boundary_class", "splice_motif_score", "splice_donor", "splice_acceptor", "frame_status"])
     write_tsv(output_dir / "segment_homology.tsv", homology, ["homology_id", "occurrence_id", "support_type", "confidence", "source_label"])
@@ -326,10 +346,12 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
     write_tsv(output_dir / "sequence_synteny_evidence.tsv", evidence, ["evidence_id", "family_id", "species", "gene_copy_id", "homology_id", "annotation_status", "evidence_status", "inferred_role", "contig", "start", "end", "strand", "sequence_score", "left_synteny_score", "right_synteny_score", "splice_motif_score", "phase_compatibility", "inferred_event", "frame_status"])
     write_tsv(output_dir / "segment_matches.tsv", matches, ["match_id", "query_occurrence_id", "subject_occurrence_id", "alignment_score", "coverage_score", "left_context_score", "right_context_score", "boundary_score", "phase_score", "order_score", "strand_score", "splice_score", "size_ratio", "total_score", "match_status"])
     write_tsv(output_dir / "truth_events.tsv", truth, ["family_id", "event_class", "branch_scope", "object_id", "notes"])
-    write_tsv(output_dir / "simulation_truth_segments.tsv", [{"family_id": family, "homology_id": f"H_sim_{seg}", "truth_state": "derived_present" if seg == "C" else "ancestral_present"} for seg in ["A", "B", "C"]], ["family_id", "homology_id", "truth_state"])
+    write_tsv(
+        output_dir / "simulation_truth_segments.tsv",
+        [{"family_id": family, "homology_id": f"H_sim_{seg}", "element_id": element_id_from_homology(f"H_sim_{seg}"), "truth_state": "derived_present" if seg == "C" else "ancestral_present"} for seg in ["A", "B", "C"]],
+        ["family_id", "homology_id", "element_id", "truth_state"],
+    )
     with (output_dir / "segment_sequences.fasta").open("w") as handle:
         for name, seq in sorted(fasta_records.items()):
             handle.write(f">{name}\n{seq}\n")
-    if scenario in SCENARIO_TRUTH_FILTERS:
-        return filter_truth_events(output_dir, SCENARIO_TRUTH_FILTERS[scenario])
     return truth

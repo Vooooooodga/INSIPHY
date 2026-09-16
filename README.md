@@ -33,15 +33,17 @@ INSIPHY implements four linked stages:
 1. **Annotation completion**: genome sequence is checked against annotation to
    identify hidden segments, shifted splice boundaries and joined-segment
    candidates.
-2. **Gene-internal segment correspondence**: exon-like segment sequence,
+2. **Gene-internal element correspondence**: exon-like segment sequence,
    coverage, splice motif, intron phase, strand, boundary class and local order
-   are combined into internal evidence clusters. User-facing event calls and
-   figures are organized around exon-like structural elements, splice
-   boundaries and adjacency.
+   are combined into internal evidence clusters and then promoted to
+   user-facing EGs when they represent exons, CDS/UTR intervals or
+   sequence-supported candidate exonized source intervals. User-facing event
+   calls and figures are organized around exon-like structural elements,
+   splice boundaries and adjacency.
 3. **Tree-guided progressive interpretation**: pairwise segment support is
    summarized by species-tree distance, so close-species support and deep-tree
    support can be interpreted separately inside the supplied gene set.
-4. **Phylogenetic structural inference**: segment presence, role state,
+4. **Phylogenetic structural inference**: EG presence, EG role state,
    adjacency, source mixture and copy multiplicity are reconstructed on the
    fixed species tree.
 
@@ -112,6 +114,8 @@ PYTHONPATH=src python3 -m insiphy.cli inspect-aligners
 
 - `case_summary.tsv`
 - `annotation_completion_candidates.tsv`
+- `element_correspondence.tsv`
+- `element_phylogenetic_coverage.tsv`
 - `hsg_assignments.tsv`
 - `hsg_graph_edges.tsv`
 - `segment_conservation.tsv`
@@ -137,7 +141,9 @@ PYTHONPATH=src python3 -m insiphy.cli inspect-aligners
 
 `hypothesis_tests.tsv` reports the invariant/no-change null model versus a
 one-rate CTMC/Mk model on the species tree, including likelihoods, LRT statistic,
-p value, BH q value, fitted rate, AIC and BIC. `hypothesis_bootstrap.tsv`
+p value, BH q value, fitted rate, AIC and BIC. The main layers are
+`element_presence`, `element_role_state`, `element_adjacency_state`,
+`source_mixture` and `copy_multiplicity`. `hypothesis_bootstrap.tsv`
 contains empirical p values when bootstrap is requested.
 `branch_history_posteriors.tsv` contains stochastic-map summaries for event
 placement along branches. `candidate_structural_events.tsv` and
@@ -146,9 +152,9 @@ placement along branches. `candidate_structural_events.tsv` and
 copy-context evidence and ambiguous paralogous-similarity evidence remain
 separable.
 
-Tables beginning with `hsg_` expose the internal evidence graph. They are
-useful for reproducibility and debugging, while biological interpretation
-should start from exon-like groups in the figures and from event tables.
+`element_correspondence.tsv` and `element_phylogenetic_coverage.tsv` are the
+primary biological correspondence tables. Tables beginning with `hsg_` expose
+the internal evidence graph for reproducibility and debugging.
 
 Visualization outputs:
 

@@ -23,11 +23,16 @@ class FixtureTests(unittest.TestCase):
             tests = read_tsv(Path(tmp) / "hypothesis_tests.tsv")
             baselines = read_tsv(Path(tmp) / "baseline_comparison.tsv")
             progressive = read_tsv(Path(tmp) / "progressive_correspondence.tsv")
+            elements = read_tsv(Path(tmp) / "element_correspondence.tsv")
+            element_coverage = read_tsv(Path(tmp) / "element_phylogenetic_coverage.tsv")
             coverage = read_tsv(Path(tmp) / "hsg_phylogenetic_coverage.tsv")
             self.assertEqual(rows[0]["family_id"], "jingwei")
             self.assertEqual(rows[0]["hidden_segment_candidates"], "1")
             self.assertEqual(rows[0]["best_compound_model"], "compound_chimeric_or_copy_event")
             self.assertTrue(scores)
+            self.assertTrue(elements)
+            self.assertTrue(all(row["element_id"].startswith("EG_") for row in elements))
+            self.assertTrue(element_coverage)
             self.assertIn("p_value", tests[0])
             self.assertIn("q_value", tests[0])
             self.assertTrue(progressive)
@@ -113,11 +118,39 @@ class SimulationBenchmarkTests(unittest.TestCase):
             truth = read_tsv(sim / "truth_events.tsv")
             bench = read_tsv(out / "benchmark_summary.tsv")
             fit = read_tsv(out / "model_fit.tsv")
+            element_coverage = read_tsv(out / "element_phylogenetic_coverage.tsv")
             self.assertTrue(truth)
             self.assertGreaterEqual(float(bench[0]["recall"]), 0.0)
             self.assertIn("precision", bench[0])
             self.assertTrue(fit)
+            self.assertTrue(element_coverage)
             self.assertEqual(fit[0]["model"], "ctmc_mk_branch_length")
+
+    def test_named_simulation_scenarios(self):
+        scenarios = [
+            "exonization",
+            "te_exonization",
+            "splice_boundary_shift",
+            "segment_split",
+            "segment_fusion",
+            "source_join",
+            "tandem_duplication",
+            "processed_copy_or_intron_loss",
+            "annotation_dropout",
+            "negative_control",
+            "gene_conversion",
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            for scenario in scenarios:
+                sim = tmp / f"sim_{scenario}"
+                out = tmp / f"out_{scenario}"
+                simulate_dataset(sim, seed=19, scenario=scenario)
+                run_all(sim, out)
+                benchmark_events(sim, out)
+                self.assertTrue(read_tsv(out / "element_correspondence.tsv"))
+                self.assertTrue(read_tsv(out / "candidate_structural_events.tsv", optional=True) or scenario in {"negative_control", "annotation_dropout"})
+                self.assertTrue(read_tsv(out / "benchmark_summary.tsv"))
 
     def test_bootstrap_and_stochastic_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:

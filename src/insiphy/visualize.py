@@ -6,6 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+from .elements import collect_element_profiles, element_class_for_occurrence
 from .io import read_tsv, write_tsv
 from .tree import SpeciesTree
 
@@ -22,10 +23,6 @@ PALETTE = [
 ]
 
 PATTERNS = ["diagonal", "dots", "cross", "horizontal", "vertical", "grid", "sparse", "solid"]
-EXON_LIKE_ROLES = {"CDS", "exon", "UTR", "noncoding_exon"}
-NONCODING_ROLES = {"intron", "regulatory", "intergenic", "noncoding", "intron_or_noncoding"}
-
-
 def svg_text(x, y, text, size=11, anchor="start", weight="normal", fill="#222"):
     return f'<text x="{x}" y="{y}" font-family="Arial, sans-serif" font-size="{size}" text-anchor="{anchor}" font-weight="{weight}" fill="{fill}">{escape(str(text))}</text>'
 
@@ -61,67 +58,63 @@ def pattern_defs(styles):
     return "\n".join(body)
 
 
-def display_group_label(hsg):
-    if hsg.startswith("HSG_"):
-        return f"EG_{hsg.split('_', 1)[1]}"
-    if hsg.startswith("H_"):
-        return f"EG_{hsg.split('_', 1)[1]}"
-    return hsg
-
-
-def hsg_role_profiles(homology, occurrences):
+def fallback_element_correspondence(input_dir, occurrences):
+    homology = read_tsv(Path(input_dir) / "segment_homology.tsv", optional=True)
+    evidence = read_tsv(Path(input_dir) / "sequence_synteny_evidence.tsv", optional=True)
+    profiles, element_by_homology = collect_element_profiles(homology, occurrences, evidence)
     occ_by_id = {row["occurrence_id"]: row for row in occurrences}
-    roles = defaultdict(set)
+    rows = []
     for row in homology:
-        occ = occ_by_id.get(row.get("occurrence_id"))
-        if occ:
-            roles[row["homology_id"]].add(occ.get("role", "segment"))
-    return roles
-
-
-def display_class(row, hsg, role_profiles):
-    role = row.get("role", "segment")
-    if role in EXON_LIKE_ROLES:
-        return "exon_like"
-    hsg_roles = role_profiles.get(hsg, set())
-    if role in NONCODING_ROLES and hsg_roles & EXON_LIKE_ROLES:
-        return "candidate_source"
-    return "context"
-
-
-def segment_styles(homology, occurrences=None, hsg_encoding="pattern"):
-    occurrences = occurrences or []
-    occ_by_id = {row["occurrence_id"]: row for row in occurrences}
-    role_profiles = hsg_role_profiles(homology, occurrences)
-    by_occ = {}
-    for row in homology:
-        occ = occ_by_id.get(row["occurrence_id"])
-        hsg = row["homology_id"]
-        if occ and display_class(occ, hsg, role_profiles) == "context":
+        element_id = element_by_homology.get(row.get("homology_id", ""))
+        if not element_id:
             continue
-        by_occ[row["occurrence_id"]] = hsg
+        occ = occ_by_id.get(row.get("occurrence_id"), {})
+        rows.append(
+            {
+                "element_id": element_id,
+                "homology_id": row.get("homology_id", "NA"),
+                "occurrence_id": row.get("occurrence_id", "NA"),
+                "element_class": element_class_for_occurrence(occ, row.get("homology_id", ""), profiles, element_by_homology),
+            }
+        )
+    return rows
+
+
+def segment_styles(input_dir, result_dir, occurrences=None, hsg_encoding="pattern"):
+    occurrences = occurrences or []
+    element_rows = read_tsv(Path(result_dir) / "element_correspondence.tsv", optional=True)
+    if not element_rows:
+        element_rows = fallback_element_correspondence(input_dir, occurrences)
+    by_occ = {}
+    class_by_occ = {}
+    for row in element_rows:
+        element_class = row.get("element_class", "context")
+        if element_class in {"context", "absent"}:
+            continue
+        by_occ[row["occurrence_id"]] = row["element_id"]
+        class_by_occ[row["occurrence_id"]] = element_class
     styles = {}
-    for idx, hsg in enumerate(sorted(set(by_occ.values()))):
+    for idx, element_id in enumerate(sorted(set(by_occ.values()))):
         dash = "none" if idx % 3 == 0 else "4 2" if idx % 3 == 1 else "1.5 2"
         if hsg_encoding == "color":
-            styles[hsg] = {
+            styles[element_id] = {
                 "encoding": "color",
                 "fill": PALETTE[idx % len(PALETTE)],
                 "stroke": "#111111",
                 "pattern": "solid",
-                "pattern_id": f"hsg_{idx + 1}",
+                "pattern_id": f"eg_{idx + 1}",
                 "stroke_dasharray": "none",
             }
         else:
-            styles[hsg] = {
+            styles[element_id] = {
                 "encoding": "pattern",
-                "fill": f"url(#hsg_{idx + 1})",
+                "fill": f"url(#eg_{idx + 1})",
                 "stroke": "#111111",
                 "pattern": PATTERNS[idx % len(PATTERNS)],
-                "pattern_id": f"hsg_{idx + 1}",
+                "pattern_id": f"eg_{idx + 1}",
                 "stroke_dasharray": dash,
             }
-    return by_occ, styles, role_profiles
+    return by_occ, styles, class_by_occ
 
 
 def draw_context_span(body, x, y, w, role):
@@ -171,8 +164,7 @@ def draw_synteny(input_dir, result_dir, output_dir, hsg_encoding="pattern"):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
     occurrences = read_tsv(input_dir / "segment_occurrences.tsv", optional=True)
-    homology = read_tsv(input_dir / "segment_homology.tsv", optional=True)
-    occ_to_hsg, styles, role_profiles = segment_styles(homology, occurrences, hsg_encoding)
+    occ_to_element, styles, class_by_occ = segment_styles(input_dir, result_dir, occurrences, hsg_encoding)
     grouped = defaultdict(list)
     for row in occurrences:
         grouped[(row.get("species", "NA"), row.get("gene_copy_id", "NA"))].append(row)
@@ -188,7 +180,7 @@ def draw_synteny(input_dir, result_dir, output_dir, hsg_encoding="pattern"):
         pattern_defs(styles),
         svg_text(24, 28, "INSIPHY intragenic synteny", 16, weight="bold"),
     ]
-    hsg_boxes = defaultdict(list)
+    element_boxes = defaultdict(list)
     pending_boxes = []
     for ridx, (key, rows) in enumerate(sorted(grouped.items()), start=0):
         species, copy = key
@@ -204,24 +196,24 @@ def draw_synteny(input_dir, result_dir, output_dir, hsg_encoding="pattern"):
         for row in rows:
             x = left + (int(row.get("start", "0")) - start) / span * (width - left - right)
             w = max(4, (int(row.get("end", "0")) - int(row.get("start", "0")) + 1) / span * (width - left - right))
-            hsg = occ_to_hsg.get(row["occurrence_id"], "NA")
-            style = styles.get(hsg, {"pattern_id": "missing", "stroke_dasharray": "none", "stroke": "#999999"})
+            element_id = occ_to_element.get(row["occurrence_id"], "NA")
+            style = styles.get(element_id, {"pattern_id": "missing", "stroke_dasharray": "none", "stroke": "#999999"})
             role = row.get("role", "segment")
-            unit_class = display_class(row, hsg, role_profiles) if hsg in styles else "context"
+            unit_class = class_by_occ.get(row["occurrence_id"], "context") if element_id in styles else "context"
             if unit_class == "context":
                 draw_context_span(body, x, y, w, role)
                 continue
             ybox = y + 3 if unit_class == "exon_like" else y + 8
             hbox = 16 if unit_class == "exon_like" else 8
             box = {"x": x, "w": w, "y": ybox + hbox / 2, "class": unit_class, "row": ridx}
-            hsg_boxes[hsg].append(box)
-            pending_boxes.append((x, ybox, w, hbox, display_group_label(hsg), style, unit_class))
-    for hsg, boxes in sorted(hsg_boxes.items()):
+            element_boxes[element_id].append(box)
+            pending_boxes.append((x, ybox, w, hbox, element_id, style, unit_class))
+    for element_id, boxes in sorted(element_boxes.items()):
         if len(boxes) < 2:
             continue
         boxes = sorted(boxes, key=lambda item: (item["row"], item["x"]))
         for left_box, right_box in zip(boxes, boxes[1:]):
-            draw_homology_connector(body, left_box, right_box, styles.get(hsg, {}))
+            draw_homology_connector(body, left_box, right_box, styles.get(element_id, {}))
     for args in pending_boxes:
         draw_segment_box(body, *args)
     legend_y = height - 58
@@ -328,7 +320,6 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encodin
     output_dir = Path(output_dir)
     tree_rows = read_tsv(input_dir / "species_tree.tsv", optional=True)
     occurrences = read_tsv(input_dir / "segment_occurrences.tsv", optional=True)
-    homology = read_tsv(input_dir / "segment_homology.tsv", optional=True)
     events = read_tsv(Path(result_dir) / "event_support_summary.tsv", optional=True)
     path = output_dir / "integrated_phylo_synteny.svg"
     if not tree_rows or not occurrences:
@@ -336,7 +327,7 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encodin
         return path
 
     tree = SpeciesTree(tree_rows)
-    occ_to_hsg, styles, role_profiles = segment_styles(homology, occurrences, hsg_encoding)
+    occ_to_element, styles, class_by_occ = segment_styles(input_dir, result_dir, occurrences, hsg_encoding)
     grouped = defaultdict(list)
     for row in occurrences:
         grouped[(row.get("species", "NA"), row.get("gene_copy_id", "NA"))].append(row)
@@ -403,7 +394,7 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encodin
     for leaf in tree.leaves:
         body.append(svg_text(node_x[leaf] + 6, node_y[leaf] + 4, tree.label[leaf], 10))
 
-    hsg_boxes = defaultdict(list)
+    element_boxes = defaultdict(list)
     pending_boxes = []
     for group_idx, ((species, copy), rows) in enumerate(ordered_groups):
         rows = sorted(rows, key=lambda row: (row.get("contig", ""), int(row.get("start", "0")), int(row.get("end", "0"))))
@@ -418,24 +409,24 @@ def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, hsg_encodin
         for row in rows:
             x = left_track + (int(row.get("start", "0")) - start) / span * (width - left_track - right)
             w = max(4, (int(row.get("end", "0")) - int(row.get("start", "0")) + 1) / span * (width - left_track - right))
-            hsg = occ_to_hsg.get(row["occurrence_id"], "NA")
-            style = styles.get(hsg, {"fill": "#E6E6E6", "stroke_dasharray": "none", "stroke": "#111111"})
+            element_id = occ_to_element.get(row["occurrence_id"], "NA")
+            style = styles.get(element_id, {"fill": "#E6E6E6", "stroke_dasharray": "none", "stroke": "#111111"})
             role = row.get("role", "segment")
-            unit_class = display_class(row, hsg, role_profiles) if hsg in styles else "context"
+            unit_class = class_by_occ.get(row["occurrence_id"], "context") if element_id in styles else "context"
             if unit_class == "context":
                 draw_context_span(body, x, y, w, role)
                 continue
             ybox = y + 3 if unit_class == "exon_like" else y + 8
             hbox = 16 if unit_class == "exon_like" else 8
             box = {"x": x, "w": w, "y": ybox + hbox / 2, "class": unit_class, "row": group_idx}
-            hsg_boxes[hsg].append(box)
-            pending_boxes.append((x, ybox, w, hbox, display_group_label(hsg), style, unit_class))
-    for hsg, boxes in sorted(hsg_boxes.items()):
+            element_boxes[element_id].append(box)
+            pending_boxes.append((x, ybox, w, hbox, element_id, style, unit_class))
+    for element_id, boxes in sorted(element_boxes.items()):
         if len(boxes) < 2:
             continue
         boxes = sorted(boxes, key=lambda item: (item["row"], item["x"]))
         for left_box, right_box in zip(boxes, boxes[1:]):
-            draw_homology_connector(body, left_box, right_box, styles.get(hsg, {}))
+            draw_homology_connector(body, left_box, right_box, styles.get(element_id, {}))
     for args in pending_boxes:
         draw_segment_box(body, *args)
     body.append(svg_text(24, height - 32, "Core structural events are marked on tree branches; links mark exon-like correspondence; introns are gray context spans.", 10, fill="#555"))

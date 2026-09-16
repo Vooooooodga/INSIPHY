@@ -63,13 +63,13 @@ class SpeciesTree:
 def transition_cost(layer, src, dst):
     if src == dst:
         return 0.0
-    if layer in {"segment_presence", "adjacency_state"}:
+    if layer in {"segment_presence", "adjacency_state", "element_presence", "element_adjacency_state"}:
         if src == "absent" and dst == "present":
             return 2.0
         if src == "present" and dst == "absent":
             return 1.5
         return 2.5
-    if layer == "role_state":
+    if layer in {"role_state", "element_role_state"}:
         if "absent" in (src, dst):
             return 2.0
         return 1.0
