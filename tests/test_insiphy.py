@@ -3,8 +3,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from insiphy.alignment import AlignmentBackendError, global_alignment_stats, phase_compatibility
+from insiphy.alignment import AlignmentBackendError, AlignmentStats, global_alignment_stats, phase_compatibility
 from insiphy.cli import run_all
+from insiphy.correspondence import simple_identity
 from insiphy.io import read_tsv
 from insiphy.benchmark import benchmark_events
 from insiphy.calibration import calibrate_simulations
@@ -343,6 +344,13 @@ class PreprocessTests(unittest.TestCase):
             stats = global_alignment_stats("ACGT", "ACGT")
         self.assertEqual(stats.identity, 1.0)
         self.assertEqual(stats.aligned_pairs, 4)
+
+    def test_correspondence_identity_uses_auto_alignment(self):
+        expected = AlignmentStats(0.8, 1.0, 8.0, backend="mafft")
+        with patch("insiphy.correspondence.global_alignment_stats", return_value=expected) as align:
+            identity = simple_identity("ACGT", "ACGA")
+        self.assertEqual(identity, 0.8)
+        align.assert_called_once_with("ACGT", "ACGA", backend="auto")
 
     def test_internal_alignment_refuses_oversized_dynamic_program(self):
         with self.assertRaises(AlignmentBackendError):

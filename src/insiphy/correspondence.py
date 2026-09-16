@@ -14,7 +14,7 @@ from .tree import SpeciesTree
 
 
 def simple_identity(seq_a, seq_b):
-    return global_alignment_stats(seq_a, seq_b).identity
+    return global_alignment_stats(seq_a, seq_b, backend="auto").identity
 
 
 def match_total(row):

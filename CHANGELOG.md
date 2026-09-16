@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.3 - 2026-09-16
+
+- Apply the same length-aware alignment policy when calculating within-group
+  mean exon identity, so medium exon pairs are not forced through the bounded
+  internal dynamic-programming backend.
+
 ## 0.12.2 - 2026-09-16
 
 - Read the first optimal Biopython alignment by iteration, avoiding integer
