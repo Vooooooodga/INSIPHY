@@ -5,16 +5,18 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
-from .elements import EXON_LIKE_ROLES
+from .elements import EXON_LIKE_ROLES, NONCODING_ROLES
 from .io import norm_state, read_tsv, to_float, write_tsv
 
 
 EXONIC_ROLES = set(EXON_LIKE_ROLES)
+KNOWN_NONEXONIC_ROLES = set(NONCODING_ROLES)
 EXON_COMPLETION_CALLS = {
     "hidden_segment_candidate",
     "shifted_splice_site_candidate",
     "joined_exon_candidate",
     "hidden_segment_with_frame_disruption",
+    "predicted_exon_candidate",
 }
 HOMOLOGOUS_SEQUENCE_STATUSES = {"homologous_sequence_candidate"}
 
@@ -44,6 +46,8 @@ def _single_copy_families(occurrences):
 
 
 def _completion_presence(row):
+    if row.get("correspondence_status") in {"unknown", "ambiguous"}:
+        return None, "completion_correspondence_unresolved", None, "completion_correspondence_unresolved"
     call = row.get("completion_call")
     status = row.get("evidence_status")
     inferred_role = row.get("inferred_role", "unknown")
@@ -51,13 +55,46 @@ def _completion_presence(row):
         return "absent", "sequence_supported_true_absence", None, None
     if (call == "supports_annotation" or status == "supports_annotation") and inferred_role in EXONIC_ROLES:
         return "present", "annotated_exon_sequence_present", "exonic", "annotated_exon"
-    if call in EXON_COMPLETION_CALLS and inferred_role in EXONIC_ROLES:
-        return "present", "sequence_supported_hidden_exon", "exonic", "sequence_supported_exon_completion"
+    if call in EXON_COMPLETION_CALLS:
+        return "present", "sequence_supported_hidden_exon_candidate", None, "sequence_supported_exon_completion_role_unresolved"
     if call == "boundary_conflict_candidate":
         return "present", "protein_projected_sequence_boundary_conflict", None, "exon_boundary_conflict"
     if status in HOMOLOGOUS_SEQUENCE_STATUSES or call == "homologous_sequence_candidate":
         return "present", "homologous_sequence_candidate", None, "homologous_sequence_role_unknown"
     return None, None, None, None
+
+
+def _exon_prediction_overlaps_observation(completion, occurrence):
+    if (
+        completion.get("completion_call") not in {"predicted_exon_candidate", "boundary_conflict_candidate"}
+        or completion.get("correspondence_status") != "resolved"
+        or completion.get("primary_mapping_status") != "protein_projection"
+        or completion.get("interval_scope") != "projected_cds_container"
+        or completion.get("predicted_role") not in EXONIC_ROLES
+        or completion.get("confidence_flag") not in {"high", "medium"}
+    ):
+        return False
+    if not all(
+        occurrence.get(field) not in {None, "", "NA", "."}
+        and occurrence.get(field) == completion.get(field)
+        for field in ("family_id", "species", "gene_copy_id")
+    ):
+        return False
+    interval = completion.get("interval")
+    if interval in {None, "", "NA", "."} or any(
+        occurrence.get(field) in {None, "", "NA", "."}
+        for field in ("contig", "strand", "start", "end")
+    ):
+        return False
+    contig, bounds, strand = interval.rsplit(":", 2)
+    start, end = (int(value) for value in bounds.split("-", 1))
+    return (
+        contig == occurrence["contig"]
+        and strand in {"+", "-"}
+        and strand == occurrence["strand"]
+        and start <= int(occurrence["end"])
+        and int(occurrence["start"]) <= end
+    )
 
 
 def _element_site_rows(
@@ -72,7 +109,7 @@ def _element_site_rows(
     family_by_element = {}
     element_by_homology = {}
     for row in element_rows:
-        if row.get("element_class") != "exon_like":
+        if row.get("element_class") not in {"exon_like", "candidate_source", "absent"}:
             continue
         occ = occ_by_id.get(row.get("occurrence_id", ""))
         if not occ or occ.get("family_id") not in valid_families:
@@ -93,11 +130,16 @@ def _element_site_rows(
 
     rows = []
     for element, family in sorted(family_by_element.items()):
+        element_member_count = sum(
+            len(species_rows)
+            for species_rows in mapped[element].values()
+        )
         for species in sorted(species_by_family[family]):
             observations = mapped[element].get(species, [])
             presence_states = set()
             presence_evidence = set()
             states = set()
+            role_observations = defaultdict(list)
             evidence = set()
             confidence_flags = set()
             conclusion_flags = set()
@@ -106,7 +148,10 @@ def _element_site_rows(
                     presence_evidence.add("ambiguous_correspondence")
                     evidence.add("ambiguous_correspondence")
                     confidence_flags.add("low")
-                    continue
+                    if element_member_count > 1:
+                        evidence.add("own_annotation_not_used_as_crossspecies_EG_state")
+                        conclusion_flags.add("crossspecies_membership_uncertain")
+                        continue
                 presence = norm_state(occ.get("presence_status"))
                 if presence == "unknown":
                     presence_evidence.add("uncertain_sequence_or_annotation")
@@ -127,26 +172,34 @@ def _element_site_rows(
                     for row in completion_by_element[element].get(species, [])
                     if row.get("gene_copy_id") == occ.get("gene_copy_id")
                 ]
-                completed_exon = any(
-                    row.get("completion_call") in EXON_COMPLETION_CALLS
-                    and row.get("inferred_role") in EXONIC_ROLES
-                    for row in completion
-                )
-                if completed_exon:
+                if any(row.get("completion_call") in EXON_COMPLETION_CALLS for row in completion):
+                    evidence.add("sequence_supported_exon_completion_role_unresolved")
+                    conclusion_flags.add("sequence_evidence_role_unknown")
+                if role in EXONIC_ROLES:
                     states.add("exonic")
-                    evidence.add("sequence_supported_exon_completion")
-                    conclusion_flags.add("predicted_exon")
-                else:
-                    states.add("exonic" if role in EXONIC_ROLES else "not_exonic")
-                    evidence.add("annotated_exon" if role in EXONIC_ROLES else "homologous_non_exonic_sequence")
+                    role_observations["exonic"].append(occ)
+                    evidence.add("annotated_exon")
                     conclusion_flags.add("annotated_or_mapped_role")
+                elif role in KNOWN_NONEXONIC_ROLES:
+                    states.add("not_exonic")
+                    role_observations["not_exonic"].append(occ)
+                    evidence.add("homologous_non_exonic_sequence")
+                    conclusion_flags.add("annotated_or_mapped_role")
+                else:
+                    evidence.add("homologous_sequence_role_unknown")
+                    confidence_flags.add("low")
+                    conclusion_flags.add("role_unknown")
             for completion in completion_by_element[element].get(species, []):
                 presence, presence_ev, role_state, role_ev = _completion_presence(completion)
+                if presence_ev:
+                    presence_evidence.add(presence_ev)
                 if presence:
                     presence_states.add(presence)
-                    presence_evidence.add(presence_ev)
                     confidence_flags.add(completion.get("confidence_flag", "medium"))
                     conclusion_flags.add(completion.get("evidence_conclusion", "sequence_evidence"))
+                elif presence_ev:
+                    confidence_flags.add("low")
+                    conclusion_flags.add("completion_correspondence_unresolved")
                 if role_state:
                     states.add(role_state)
                 if role_ev:
@@ -171,7 +224,45 @@ def _element_site_rows(
                 }
             )
             state = next(iter(states)) if len(states) == 1 else "unknown"
-            if len(states) > 1:
+            if states == {"exonic", "not_exonic"} and presence_state == "present":
+                # Alternative roles must refer to overlapping DNA at the same locus.
+                same_locus_alternative = bool(role_observations["not_exonic"]) and all(
+                    any(
+                        all(
+                            nonexonic.get(field) not in {None, "", "NA", "."}
+                            and nonexonic.get(field) == exonic.get(field)
+                            for field in ("gene_copy_id", "contig", "strand")
+                        )
+                        and all(
+                            row.get(field) not in {None, "", "NA", "."}
+                            for row in (nonexonic, exonic) for field in ("start", "end")
+                        )
+                        and int(nonexonic["start"]) <= int(exonic["end"])
+                        and int(exonic["start"]) <= int(nonexonic["end"])
+                        for exonic in role_observations["exonic"]
+                    )
+                    for nonexonic in role_observations["not_exonic"]
+                )
+                if same_locus_alternative:
+                    state = "exonic"
+                    evidence.add("alternative_usage")
+                    conclusion_flags.add("repertoire_exonic_usage")
+            if states == {"not_exonic"} and presence_state == "present" and any(
+                _exon_prediction_overlaps_observation(completion, occurrence)
+                for completion in completion_by_element[element].get(species, [])
+                for occurrence in role_observations["not_exonic"]
+            ):
+                # Supported exon predictions make an intronic role uncertain, not exonic.
+                state = "unknown"
+                evidence.add("nonexonic_annotation_conflicts_with_exon_prediction")
+                conclusion_flags.add("role_conflict_unresolved")
+                confidence_flags.add("low")
+            if len(presence_states) > 1:
+                state = "unknown"
+            if presence_state == "absent" and not states:
+                state = "unknown"
+                evidence.add("sequence_absent_role_not_applicable")
+            if len(states) > 1 and state == "unknown":
                 evidence.add("conflicting_transcript_states")
                 conclusion_flags.add("conflict_unknown")
             rows.append(
@@ -209,11 +300,12 @@ def _occurrence_length(occurrence):
 
 
 def _parse_projected_reference_blocks(row):
-    text = row.get("projected_reference_blocks", "")
+    coding_projection = row.get("correspondence_basis") == "annotated_CDS_protein"
+    text = row.get("protein_projected_blocks", "") if coding_projection else row.get("projected_reference_blocks", "")
     if not text or text == "NA":
         return []
     blocks = []
-    strand = row.get("projected_reference_strand") or row.get("strand") or row.get("alignment_strand") or "+"
+    strand = "+" if coding_projection else row.get("projected_reference_strand") or row.get("strand") or row.get("alignment_strand") or "+"
     for token in text.split(";"):
         if not token or ":" not in token:
             continue
@@ -385,6 +477,23 @@ def _between_exon_boundary(
     }
 
 
+def _genomically_contiguous(left_occurrence, right_occurrence):
+    if not left_occurrence or not right_occurrence:
+        return False
+    if left_occurrence.get("contig") in {None, "", "NA", "."} or left_occurrence.get("contig") != right_occurrence.get("contig"):
+        return False
+    if left_occurrence.get("strand") not in {"+", "-"} or left_occurrence.get("strand") != right_occurrence.get("strand"):
+        return False
+    try:
+        left_start, left_end = int(left_occurrence["start"]), int(left_occurrence["end"])
+        right_start, right_end = int(right_occurrence["start"]), int(right_occurrence["end"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if left_occurrence["strand"] == "-":
+        return right_end + 1 == left_start
+    return left_end + 1 == right_start
+
+
 def _junction_site_rows(input_dir, output_dir, occurrences, element_rows, valid_families, species_by_family):
     paths = read_tsv(Path(input_dir) / "transcript_paths.tsv", optional=True)
     if not paths:
@@ -422,8 +531,7 @@ def _junction_site_rows(input_dir, output_dir, occurrences, element_rows, valid_
     evidence = defaultdict(lambda: defaultdict(set))
     site_kind = {}
     family_by_site = {}
-    element_counts = defaultdict(lambda: defaultdict(list))
-    element_occ_by_species = defaultdict(lambda: defaultdict(list))
+    element_path_occurrences = defaultdict(lambda: defaultdict(list))
     boundary_rows = []
     within_boundaries = {}
 
@@ -450,7 +558,6 @@ def _junction_site_rows(input_dir, output_dir, occurrences, element_rows, valid_
                 continue
             current = current_elements[0]
             path_elements.append(current)
-            element_occ_by_species[(family, current)][species].append(occ_id)
             if previous is not None:
                 if previous == current:
                     boundary = _within_exon_boundary(
@@ -494,10 +601,14 @@ def _junction_site_rows(input_dir, output_dir, occurrences, element_rows, valid_
                     site_id = boundary["site_id"]
                     site_kind[site_id] = "between_exon_boundary"
                     family_by_site[site_id] = family
-                    observations[site_id][species].add("present" if intron_between else "absent")
-                    evidence[site_id][species].add(
-                        "annotated_intron_between_homologous_exons" if intron_between else "direct_exonic_adjacency"
-                    )
+                    if intron_between:
+                        observations[site_id][species].add("present")
+                        evidence[site_id][species].add("annotated_intron_between_homologous_exons")
+                    elif _genomically_contiguous(occ_by_id.get(previous_occurrence), occ_by_id.get(occ_id)):
+                        observations[site_id][species].add("absent")
+                        evidence[site_id][species].add("direct_contiguous_exonic_adjacency")
+                    else:
+                        evidence[site_id][species].add("missing_intron_record_with_genomic_gap")
                     boundary_rows.append(
                         {
                             "family_id": family,
@@ -511,8 +622,13 @@ def _junction_site_rows(input_dir, output_dir, occurrences, element_rows, valid_
             previous_occurrence = occ_id
             previous_path = row
             intron_between = False
-        for element in set(path_elements):
-            element_counts[(family, element)][species].append(path_elements.count(element))
+        by_element_occ = defaultdict(list)
+        for row in path_rows:
+            occ_id = row.get("occurrence_id", "")
+            for element in sorted(set(elements_by_occ.get(occ_id, []))):
+                by_element_occ[element].append(occ_id)
+        for element, occurrence_ids in by_element_occ.items():
+            element_path_occurrences[(family, element)][species].append(occurrence_ids)
 
     for site_id, boundary in within_boundaries.items():
         family = boundary["family_id"]
@@ -520,35 +636,41 @@ def _junction_site_rows(input_dir, output_dir, occurrences, element_rows, valid_
         reference = boundary["reference_occurrence_id"]
         donor = int(boundary["donor_projection"])
         acceptor = int(boundary["acceptor_projection"])
-        for species, counts in element_counts[(family, element)].items():
-            if not counts or set(counts) != {1}:
-                continue
-            occurrences_in_species = element_occ_by_species[(family, element)].get(species, [])
-            if len(set(occurrences_in_species)) != 1:
-                evidence[site_id][species].add("single_element_count_without_unique_occurrence")
-                continue
-            occurrence = occurrences_in_species[0]
-            if occurrence == reference:
-                observations[site_id][species].add("absent")
-                evidence[site_id][species].add("reference_unsplit_exon_spans_boundary")
-                continue
-            if _continuous_reference_block_covers(match_rows, occurrence, reference, donor, acceptor):
-                observations[site_id][species].add("absent")
-                evidence[site_id][species].add("single_continuous_alignment_block_spans_both_boundary_anchors")
-            else:
-                evidence[site_id][species].add("boundary_not_covered_by_continuous_mapped_exon")
+        for species, path_occurrence_lists in element_path_occurrences[(family, element)].items():
+            for occurrences_in_path in path_occurrence_lists:
+                unique_occurrences = sorted(set(occurrences_in_path))
+                if len(unique_occurrences) != 1:
+                    continue
+                occurrence = unique_occurrences[0]
+                if occurrence == reference:
+                    observations[site_id][species].add("absent")
+                    evidence[site_id][species].add("reference_unsplit_exon_spans_boundary")
+                    continue
+                if _continuous_reference_block_covers(match_rows, occurrence, reference, donor, acceptor):
+                    observations[site_id][species].add("absent")
+                    evidence[site_id][species].add("single_transcript_continuous_alignment_block_spans_both_boundary_anchors")
+                else:
+                    evidence[site_id][species].add("boundary_not_covered_by_continuous_mapped_exon")
 
     rows = []
     for site_id, family in sorted(family_by_site.items()):
         for species in sorted(species_by_family[family]):
             values = observations[site_id].get(species, set())
-            state = next(iter(values)) if len(values) == 1 else "unknown"
             ev = set(evidence[site_id].get(species, set()))
-            conclusion = "observed" if state in {"present", "absent"} else "unknown"
-            confidence = "medium" if state in {"present", "absent"} else "low"
-            if len(values) > 1:
-                ev.add("explicit_transcript_conflict")
-                conclusion = "conflict_unknown"
+            if "present" in values:
+                state = "present"
+                conclusion = "repertoire_present"
+                confidence = "medium"
+                if "absent" in values:
+                    ev.add("alternative_transcript_without_this_junction")
+                    ev.add("repertoire_presence_overrides_supported_absence")
+            elif values == {"absent"}:
+                state = "absent"
+                conclusion = "supported_absence"
+                confidence = "medium"
+            else:
+                state = "unknown"
+                conclusion = "unknown"
                 confidence = "low"
             rows.append(
                 {

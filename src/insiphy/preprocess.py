@@ -11,6 +11,7 @@ from itertools import islice
 from pathlib import Path
 
 from .alignment import available_alignment_backends, local_alignment_stats, overlap_alignment_stats, phase_compatibility, splice_motif_score
+from .coding_correspondence import CodingProjectionIndex
 from .io import fasta_record_length, open_text, parse_fasta, read_fasta_interval, read_tsv, to_float, write_tsv
 
 
@@ -44,7 +45,13 @@ SEGMENT_OUTPUT_FIELDS += [
     "cds_end",
     "cds_length",
     "cds_phase",
+    "cds_intervals",
+    "utr_intervals",
     "utr_status",
+    "source_feature_type",
+    "source_parent",
+    "source_parents",
+    "feature_ownership",
 ]
 
 TRANSCRIPT_PATH_FIELDS = [
@@ -63,8 +70,31 @@ TRANSCRIPT_PATH_FIELDS = [
     "phase",
     "transcript_order",
     "coding_status",
+    "cds_length",
     "cds_phase",
+    "cds_intervals",
+    "utr_intervals",
     "path_status",
+]
+
+RAW_FEATURE_FIELDS = [
+    "family_id",
+    "species",
+    "gene_copy_id",
+    "gene_id",
+    "seqid",
+    "source",
+    "type",
+    "start",
+    "end",
+    "strand",
+    "phase",
+    "id",
+    "name",
+    "parent",
+    "parents",
+    "ownership",
+    "attrs",
 ]
 
 INTRON_SITE_FIELDS = [
@@ -197,48 +227,72 @@ def _copy_annotation_row(row):
 def _read_annotation_for_gene_cached(path, gene_id):
     """Collect one gene hierarchy with bounded per-gene GFF/GTF caching."""
     requested = {gene_id}
-    gene = None
+    exact_genes = []
+    alias_genes = []
     matching_children = []
     for row in iter_annotation(path):
         if not feature_matches_gene(row, requested):
             continue
-        if row["type"].lower() == "gene" and gene is None:
-            gene = row
+        if row["type"].lower() == "gene":
+            attrs = row.get("attrs", {})
+            exact_ids = {row.get("id", ""), attrs.get("ID", ""), attrs.get("gene_id", "")}
+            if gene_id in exact_ids:
+                exact_genes.append(row)
+            else:
+                alias_genes.append(row)
         else:
             matching_children.append(row)
+    if len(exact_genes) > 1:
+        raise SystemExit(f"gene_id maps to multiple exact gene loci: {gene_id}")
+    if exact_genes:
+        gene = exact_genes[0]
+    else:
+        if len(alias_genes) > 1:
+            loci = ",".join(
+                f"{row.get('seqid')}:{row.get('start')}-{row.get('end')}:{row.get('id') or row.get('name')}"
+                for row in alias_genes
+            )
+            raise SystemExit(f"gene_id ambiguously matches multiple gene loci: {gene_id} ({loci})")
+        gene = alias_genes[0] if alias_genes else None
     if gene is None:
         if not matching_children:
             raise SystemExit(f"gene_id not found in annotation: {gene_id}")
-        gene, gene_ids = locate_gene(matching_children, gene_id)
+        gene, _gene_ids = locate_gene(matching_children, gene_id)
     else:
-        gene_ids = requested | feature_tokens(gene)
-    gene_ids = set(gene_ids)
+        matching_children = []
+    # Aliases select the seed; only exact identifiers extend its Parent hierarchy.
+    gene_ids = {
+        value for value in (
+            gene.get("id"), gene.get("attrs", {}).get("ID"), gene.get("attrs", {}).get("gene_id")
+        ) if value
+    }
 
     linked = {}
     link_ids = set(gene_ids)
     if gene:
         linked[_annotation_row_key(gene)] = gene
-        link_ids |= feature_tokens(gene)
     for row in matching_children:
         if row["seqid"] == gene["seqid"]:
             linked[_annotation_row_key(row)] = row
-            link_ids |= feature_tokens(row)
+            if row.get("id"):
+                link_ids.add(row["id"])
 
     changed = True
     while changed:
         changed = False
         for row in iter_annotation(path):
-            if row["seqid"] != gene["seqid"]:
+            if row["seqid"] != gene["seqid"] or row["type"].lower() == "gene":
                 continue
             parents = set(row.get("parents", []))
-            if not (parents & link_ids or feature_matches_gene(row, gene_ids)):
+            if not parents & link_ids:
                 continue
             key = _annotation_row_key(row)
             if key not in linked:
                 linked[key] = row
                 changed = True
             before = len(link_ids)
-            link_ids |= feature_tokens(row)
+            if row.get("id"):
+                link_ids.add(row["id"])
             if len(link_ids) != before:
                 changed = True
 
@@ -296,6 +350,17 @@ def locate_gene(features, gene_id):
     gene_ids = {gene_id}
     genes = [row for row in features if row["type"].lower() == "gene" and feature_matches_gene(row, gene_ids)]
     if genes:
+        exact_genes = [
+            row for row in genes
+            if gene_id in {row.get("id", ""), row.get("attrs", {}).get("ID", ""), row.get("attrs", {}).get("gene_id", "")}
+        ]
+        if len(exact_genes) > 1:
+            raise SystemExit(f"gene_id maps to multiple exact gene loci: {gene_id}")
+        if len(exact_genes) == 1:
+            gene = exact_genes[0]
+            return gene, gene_ids | feature_tokens(gene)
+        if len(genes) > 1:
+            raise SystemExit(f"gene_id ambiguously matches multiple gene loci: {gene_id}")
         gene = genes[0]
         return gene, gene_ids | feature_tokens(gene)
     children = [row for row in features if feature_matches_gene(row, gene_ids)]
@@ -364,7 +429,7 @@ def transcript_features(features, gene, gene_ids):
             continue
         if not overlaps_gene(row, gene):
             continue
-        if set(row.get("parents", [])) & gene_ids or feature_matches_gene(row, gene_ids):
+        if set(row.get("parents", [])) & gene_ids or row.get("id") in gene_ids:
             transcripts.append(row)
     if not transcripts:
         transcripts = [
@@ -445,6 +510,37 @@ def _annotate_exon(exon, child_rows):
     return item
 
 
+def _format_intervals(intervals):
+    if not intervals:
+        return "NA"
+    return ";".join(f"{int(start)}-{int(end)}" for start, end in sorted(intervals))
+
+
+def _feature_parents(feature):
+    parents = set(feature.get("parents", []))
+    parent = feature.get("parent")
+    if parent:
+        parents.add(parent)
+    return sorted(parent for parent in parents if parent)
+
+
+def _format_attrs(attrs):
+    return ";".join(f"{key}={attrs[key]}" for key in sorted(attrs)) if attrs else "NA"
+
+
+def _interval_union_length(intervals):
+    cleaned = sorted((int(start), int(end)) for start, end in intervals if int(end) >= int(start))
+    if not cleaned:
+        return 0
+    merged = []
+    for start, end in cleaned:
+        if not merged or start > merged[-1][1] + 1:
+            merged.append([start, end])
+        else:
+            merged[-1][1] = max(merged[-1][1], end)
+    return sum(end - start + 1 for start, end in merged)
+
+
 def child_features_for_transcript(features, gene, gene_ids, transcript):
     tx_id = transcript.get("id", "")
     selected = []
@@ -454,7 +550,7 @@ def child_features_for_transcript(features, gene, gene_ids, transcript):
         if row["type"].lower() not in allowed or not overlaps_gene(row, gene):
             continue
         parents = set(row.get("parents", []))
-        if (tx_id and tx_id in parents) or (synthetic and (parents & gene_ids or feature_matches_gene(row, gene_ids))):
+        if (tx_id and tx_id in parents) or (synthetic and (parents & gene_ids or row.get("id") in gene_ids)):
             selected.append(row)
     if not selected:
         return []
@@ -468,14 +564,19 @@ def child_features_for_transcript(features, gene, gene_ids, transcript):
 
 
 def transcript_sort_key(row, strand):
-    key = (row["start"], row["end"])
+    key = (int(row["start"]), int(row["end"]))
     if strand == "-":
-        key = (-row["end"], -row["start"])
+        key = (-int(row["end"]), -int(row["start"]))
     return key
 
 
 def transcript_cds_length(tx_features):
-    return sum(max(0, row["end"] - row["start"] + 1) for row in tx_features if row["type"].lower() == "cds")
+    intervals = []
+    for row in tx_features:
+        intervals.extend(row.get("cds_intervals") or [])
+        if row.get("type", "").lower() == "cds":
+            intervals.append((row["start"], row["end"]))
+    return _interval_union_length(intervals)
 
 
 def select_transcripts(transcripts, features_by_tx, transcript_policy="canonical", canonical_rule="longest_cds"):
@@ -505,6 +606,9 @@ def introns_from_path(path_features, gene, transcript_id, seqs=None):
         if start <= end:
             intron_seq = sequence_slice(seqs or {}, gene["seqid"], start, end, gene["strand"])
             motif_score, donor, acceptor = splice_motif_score(intron_seq)
+            upstream, downstream = left["right"], right["left"]
+            if gene["strand"] == "-":
+                upstream, downstream = downstream, upstream
             introns.append(
                 {
                     "seqid": gene["seqid"],
@@ -517,11 +621,11 @@ def introns_from_path(path_features, gene, transcript_id, seqs=None):
                     "parent": transcript_id,
                     "parents": [transcript_id],
                     "attrs": {"ID": f"{transcript_id}.intron_{idx}"},
-                    "left_feature_id": left["right"].get("id", "NA") or "NA",
-                    "right_feature_id": right["left"].get("id", "NA") or "NA",
-                    "left_phase": left["right"].get("phase", "."),
-                    "right_phase": right["left"].get("phase", "."),
-                    "left_cds_length": left["right"].get("cds_length", 0),
+                    "left_feature_id": upstream.get("id", "NA") or "NA",
+                    "right_feature_id": downstream.get("id", "NA") or "NA",
+                    "left_phase": upstream.get("phase", "."),
+                    "right_phase": downstream.get("phase", "."),
+                    "left_cds_length": upstream.get("cds_length", 0),
                     "splice_motif_score": motif_score,
                     "splice_donor": donor,
                     "splice_acceptor": acceptor,
@@ -572,7 +676,7 @@ def extract_gene(
     gene_copy_id,
     output_dir,
     append=False,
-    transcript_policy="canonical",
+    transcript_policy="all",
     canonical_rule="longest_cds",
     source_label="unknown_source",
     copy_role="candidate",
@@ -626,6 +730,62 @@ def extract_gene(
     tx_path_rows = list(read_tsv(output_dir / "transcript_paths.tsv", optional=True) if append else [])
     intron_rows = list(read_tsv(output_dir / "intron_sites.tsv", optional=True) if append else [])
     locus_rows = list(read_tsv(output_dir / "gene_loci.tsv", optional=True) if append else [])
+    raw_feature_rows = list(read_tsv(output_dir / "raw_gene_features.tsv", optional=True) if append else [])
+    raw_seen = {
+        (
+            row.get("species"),
+            row.get("gene_copy_id"),
+            row.get("seqid"),
+            row.get("type"),
+            row.get("start"),
+            row.get("end"),
+            row.get("strand"),
+            row.get("id"),
+            row.get("parent"),
+        )
+        for row in raw_feature_rows
+    }
+    for feat in sorted(features, key=lambda row: (row.get("seqid", ""), int(row.get("start", 0)), int(row.get("end", 0)), row.get("type", ""), row.get("id", ""))):
+        if feat.get("seqid") != contig or int(feat.get("end", 0)) < search_start or int(feat.get("start", 0)) > search_end:
+            continue
+        ownership = (
+            "target_gene_descendant"
+            if (set(feat.get("parents", [])) & gene_ids or feat.get("id") in gene_ids)
+            else "overlapping_context"
+        )
+        raw_row = {
+            "family_id": family_id,
+            "species": species,
+            "gene_copy_id": gene_copy_id,
+            "gene_id": gene_id,
+            "seqid": feat.get("seqid", "NA"),
+            "source": feat.get("source", "NA"),
+            "type": feat.get("type", "NA"),
+            "start": feat.get("start", "NA"),
+            "end": feat.get("end", "NA"),
+            "strand": feat.get("strand", "NA"),
+            "phase": feat.get("phase", "."),
+            "id": feat.get("id", "NA") or "NA",
+            "name": feat.get("name", "NA") or "NA",
+            "parent": feat.get("parent", "NA") or "NA",
+            "parents": ";".join(_feature_parents(feat)) or "NA",
+            "ownership": ownership,
+            "attrs": _format_attrs(feat.get("attrs", {})),
+        }
+        key = (
+            raw_row["species"],
+            raw_row["gene_copy_id"],
+            raw_row["seqid"],
+            raw_row["type"],
+            str(raw_row["start"]),
+            str(raw_row["end"]),
+            raw_row["strand"],
+            raw_row["id"],
+            raw_row["parent"],
+        )
+        if key not in raw_seen:
+            raw_seen.add(key)
+            raw_feature_rows.append(raw_row)
 
     unique = {}
     tx_paths = []
@@ -639,9 +799,24 @@ def extract_gene(
             feat = dict(feat)
             feat["transcript_order"] = rank
             key = _feature_key(feat)
-            unique.setdefault(key, {"feature": feat, "transcripts": set(), "source_ids": set()})
+            unique.setdefault(
+                key,
+                {
+                    "feature": feat,
+                    "transcripts": set(),
+                    "source_ids": set(),
+                    "source_types": set(),
+                    "source_parents": set(),
+                    "cds_intervals": set(),
+                    "utr_intervals": set(),
+                },
+            )
             unique[key]["transcripts"].add(tx_id)
             unique[key]["source_ids"].add(feat.get("id", "NA") or "NA")
+            unique[key]["source_types"].add(feat.get("type", "NA") or "NA")
+            unique[key]["source_parents"].update(_feature_parents(feat))
+            unique[key]["cds_intervals"].update(tuple(interval) for interval in feat.get("cds_intervals", []))
+            unique[key]["utr_intervals"].update(tuple(interval) for interval in feat.get("utr_intervals", []))
             tx_paths.append((tx_id, rank, key, feat))
         for intron in introns:
             intron_records.append((tx_id, intron))
@@ -657,6 +832,10 @@ def extract_gene(
             role = feature_role(feat)
             occ_id = _occurrence_id(species, gene_copy_id, start_index + offset, role)
             key_to_occ[key] = occ_id
+            cds_intervals = sorted(entry["cds_intervals"] or feat.get("cds_intervals", []))
+            cds_length = _interval_union_length(cds_intervals)
+            cds_start = min((start for start, _end in cds_intervals), default=None)
+            cds_end = max((end for _start, end in cds_intervals), default=None)
             seq = sequence_slice(seqs, feat["seqid"], feat["start"], feat["end"], feat["strand"])
             motif_score = feat.get("splice_motif_score", "0.5" if role != "intron" else "0")
             donor = feat.get("splice_donor", "NA")
@@ -686,11 +865,21 @@ def extract_gene(
                     "copy_role": copy_role or "candidate",
                     "transcript_order": feat.get("transcript_order", "NA"),
                     "coding_status": feat.get("coding_status", "not_applicable"),
-                    "cds_start": feat.get("cds_start") or "NA",
-                    "cds_end": feat.get("cds_end") or "NA",
-                    "cds_length": feat.get("cds_length", 0),
+                    "cds_start": cds_start or "NA",
+                    "cds_end": cds_end or "NA",
+                    "cds_length": cds_length,
                     "cds_phase": feat.get("cds_phase", "."),
+                    "cds_intervals": _format_intervals(cds_intervals),
+                    "utr_intervals": _format_intervals(entry["utr_intervals"] or feat.get("utr_intervals", [])),
                     "utr_status": feat.get("utr_status", "not_applicable"),
+                    "source_feature_type": ";".join(sorted(entry["source_types"])) or feat.get("type", "NA"),
+                    "source_parent": feat.get("parent", "NA") or "NA",
+                    "source_parents": ";".join(sorted(entry["source_parents"])) or "NA",
+                    "feature_ownership": (
+                        "shared_by_observed_transcripts"
+                        if len(entry["transcripts"]) > 1
+                        else "transcript_specific"
+                    ),
                 }
             )
             fasta.write(f">{occ_id}\n{seq}\n")
@@ -713,7 +902,10 @@ def extract_gene(
                 "phase": feat.get("phase", "."),
                 "transcript_order": rank,
                 "coding_status": feat.get("coding_status", "not_applicable"),
+                "cds_length": _interval_union_length(feat.get("cds_intervals", [])),
                 "cds_phase": feat.get("cds_phase", "."),
+                "cds_intervals": _format_intervals(feat.get("cds_intervals", [])),
+                "utr_intervals": _format_intervals(feat.get("utr_intervals", [])),
                 "path_status": "annotated_transcript_path" if transcript_policy == "all" else "canonical_transcript_path",
             }
         )
@@ -751,6 +943,7 @@ def extract_gene(
     write_tsv(output_dir / "segment_occurrences.tsv", rows, SEGMENT_OUTPUT_FIELDS)
     write_tsv(output_dir / "transcript_paths.tsv", tx_path_rows, TRANSCRIPT_PATH_FIELDS)
     write_tsv(output_dir / "intron_sites.tsv", intron_rows, INTRON_SITE_FIELDS)
+    write_tsv(output_dir / "raw_gene_features.tsv", raw_feature_rows, RAW_FEATURE_FIELDS)
     locus_rows.append(
         {
             "species": species,
@@ -928,7 +1121,7 @@ def role_boundary_score(left, right):
     if left.get("role") == right.get("role"):
         return 1.0
     exon_like = {"CDS", "exon", "UTR", "noncoding_exon"}
-    noncoding_like = {"intron", "regulatory", "intergenic", "noncoding", "intron_or_noncoding"}
+    noncoding_like = {"intron", "intergenic"}
     if left.get("role") in exon_like and right.get("role") in exon_like:
         return 0.75
     if {left.get("role"), right.get("role")} & exon_like and {left.get("role"), right.get("role")} & noncoding_like:
@@ -936,33 +1129,86 @@ def role_boundary_score(left, right):
     return 0.25
 
 
-def copy_order_context(occurrences):
+def _path_order_context(occurrences, transcript_paths=None):
+    occ_by_id = {row["occurrence_id"]: row for row in occurrences}
+    by_tx = defaultdict(list)
+    for path in transcript_paths or []:
+        occ = occ_by_id.get(path.get("occurrence_id"))
+        if not occ:
+            continue
+        key = (occ["family_id"], occ["species"], occ["gene_copy_id"], path.get("transcript_id", "NA"))
+        by_tx[key].append(path)
+    if not transcript_paths:
+        for occ in occurrences:
+            for transcript in _transcript_id_set(occ):
+                key = (occ["family_id"], occ["species"], occ["gene_copy_id"], transcript)
+                by_tx[key].append(occ)
+    by_occ = {
+        row["occurrence_id"]: {"indices": [], "left_roles": set(), "right_roles": set(), "copy_sizes": []}
+        for row in occurrences
+    }
+    for _key, rows in by_tx.items():
+        if transcript_paths:
+            ordered = sorted(rows, key=lambda row: int(row.get("path_rank", "0") or 0))
+        else:
+            ordered = sorted(rows, key=lambda row: transcript_sort_key(row, row.get("strand", "+")))
+        total = max(1, len(ordered) - 1)
+        for idx, path in enumerate(ordered):
+            occ_id = path.get("occurrence_id")
+            if occ_id not in by_occ:
+                continue
+            rec = by_occ[occ_id]
+            rec["indices"].append(idx / total)
+            rec["left_roles"].add(ordered[idx - 1].get("role", "unknown") if idx > 0 else "terminal")
+            rec["right_roles"].add(ordered[idx + 1].get("role", "unknown") if idx + 1 < len(ordered) else "terminal")
+            rec["copy_sizes"].append(len(ordered))
+    return by_occ
+
+
+def copy_order_context(occurrences, transcript_paths=None):
     by_copy = defaultdict(list)
     for row in occurrences:
         by_copy[(row["family_id"], row["species"], row["gene_copy_id"])].append(row)
     context = {}
+    path_context = _path_order_context(occurrences, transcript_paths)
     for key, rows in by_copy.items():
-        ordered = sorted(
-            rows,
-            key=lambda row: (
-                int(row.get("transcript_order", "0") or 0),
-                int(row.get("start", "0")),
-            ),
-        )
-        total = max(1, len(ordered) - 1)
-        for idx, row in enumerate(ordered):
-            context[row["occurrence_id"]] = {
-                "index": idx,
-                "scaled_index": idx / total,
-                "left_role": ordered[idx - 1]["role"] if idx > 0 else "terminal",
-                "right_role": ordered[idx + 1]["role"] if idx + 1 < len(ordered) else "terminal",
-                "copy_size": len(ordered),
+        by_occ = {row["occurrence_id"]: {"indices": [], "left_roles": set(), "right_roles": set(), "copy_sizes": []} for row in rows}
+        for row in rows:
+            if path_context and path_context.get(row["occurrence_id"], {}).get("indices"):
+                by_occ[row["occurrence_id"]] = path_context[row["occurrence_id"]]
+        if not transcript_paths and not any(_transcript_id_set(row) for row in rows):
+            strand = rows[0].get("strand", "+") if rows else "+"
+            ordered = sorted(
+                rows,
+                key=lambda row: (
+                    -int(row.get("end", "0")) if strand == "-" else int(row.get("start", "0")),
+                    -int(row.get("start", "0")) if strand == "-" else int(row.get("end", "0")),
+                ),
+            )
+            total = max(1, len(ordered) - 1)
+            for idx, row in enumerate(ordered):
+                rec = by_occ[row["occurrence_id"]]
+                rec["indices"].append(idx / total)
+                rec["left_roles"].add(ordered[idx - 1]["role"] if idx > 0 else "terminal")
+                rec["right_roles"].add(ordered[idx + 1]["role"] if idx + 1 < len(ordered) else "terminal")
+                rec["copy_sizes"].append(len(ordered))
+        for occ_id, rec in by_occ.items():
+            left_roles = rec["left_roles"] or {"unknown"}
+            right_roles = rec["right_roles"] or {"unknown"}
+            context[occ_id] = {
+                "index": "NA",
+                "scaled_index": sum(rec["indices"]) / len(rec["indices"]) if rec["indices"] else 0.5,
+                "left_role": next(iter(left_roles)) if len(left_roles) == 1 else "alternative",
+                "right_role": next(iter(right_roles)) if len(right_roles) == 1 else "alternative",
+                "copy_size": max(rec["copy_sizes"]) if rec["copy_sizes"] else len(rows),
             }
     return context
 
 
 def context_score(left_ctx, right_ctx, side):
     key = f"{side}_role"
+    if {left_ctx.get(key), right_ctx.get(key)} & {"alternative", "unknown", None}:
+        return 0.5
     if left_ctx.get(key) == right_ctx.get(key):
         return 1.0
     if "terminal" in {left_ctx.get(key), right_ctx.get(key)}:
@@ -1000,15 +1246,29 @@ def cheap_match_evidence(left, right, context, alignment_backend="prefilter"):
     order = 1.0 - abs(to_float(left_ctx.get("scaled_index"), 0.5) - to_float(right_ctx.get("scaled_index"), 0.5))
     left_context = context_score(left_ctx, right_ctx, "left")
     right_context = context_score(left_ctx, right_ctx, "right")
-    boundary = 0.5 * role_boundary_score(left, right) + 0.5 * phase_score(left, right)
+    boundary = role_boundary_score(left, right)
     phase = phase_score(left, right)
     strand = 1.0
     splice = 1.0 - abs(to_float(left.get("splice_motif_score"), 0.5) - to_float(right.get("splice_motif_score"), 0.5))
     size_ratio = min(segment_length(left), segment_length(right)) / max(segment_length(left), segment_length(right))
-    total = 0.10 * left_context + 0.10 * right_context + 0.10 * boundary + 0.08 * phase + 0.06 * order + 0.04 * strand + 0.04 * splice
+    sequence_score = 0.0
+    structural_context_score = 0.5 * left_context + 0.5 * right_context
+    total = (
+        0.34 * 0.0
+        + 0.14 * 0.0
+        + 0.10 * left_context
+        + 0.10 * right_context
+        + 0.10 * boundary
+        + 0.08 * phase
+        + 0.06 * order
+        + 0.04 * strand
+        + 0.04 * splice
+    )
     return {
         "alignment_score": 0.0,
         "coverage_score": 0.0,
+        "sequence_score": sequence_score,
+        "structural_context_score": structural_context_score,
         "left_context_score": left_context,
         "right_context_score": right_context,
         "boundary_score": boundary,
@@ -1087,15 +1347,29 @@ def match_evidence(left, right, seqs, context, aligner="auto", threads=1, contex
     order = 1.0 - abs(to_float(left_ctx.get("scaled_index"), 0.5) - to_float(right_ctx.get("scaled_index"), 0.5))
     left_context = context_score(left_ctx, right_ctx, "left")
     right_context = context_score(left_ctx, right_ctx, "right")
-    boundary = 0.5 * role_boundary_score(left, right) + 0.5 * phase_score(left, right)
+    boundary = role_boundary_score(left, right)
     phase = phase_score(left, right)
     alignment_strand = getattr(aln, "strand", "+")
     strand = 1.0 if alignment_strand == "+" else 0.0
     splice = 1.0 - abs(to_float(left.get("splice_motif_score"), 0.5) - to_float(right.get("splice_motif_score"), 0.5))
-    total = 0.34 * identity + 0.14 * coverage + 0.10 * left_context + 0.10 * right_context + 0.10 * boundary + 0.08 * phase + 0.06 * order + 0.04 * strand + 0.04 * splice
+    sequence_score = 0.70 * identity + 0.30 * coverage
+    structural_context_score = 0.5 * left_context + 0.5 * right_context
+    total = (
+        0.34 * identity
+        + 0.14 * coverage
+        + 0.10 * left_context
+        + 0.10 * right_context
+        + 0.10 * boundary
+        + 0.08 * phase
+        + 0.06 * order
+        + 0.04 * strand
+        + 0.04 * splice
+    )
     return {
         "alignment_score": identity,
         "coverage_score": coverage,
+        "sequence_score": sequence_score,
+        "structural_context_score": structural_context_score,
         "query_coverage": aln.query_coverage,
         "target_coverage": aln.target_coverage,
         "aligned_pairs": aligned_pairs,
@@ -1136,7 +1410,7 @@ def match_evidence(left, right, seqs, context, aligner="auto", threads=1, contex
 
 
 EXON_LIKE_ROLES = {"CDS", "exon", "UTR", "noncoding_exon"}
-NONCODING_ROLES = {"intron", "regulatory", "intergenic", "noncoding", "intron_or_noncoding"}
+NONCODING_ROLES = {"intron", "intergenic"}
 STRUCTURAL_ROLES = EXON_LIKE_ROLES | NONCODING_ROLES
 UNKNOWN_SOURCE_LABELS = {"", "NA", "unknown", "unknown_source", "ambiguous", "unresolved"}
 
@@ -1262,16 +1536,21 @@ def should_align_pair(left, right, seqs, min_size_ratio=0.25):
 
 
 def _species_tree_distances(path):
+    """Prioritize correspondence by supplied lengths, or topology if any are missing.
+
+    Unit edges apply to this ordering only; CTMC branch lengths are unchanged.
+    """
     if not Path(path).exists():
         return {}
     from .tree import SpeciesTree
     tree = SpeciesTree(read_tsv(path))
+    use_topology = any(tree.length[node] is None for node in tree.parent if node != tree.root)
     root_dist = {tree.root: 0.0}
     ancestors = {}
     for node in tree.preorder():
         ancestors[node] = [node] + (ancestors.get(tree.parent.get(node), []))
         for child in tree.children.get(node, []):
-            root_dist[child] = root_dist[node] + tree.branch_length(child)
+            root_dist[child] = root_dist[node] + (1.0 if use_topology else tree.branch_length(child))
     result = {}
     for left_label, left_node in tree.leaf_by_label.items():
         for right_label, right_node in tree.leaf_by_label.items():
@@ -1287,6 +1566,8 @@ MATCH_FIELDS = [
     "subject_occurrence_id",
     "alignment_score",
     "coverage_score",
+    "sequence_score",
+    "structural_context_score",
     "query_coverage",
     "target_coverage",
     "aligned_pairs",
@@ -1326,10 +1607,29 @@ MATCH_FIELDS = [
     "alignment_mode",
     "alignment_meaning",
     "alignment_requested_backend",
+    "dna_match_status",
+    "correspondence_basis",
+    "correspondence_score",
+    "protein_status",
+    "protein_unavailable_reason",
+    "protein_aa_identity",
+    "protein_query_cds_coverage",
+    "protein_target_cds_coverage",
+    "protein_metrics_scope",
+    "protein_best_query_transcript",
+    "protein_best_target_transcript",
+    "protein_supporting_transcripts",
+    "protein_projected_blocks",
 ]
 
 
 def _projection_interval(evidence, side):
+    if evidence.get("correspondence_basis") == "annotated_CDS_protein":
+        blocks = evidence.get("protein_projected_blocks", ())
+        offset = 0 if side == "query" else 2
+        if not blocks:
+            return None
+        return min(block[offset] for block in blocks), max(block[offset + 1] for block in blocks)
     if side == "query":
         start = evidence.get("query_alignment_start", "NA")
         end = evidence.get("query_alignment_end", "NA")
@@ -1350,7 +1650,7 @@ def _projection_record(evidence, side):
         return None
     return {
         "interval": interval,
-        "strand": evidence.get("alignment_strand", "NA"),
+        "strand": "+" if evidence.get("correspondence_basis") == "annotated_CDS_protein" else evidence.get("alignment_strand", "NA"),
     }
 
 
@@ -1361,11 +1661,12 @@ def _ordered_projection_compatible(left, right, left_ref_interval, right_ref_int
     right_ref_start, right_ref_end = right_ref_interval
     if not _disjoint_reference_intervals(left_ref_interval, right_ref_interval):
         return False
-    left_order = int(left.get("transcript_order", "0") or 0)
-    right_order = int(right.get("transcript_order", "0") or 0)
-    if left_order == right_order:
-        left_order = int(left.get("start", "0") or 0)
-        right_order = int(right.get("start", "0") or 0)
+    if left.get("contig") != right.get("contig") or left.get("strand") != right.get("strand"):
+        return False
+    left_order = int(left["start"])
+    right_order = int(right["start"])
+    if left.get("strand") == "-":
+        left_order, right_order = -left_order, -right_order
     copy_order = -1 if left_order < right_order else 1
     ref_order = -1 if left_ref_start < right_ref_start else 1
     return copy_order == ref_order
@@ -1416,6 +1717,8 @@ def _match_row(left, right, evidence, score, threshold, distance_class, status, 
         "subject_occurrence_id": right["occurrence_id"],
         "alignment_score": f"{evidence['alignment_score']:.6g}",
         "coverage_score": f"{evidence['coverage_score']:.6g}",
+        "sequence_score": f"{evidence.get('sequence_score', 0.0):.6g}",
+        "structural_context_score": f"{evidence.get('structural_context_score', 0.5):.6g}",
         "query_coverage": f"{evidence.get('query_coverage', 0.0):.6g}",
         "target_coverage": f"{evidence.get('target_coverage', 0.0):.6g}",
         "aligned_pairs": evidence.get("aligned_pairs", 0),
@@ -1446,7 +1749,7 @@ def _match_row(left, right, evidence, score, threshold, distance_class, status, 
         "strand_score": f"{evidence['strand_score']:.6g}",
         "splice_score": f"{evidence['splice_score']:.6g}",
         "size_ratio": f"{evidence['size_ratio']:.6g}",
-        "total_score": f"{score:.6g}",
+        "total_score": f"{evidence['total_score']:.6g}",
         "distance_class": distance_class,
         "threshold": f"{threshold:.6g}",
         "alignment_cigar": evidence["alignment_cigar"],
@@ -1455,11 +1758,128 @@ def _match_row(left, right, evidence, score, threshold, distance_class, status, 
         "alignment_mode": evidence["alignment_mode"],
         "alignment_meaning": evidence["alignment_meaning"],
         "alignment_requested_backend": evidence["alignment_requested_backend"],
+        "dna_match_status": evidence.get("dna_match_status", status),
+        "correspondence_basis": evidence.get("correspondence_basis", "DNA"),
+        "correspondence_score": f"{score:.6g}",
+        "protein_status": evidence.get("protein_status", "not_requested"),
+        "protein_unavailable_reason": evidence.get("protein_unavailable_reason", "NA"),
+        "protein_metrics_scope": evidence.get("protein_metrics_scope", "NA"),
+        "protein_best_query_transcript": evidence.get("protein_best_query_transcript", "NA"),
+        "protein_best_target_transcript": evidence.get("protein_best_target_transcript", "NA"),
+        "protein_supporting_transcripts": evidence.get("protein_supporting_transcripts", "NA"),
+        "protein_projected_blocks": _format_alignment_blocks(evidence.get("protein_projected_blocks", ())),
+        **{
+            field: f"{evidence[field]:.6g}" if field in evidence else "NA"
+            for field in ("protein_aa_identity", "protein_query_cds_coverage", "protein_target_cds_coverage")
+        },
     }
 
 
-def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=None, aligner="mafft", threads=1, min_size_ratio=0.25, species_distances=None, match_writer=None, context_aligner="minimap2"):
-    context = copy_order_context(occurrences)
+def _transcript_id_set(row):
+    return {token for token in str(row.get("transcript_id", "")).split(";") if token and token != "NA"}
+
+
+def _relative_overlap_interval(row, overlap_start, overlap_end):
+    start = int(row["start"])
+    end = int(row["end"])
+    if row.get("strand") == "-":
+        rel_start = end - int(overlap_end) + 1
+        rel_end = end - int(overlap_start) + 1
+    else:
+        rel_start = int(overlap_start) - start + 1
+        rel_end = int(overlap_end) - start + 1
+    return min(rel_start, rel_end), max(rel_start, rel_end)
+
+
+def alternative_overlap_evidence(left, right, context):
+    if occurrence_copy_key(left) != occurrence_copy_key(right):
+        return None
+    if left.get("role") not in EXON_LIKE_ROLES or right.get("role") not in EXON_LIKE_ROLES:
+        return None
+    if left.get("contig") != right.get("contig") or left.get("strand") != right.get("strand"):
+        return None
+    left_tx = _transcript_id_set(left)
+    right_tx = _transcript_id_set(right)
+    if not left_tx or not right_tx or left_tx & right_tx:
+        return None
+    try:
+        overlap_start = max(int(left["start"]), int(right["start"]))
+        overlap_end = min(int(left["end"]), int(right["end"]))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if overlap_start > overlap_end:
+        return None
+    query_start, query_end = _relative_overlap_interval(left, overlap_start, overlap_end)
+    target_start, target_end = _relative_overlap_interval(right, overlap_start, overlap_end)
+    overlap_len = overlap_end - overlap_start + 1
+    left_len = segment_length(left)
+    right_len = segment_length(right)
+    coverage = overlap_len / max(1, min(left_len, right_len))
+    left_ctx = context.get(left["occurrence_id"], {})
+    right_ctx = context.get(right["occurrence_id"], {})
+    order = 1.0 - abs(to_float(left_ctx.get("scaled_index"), 0.5) - to_float(right_ctx.get("scaled_index"), 0.5))
+    left_context = context_score(left_ctx, right_ctx, "left")
+    right_context = context_score(left_ctx, right_ctx, "right")
+    boundary = role_boundary_score(left, right)
+    phase = phase_score(left, right)
+    splice = 1.0 - abs(to_float(left.get("splice_motif_score"), 0.5) - to_float(right.get("splice_motif_score"), 0.5))
+    total = (
+        0.34 * 1.0
+        + 0.14 * coverage
+        + 0.10 * left_context
+        + 0.10 * right_context
+        + 0.10 * boundary
+        + 0.08 * phase
+        + 0.06 * order
+        + 0.04 * 1.0
+        + 0.04 * splice
+    )
+    return {
+        "alignment_score": 1.0,
+        "coverage_score": coverage,
+        "sequence_score": 0.70 * 1.0 + 0.30 * coverage,
+        "structural_context_score": 0.5 * left_context + 0.5 * right_context,
+        "query_coverage": overlap_len / max(1, left_len),
+        "target_coverage": overlap_len / max(1, right_len),
+        "aligned_pairs": overlap_len,
+        "query_alignment_start": query_start,
+        "query_alignment_end": query_end,
+        "target_alignment_start": target_start,
+        "target_alignment_end": target_end,
+        "query_mapped_contig": left.get("contig", "NA"),
+        "query_mapped_start": overlap_start,
+        "query_mapped_end": overlap_end,
+        "query_mapped_strand": left.get("strand", "NA"),
+        "query_mapped_length": overlap_len,
+        "subject_mapped_contig": right.get("contig", "NA"),
+        "subject_mapped_start": overlap_start,
+        "subject_mapped_end": overlap_end,
+        "subject_mapped_strand": right.get("strand", "NA"),
+        "subject_mapped_length": overlap_len,
+        "alignment_strand": "+",
+        "projected_reference_occurrence_id": right["occurrence_id"],
+        "projected_reference_start": target_start,
+        "projected_reference_end": target_end,
+        "projected_reference_blocks": f"{query_start}-{query_end}:{target_start}-{target_end}",
+        "left_context_score": left_context,
+        "right_context_score": right_context,
+        "boundary_score": boundary,
+        "phase_score": phase,
+        "order_score": order,
+        "strand_score": 1.0,
+        "splice_score": splice,
+        "size_ratio": min(left_len, right_len) / max(left_len, right_len),
+        "alignment_cigar": f"{overlap_len}=",
+        "alignment_backend": "genomic_overlap",
+        "alignment_mode": "coordinate_overlap",
+        "alignment_meaning": "same-copy alternative isoform shared genomic interval",
+        "alignment_requested_backend": "genomic_overlap",
+        "total_score": total,
+    }
+
+
+def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=None, aligner="mafft", threads=1, min_size_ratio=0.25, species_distances=None, match_writer=None, context_aligner="minimap2", transcript_paths=None, raw_features=None):
+    context = copy_order_context(occurrences, transcript_paths)
     distance_lookup = load_distance_table(distance_table)
     occurrence_by_id = {row["occurrence_id"]: row for row in occurrences}
     matches = []
@@ -1467,6 +1887,14 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
     projection_by_occ_ref = {}
     score_by_occ = defaultdict(list)
     source_support = defaultdict(lambda: defaultdict(float))
+    genomic_overlap_compatible = set()
+    protein_index = None
+    if aligner in {"mafft", "auto"} and transcript_paths:
+        parsed_features = [
+            {**row, "attrs": parse_attributes(row["attrs"]) if isinstance(row.get("attrs"), str) else row.get("attrs", {})}
+            for row in raw_features or []
+        ]
+        protein_index = CodingProjectionIndex(occurrences, seqs, transcript_paths, parsed_features)
 
     def emit_match(row):
         if match_writer is not None:
@@ -1490,6 +1918,27 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
                         continue
                     yield index, left, right
                     index += 1
+
+    match_count = 0
+    by_copy = defaultdict(list)
+    for occurrence in occurrences:
+        by_copy[occurrence_copy_key(occurrence)].append(occurrence)
+    for copy_rows in by_copy.values():
+        for left_index, left in enumerate(copy_rows):
+            for right in copy_rows[left_index + 1 :]:
+                evidence = alternative_overlap_evidence(left, right, context)
+                if evidence is None:
+                    continue
+                score = evidence["total_score"]
+                accepted_edges.append((left["occurrence_id"], right["occurrence_id"], score))
+                pair = frozenset((left["occurrence_id"], right["occurrence_id"]))
+                genomic_overlap_compatible.add(pair)
+                projection_by_occ_ref[(left["occurrence_id"], right["occurrence_id"])] = _projection_record(evidence, "target")
+                projection_by_occ_ref[(right["occurrence_id"], left["occurrence_id"])] = _projection_record(evidence, "query")
+                score_by_occ[left["occurrence_id"]].append(score)
+                score_by_occ[right["occurrence_id"]].append(score)
+                match_count += 1
+                emit_match(_match_row(left, right, evidence, score, 1.0, "same_copy_alternative_overlap", "mapped", match_count))
 
     def score_pair(item):
         idx, left, right = item
@@ -1519,13 +1968,32 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
         scored_pairs = map(score_pair, iter_pairs())
 
     try:
-        match_count = 0
         for _idx, left, right, evidence, prefilter_status in scored_pairs:
             threshold, distance_class = pair_threshold(left, right, identity_threshold, distance_lookup)
             score = evidence["total_score"]
             compatible = roles_compatible(left, right)
             sequence_ok = sequence_supported_mapping(evidence, threshold)
             mapped = compatible and sequence_ok and score >= threshold
+            evidence["dna_match_status"] = "mapped" if mapped else prefilter_status if prefilter_status != "aligned_candidate" else "low_similarity"
+            exon_pair = left.get("role") in EXON_LIKE_ROLES and right.get("role") in EXON_LIKE_ROLES
+            if not mapped and exon_pair:
+                if protein_index is not None:
+                    evidence.update(protein_index.evidence(left["occurrence_id"], right["occurrence_id"]))
+                    if evidence.get("protein_status") == "supported":
+                        # Keep the original weights and raw DNA statistics. These
+                        # sequence components use annotated CDS evidence only.
+                        coding_score = (
+                            score - 0.34 * evidence["alignment_score"] - 0.14 * evidence["coverage_score"]
+                            + 0.34 * evidence["protein_aa_identity"]
+                            + 0.14 * max(evidence["protein_query_cds_coverage"], evidence["protein_target_cds_coverage"])
+                        )
+                        if compatible and coding_score >= threshold:
+                            mapped = True
+                            score = coding_score
+                            evidence["correspondence_basis"] = "annotated_CDS_protein"
+                else:
+                    evidence["protein_status"] = "unavailable" if aligner in {"mafft", "auto"} else "disabled_backend"
+                    evidence["protein_unavailable_reason"] = "no_CDS_transcript_path" if aligner in {"mafft", "auto"} else "MAFFT_exon_backend_required"
             if mapped:
                 accepted_edges.append((left["occurrence_id"], right["occurrence_id"], score))
                 projection_by_occ_ref[(left["occurrence_id"], right["occurrence_id"])] = _projection_record(evidence, "target")
@@ -1550,6 +2018,7 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
             pool.shutdown(wait=True)
     nodes = [row["occurrence_id"] for row in occurrences]
     same_copy_compatible, cross_copy_compatible = _projection_compatibility(projection_by_occ_ref, occurrence_by_id)
+    same_copy_compatible |= genomic_overlap_compatible
     components = graph_components(
         nodes,
         accepted_edges,
@@ -1581,6 +2050,8 @@ def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_t
     output_dir = Path(output_dir or input_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     occurrences = read_tsv(input_dir / "segment_occurrences.tsv", SEGMENT_FIELDS)
+    transcript_paths = read_tsv(input_dir / "transcript_paths.tsv", optional=True)
+    raw_features = read_tsv(input_dir / "raw_gene_features.tsv", optional=True)
     seqs = parse_fasta(input_dir / "segment_sequences.fasta")
     species_distances = _species_tree_distances(input_dir / "species_tree.tsv")
     match_path = output_dir / "segment_matches.tsv"
@@ -1592,6 +2063,8 @@ def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_t
             threads=threads, min_size_ratio=min_size_ratio, species_distances=species_distances,
             match_writer=lambda row: writer.writerow({field: row.get(field, "NA") for field in MATCH_FIELDS}),
             context_aligner=context_aligner,
+            transcript_paths=transcript_paths,
+            raw_features=raw_features,
         )
     write_tsv(output_dir / "segment_homology.tsv", homology, ["homology_id", "occurrence_id", "support_type", "confidence", "source_label"])
     backend_rows = []

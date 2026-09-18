@@ -18,19 +18,23 @@ def simple_identity(seq_a, seq_b):
 
 
 def match_total(row):
+    if row.get("correspondence_score") not in ("", "NA", None):
+        return to_float(row["correspondence_score"])
     if row.get("total_score") not in ("", "NA", None):
         return to_float(row.get("total_score"))
     boundary = to_float(row.get("boundary_score"), None)
     if boundary is None:
         boundary = 0.5 * (to_float(row.get("left_boundary_score"), 0.5) + to_float(row.get("right_boundary_score"), 0.5))
     return (
-        0.40 * to_float(row.get("alignment_score"))
-        + 0.15 * to_float(row.get("coverage_score"), to_float(row.get("size_ratio"), 1.0))
+        0.34 * to_float(row.get("alignment_score"))
+        + 0.14 * to_float(row.get("coverage_score"), to_float(row.get("size_ratio"), 1.0))
         + 0.10 * to_float(row.get("left_context_score"), 0.5)
         + 0.10 * to_float(row.get("right_context_score"), 0.5)
         + 0.10 * boundary
-        + 0.10 * to_float(row.get("phase_score"), 0.5)
-        + 0.05 * to_float(row.get("order_score"), 0.5)
+        + 0.08 * to_float(row.get("phase_score"), 0.5)
+        + 0.06 * to_float(row.get("order_score"), 0.5)
+        + 0.04 * to_float(row.get("strand_score"), 0.5)
+        + 0.04 * to_float(row.get("splice_score"), 0.5)
     )
 
 
@@ -41,6 +45,8 @@ def normalized_components(row):
     return {
         "alignment_score": to_float(row.get("alignment_score")),
         "coverage_score": to_float(row.get("coverage_score"), to_float(row.get("size_ratio"), 1.0)),
+        "sequence_score": to_float(row.get("sequence_score"), None),
+        "structural_context_score": to_float(row.get("structural_context_score"), None),
         "left_context_score": to_float(row.get("left_context_score"), 0.5),
         "right_context_score": to_float(row.get("right_context_score"), 0.5),
         "boundary_score": boundary,
@@ -52,14 +58,19 @@ def normalized_components(row):
 
 
 def tree_distances(input_dir):
+    """Prioritize correspondence by supplied lengths, or topology if any are missing.
+
+    Unit edges apply to this ordering only; CTMC branch lengths are unchanged.
+    """
     rows = read_tsv(f"{input_dir}/species_tree.tsv", optional=True)
     if not rows:
         return {}
     tree = SpeciesTree(rows)
+    use_topology = any(tree.length[node] is None for node in tree.parent if node != tree.root)
     depth = {tree.root: 0.0}
     for node in tree.preorder():
         for child in tree.children.get(node, []):
-            depth[child] = depth[node] + tree.branch_length(child)
+            depth[child] = depth[node] + (1.0 if use_topology else tree.branch_length(child))
 
     ancestors = {}
     for node in tree.parent:
@@ -238,7 +249,7 @@ def summarize_progressive_elements(input_dir, occurrences, element_rows, scored)
     return out
 
 
-def summarize_ancestral_element_graph(input_dir, element_rows):
+def summarize_observed_element_tree_coverage(input_dir, element_rows):
     tree_rows = read_tsv(f"{input_dir}/species_tree.tsv", optional=True)
     if not tree_rows:
         return []
@@ -386,14 +397,24 @@ def infer_correspondence(input_dir, output_dir):
                 identities.append(simple_identity(seqs[left], seqs[right]))
         mean_identity = sum(identities) / len(identities) if identities else 0.0
         roles = Counter(occ_by_id.get(occ_id, {}).get("role", "unknown") for occ_id in occ_ids)
+        observed_species = {
+            occ_by_id[occ_id]["species"] for occ_id in occ_ids
+            if norm_state(occ_by_id.get(occ_id, {}).get("presence_status")) == "present"
+            and norm_state(occ_by_id.get(occ_id, {}).get("species")) != "unknown"
+        }
+        observation_call = (
+            "observed_in_multiple_species" if len(observed_species) > 1
+            else "observed_single_species" if observed_species
+            else "no_species_presence_observed"
+        )
         conservation.append(
             {
                 "homology_id": component_id,
                 "occurrence_count": len(occ_ids),
-                "species_count": uniq(occ_by_id.get(occ_id, {}).get("species", "") for occ_id in occ_ids),
+                "species_count": len(observed_species),
                 "mean_pairwise_identity": f"{mean_identity:.6g}",
                 "role_spectrum": ";".join(f"{key}:{roles[key]}" for key in sorted(roles)),
-                "conservation_call": "conserved" if mean_identity >= 0.75 or len(occ_ids) >= 2 else "single_or_low_sequence_support",
+                "conservation_call": observation_call,
             }
         )
 
@@ -402,6 +423,10 @@ def infer_correspondence(input_dir, output_dir):
     for row in matches:
         score = match_total(row)
         components = normalized_components(row)
+        if components["sequence_score"] is None:
+            components["sequence_score"] = 0.70 * components["alignment_score"] + 0.30 * components["coverage_score"]
+        if components["structural_context_score"] is None:
+            components["structural_context_score"] = 0.5 * components["left_context_score"] + 0.5 * components["right_context_score"]
         grouped[row["query_occurrence_id"]].append((score, row["match_id"]))
         scored.append(
             {
@@ -410,6 +435,8 @@ def infer_correspondence(input_dir, output_dir):
                 "subject_occurrence_id": row["subject_occurrence_id"],
                 "alignment_score": f"{components['alignment_score']:.6g}",
                 "coverage_score": f"{components['coverage_score']:.6g}",
+                "sequence_score": f"{components['sequence_score']:.6g}",
+                "structural_context_score": f"{components['structural_context_score']:.6g}",
                 "left_context_score": f"{components['left_context_score']:.6g}",
                 "right_context_score": f"{components['right_context_score']:.6g}",
                 "boundary_score": f"{components['boundary_score']:.6g}",
@@ -418,6 +445,16 @@ def infer_correspondence(input_dir, output_dir):
                 "strand_score": f"{components['strand_score']:.6g}",
                 "splice_score": f"{components['splice_score']:.6g}",
                 "total_score": f"{score:.6g}",
+                "dna_total_score": row.get("total_score", "NA"),
+                "correspondence_basis": row.get("correspondence_basis", "DNA"),
+                "protein_status": row.get("protein_status", "not_requested"),
+                "protein_aa_identity": row.get("protein_aa_identity", "NA"),
+                "protein_query_cds_coverage": row.get("protein_query_cds_coverage", "NA"),
+                "protein_target_cds_coverage": row.get("protein_target_cds_coverage", "NA"),
+                "protein_metrics_scope": row.get("protein_metrics_scope", "NA"),
+                "protein_best_query_transcript": row.get("protein_best_query_transcript", "NA"),
+                "protein_best_target_transcript": row.get("protein_best_target_transcript", "NA"),
+                "protein_supporting_transcripts": row.get("protein_supporting_transcripts", "NA"),
                 "match_status": row.get("match_status", "ambiguous"),
                 "distance_class": row.get("distance_class", "NA"),
                 "threshold": row.get("threshold", "NA"),
@@ -477,7 +514,7 @@ def infer_correspondence(input_dir, output_dir):
             }
         )
     progressive_element_rows = summarize_progressive_elements(input_dir, occurrences, element_rows, scored)
-    ancestral_graph_rows = summarize_ancestral_element_graph(input_dir, element_rows)
+    observed_coverage_rows = summarize_observed_element_tree_coverage(input_dir, element_rows)
     path_rows = summarize_intragenic_paths(occurrences, element_rows)
 
     for row in component_rows:
@@ -503,6 +540,8 @@ def infer_correspondence(input_dir, output_dir):
             "subject_occurrence_id",
             "alignment_score",
             "coverage_score",
+            "sequence_score",
+            "structural_context_score",
             "left_context_score",
             "right_context_score",
             "boundary_score",
@@ -511,6 +550,16 @@ def infer_correspondence(input_dir, output_dir):
             "strand_score",
             "splice_score",
             "total_score",
+            "dna_total_score",
+            "correspondence_basis",
+            "protein_status",
+            "protein_aa_identity",
+            "protein_query_cds_coverage",
+            "protein_target_cds_coverage",
+            "protein_metrics_scope",
+            "protein_best_query_transcript",
+            "protein_best_target_transcript",
+            "protein_supporting_transcripts",
             "distance_class",
             "threshold",
             "alignment_cigar",
@@ -522,6 +571,6 @@ def infer_correspondence(input_dir, output_dir):
     write_tsv(f"{output_dir}/internal_homology_graph_edges.tsv", graph_edges, ["edge_id", "query_occurrence_id", "subject_occurrence_id", "total_score", "reciprocal_status", "edge_call"])
     write_tsv(f"{output_dir}/progressive_correspondence.tsv", progressive_rows, ["match_id", "query_species", "subject_species", "query_gene_copy_id", "subject_gene_copy_id", "tree_distance", "progressive_tier", "total_score", "correspondence_call"])
     write_tsv(f"{output_dir}/progressive_element_correspondence.tsv", progressive_element_rows, ["element_id", "family_id", "homology_ids", "member_count", "species_count", "copy_count", "exon_like_members", "candidate_source_members", "nearest_species_support", "within_clade_support", "deep_tree_support", "best_pair_score", "mean_pair_score", "progressive_call"])
-    write_tsv(f"{output_dir}/ancestral_element_graph.tsv", ancestral_graph_rows, ["family_id", "element_id", "mrca_label", "present_species_count", "tree_tip_count", "coverage_class", "present_species", "present_copies"])
-    write_tsv(f"{output_dir}/ancestral_intragenic_paths.tsv", path_rows, ["family_id", "path_scope", "node_label", "species", "gene_copy_id", "path_type", "element_path", "context_count", "path_support"])
+    write_tsv(f"{output_dir}/observed_element_tree_coverage.tsv", observed_coverage_rows, ["family_id", "element_id", "mrca_label", "present_species_count", "tree_tip_count", "coverage_class", "present_species", "present_copies"])
+    write_tsv(f"{output_dir}/observed_intragenic_paths.tsv", path_rows, ["family_id", "path_scope", "node_label", "species", "gene_copy_id", "path_type", "element_path", "context_count", "path_support"])
     return component_rows, conservation, scored

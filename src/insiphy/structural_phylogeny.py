@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 from scipy.linalg import expm
 from scipy.optimize import brentq, minimize
+from scipy.special import logsumexp
 from scipy.stats import chi2
 
 from .io import read_tsv, write_tsv
@@ -33,12 +34,15 @@ def _fmt(value):
 
 
 def _validated_tree_rows(path, branch_length_mode):
+    if branch_length_mode not in {"supplied", "unit"}:
+        raise SystemExit("branch_length_mode must be supplied or unit")
     rows = read_tsv(path, ["node_id", "parent_id", "label"])
     out = []
     for row in rows:
         item = dict(row)
         if not row.get("parent_id"):
-            item["branch_length"] = 0.0
+            raw_root = row.get("branch_length") or row.get("length") or row.get("distance")
+            item["branch_length"] = raw_root if raw_root not in {None, "", "NA"} else "NA"
         elif branch_length_mode == "unit":
             item["branch_length"] = 1.0
         else:
@@ -48,11 +52,21 @@ def _validated_tree_rows(path, branch_length_mode):
                     "species_tree.tsv has a branch without length; use --branch-length-mode unit to analyze branch counts"
                 )
             length = float(raw)
-            if length <= 0:
-                raise SystemExit("all non-root branches must have positive lengths")
+            if not math.isfinite(length) or length < 0:
+                raise SystemExit("all non-root branches must have finite non-negative lengths")
             item["branch_length"] = length
         out.append(item)
     return out
+
+
+def _fit_valid_for_posterior(fit):
+    return (
+        bool(fit.get("converged"))
+        and fit.get("fit_status") == "success"
+        and fit.get("inference_status") != "no_observed_contrast"
+        and bool(fit.get("identifiable"))
+        and not bool(fit.get("boundary"))
+    )
 
 
 @lru_cache(maxsize=32768)
@@ -155,38 +169,50 @@ def _decode_parameters(theta, model, root_frequency="estimated", root_presence=0
     return gain, loss, multiplier, rho
 
 
-def _inside_messages(tree, observations, gain, loss, foreground_multiplier, foreground_children, root_presence=None):
+def _log_array(values):
+    with np.errstate(divide="ignore"):
+        return np.log(np.asarray(values, dtype=float))
+
+
+def _inside_log_messages(tree, observations, gain, loss, foreground_multiplier, foreground_children, root_presence=None):
     inside = {}
-    cumulative_scale = {}
     for node in tree.postorder():
         if not tree.children.get(node):
             observed = observations.get(tree.label[node], "unknown")
-            vector = np.array([1.0, 1.0], dtype=float)
             if observed == 0:
-                vector = np.array([1.0, 0.0], dtype=float)
+                inside[node] = np.array([0.0, -math.inf], dtype=float)
             elif observed == 1:
-                vector = np.array([0.0, 1.0], dtype=float)
-            scale = float(vector.sum())
-            inside[node] = vector / scale
-            cumulative_scale[node] = math.log(scale)
+                inside[node] = np.array([-math.inf, 0.0], dtype=float)
+            else:
+                inside[node] = np.array([0.0, 0.0], dtype=float)
             continue
-        vector = np.ones(2, dtype=float)
-        child_scale = 0.0
+        vector = np.zeros(2, dtype=float)
         for child in tree.children[node]:
             multiplier = foreground_multiplier if child in foreground_children else 1.0
-            matrix = _transition_matrix(gain, loss, tree.branch_length(child), multiplier)
-            vector *= matrix @ inside[child]
-            child_scale += cumulative_scale[child]
-        scale = max(float(vector.sum()), 1e-300)
-        inside[node] = vector / scale
-        cumulative_scale[node] = child_scale + math.log(scale)
+            log_matrix = _log_array(_transition_matrix(gain, loss, tree.branch_length(child), multiplier))
+            vector += np.logaddexp(
+                log_matrix[:, 0] + inside[child][0],
+                log_matrix[:, 1] + inside[child][1],
+            )
+        inside[node] = vector
     prior = _root_prior(gain, loss, root_presence)
-    root_term = max(float(prior @ inside[tree.root]), 1e-300)
-    return inside, cumulative_scale[tree.root] + math.log(root_term)
+    root_log = _log_array(prior) + inside[tree.root]
+    return inside, float(np.logaddexp(root_log[0], root_log[1]))
+
+
+def _inside_messages(tree, observations, gain, loss, foreground_multiplier, foreground_children, root_presence=None):
+    log_inside, log_likelihood = _inside_log_messages(
+        tree, observations, gain, loss, foreground_multiplier, foreground_children, root_presence
+    )
+    inside = {}
+    for node, vector in log_inside.items():
+        scale = float(np.logaddexp(vector[0], vector[1]))
+        inside[node] = np.exp(vector - scale) if math.isfinite(scale) else np.zeros(2, dtype=float)
+    return inside, log_likelihood
 
 
 def _pattern_log_likelihood(tree, observations, gain, loss, foreground_multiplier, foreground_children, root_presence=None):
-    _inside, log_likelihood = _inside_messages(
+    _inside, log_likelihood = _inside_log_messages(
         tree, observations, gain, loss, foreground_multiplier, foreground_children, root_presence
     )
     return log_likelihood
@@ -194,14 +220,22 @@ def _pattern_log_likelihood(tree, observations, gain, loss, foreground_multiplie
 
 def _ascertainment_log_probability(tree, observations, gain, loss, foreground_multiplier, foreground_children, root_presence, mode):
     observed_labels = {label for label, value in observations.items() if value in {0, 1}}
+    if not observed_labels or (mode == "variable-only" and len(observed_labels) < 2):
+        return -math.inf
     zero = {label: (0 if label in observed_labels else "unknown") for label in tree.leaf_by_label}
-    one = {label: (1 if label in observed_labels else "unknown") for label in tree.leaf_by_label}
-    p_zero = math.exp(_pattern_log_likelihood(tree, zero, gain, loss, foreground_multiplier, foreground_children, root_presence))
-    excluded = p_zero
+    log_excluded = _pattern_log_likelihood(
+        tree, zero, gain, loss, foreground_multiplier, foreground_children, root_presence
+    )
     if mode == "variable-only":
-        p_one = math.exp(_pattern_log_likelihood(tree, one, gain, loss, foreground_multiplier, foreground_children, root_presence))
-        excluded += p_one
-    return math.log(max(1e-300, 1.0 - excluded))
+        one = {label: (1 if label in observed_labels else "unknown") for label in tree.leaf_by_label}
+        log_one = _pattern_log_likelihood(
+            tree, one, gain, loss, foreground_multiplier, foreground_children, root_presence
+        )
+        log_excluded = float(np.logaddexp(log_excluded, log_one))
+    selected = -math.expm1(log_excluded)
+    if selected <= 0.0:
+        return -math.inf
+    return math.log(selected)
 
 
 def _dataset_log_likelihood(tree, patterns, model, theta, foreground_children, ascertainment, root_frequency, root_presence):
@@ -210,9 +244,14 @@ def _dataset_log_likelihood(tree, patterns, model, theta, foreground_children, a
     for observations, weight in _iter_weighted_patterns(patterns):
         value = _pattern_log_likelihood(tree, observations, gain, loss, multiplier, foreground_children, rho)
         if ascertainment in {"observed-at-least-one", "variable-only"}:
-            value -= _ascertainment_log_probability(
+            ascertainment_log_probability = _ascertainment_log_probability(
                 tree, observations, gain, loss, multiplier, foreground_children, rho, ascertainment
             )
+            if not math.isfinite(ascertainment_log_probability):
+                return -math.inf
+            value -= ascertainment_log_probability
+        if not math.isfinite(value):
+            return -math.inf
         total += int(weight) * value
     return total
 
@@ -249,12 +288,18 @@ def _profile_interval(objective, optimum, index, bounds, max_log_likelihood, tra
     target = max_log_likelihood - PROFILE_DROP_95
     optimum = np.asarray(optimum, dtype=float)
 
+    class ProfileOptimizationFailed(Exception):
+        pass
+
     def profile_at(fixed):
         free_indices = [idx for idx in range(len(optimum)) if idx != index]
         if not free_indices:
             trial = optimum.copy()
             trial[index] = fixed
-            return -float(objective(trial)), "ok"
+            value = -float(objective(trial))
+            if not math.isfinite(value):
+                return None, "profile_optimization_failed"
+            return value, "ok"
 
         def free_objective(free_values):
             trial = optimum.copy()
@@ -265,9 +310,15 @@ def _profile_interval(objective, optimum, index, bounds, max_log_likelihood, tra
         start = optimum[free_indices]
         free_bounds = [bounds[idx] for idx in free_indices]
         result = minimize(free_objective, start, method="L-BFGS-B", bounds=free_bounds)
-        if not result.success:
+        if not result.success or not math.isfinite(float(result.fun)):
             return None, "profile_optimization_failed"
         return -float(result.fun), "ok"
+
+    def profile_residual(fixed):
+        profiled, status = profile_at(fixed)
+        if status != "ok":
+            raise ProfileOptimizationFailed
+        return profiled - target
 
     def crossing(direction):
         edge = bounds[index][0] if direction < 0 else bounds[index][1]
@@ -277,13 +328,15 @@ def _profile_interval(objective, optimum, index, bounds, max_log_likelihood, tra
         for point in points:
             profiled, status = profile_at(float(point))
             if status != "ok":
-                return float(point), status
+                return None, status
             value = profiled - target
             if value <= 0 <= previous_value:
                 try:
-                    root = brentq(lambda x: profile_at(x)[0] - target, float(point), float(previous_x))
-                except ValueError:
-                    return float(point), "profile_root_failed"
+                    root = brentq(profile_residual, float(point), float(previous_x))
+                except ProfileOptimizationFailed:
+                    return None, "profile_optimization_failed"
+                except (ValueError, RuntimeError):
+                    return None, "profile_root_failed"
                 return root, "closed"
             previous_x = float(point)
             previous_value = value
@@ -294,6 +347,10 @@ def _profile_interval(objective, optimum, index, bounds, max_log_likelihood, tra
     status = "two_sided"
     failed_statuses = {lower_status, upper_status} & {"profile_optimization_failed", "profile_root_failed"}
     if failed_statuses:
+        if lower_status == "range_limited":
+            failed_statuses.add("lower_range_limited")
+        if upper_status == "range_limited":
+            failed_statuses.add("upper_range_limited")
         status = ";".join(sorted(failed_statuses))
     elif lower_status == "range_limited" and upper_status == "range_limited":
         status = "range_limited_both"
@@ -420,6 +477,16 @@ def fit_model(
             fit_status = "nonidentifiable"
         else:
             fit_status = "success"
+    inference_status = fit_status
+    has_observed_contrast = any(
+        weight > 0 and len(_pattern_observed_values(pattern)) > 1
+        for pattern, weight in _iter_weighted_patterns(patterns)
+    )
+    if not has_observed_contrast:
+        # Local curvature cannot establish an interior rate estimate without an observed contrast.
+        fit_status = "not_estimable"
+        inference_status = "no_observed_contrast"
+        identifiable = False
     return {
         "model": model,
         "theta": theta,
@@ -432,6 +499,7 @@ def fit_model(
         "aic": 2 * len(theta) - 2 * log_likelihood,
         "converged": converged,
         "fit_status": fit_status,
+        "inference_status": inference_status,
         "optimizer_message": str(best.message),
         "boundary": boundary,
         "intervals": intervals,
@@ -445,41 +513,61 @@ def fit_model(
 
 
 def _posterior_messages(tree, observations, gain, loss, multiplier, foreground_children, root_presence=None):
-    inside, _log_likelihood = _inside_messages(
+    inside, log_likelihood = _inside_log_messages(
         tree, observations, gain, loss, multiplier, foreground_children, root_presence
     )
+    if not math.isfinite(log_likelihood):
+        raise ValueError("posterior probabilities require a positive-probability observation pattern")
     prior = _root_prior(gain, loss, root_presence)
-    outside = {tree.root: prior / prior.sum()}
+    outside = {tree.root: _log_array(prior)}
     node = {}
     edge = {}
     for current in tree.preorder():
-        weights = outside[current] * inside[current]
-        node[current] = weights / max(float(weights.sum()), 1e-300)
-        for child in tree.children.get(current, []):
-            sibling_product = np.ones(2, dtype=float)
-            for sibling in tree.children[current]:
-                if sibling == child:
-                    continue
-                sibling_multiplier = multiplier if sibling in foreground_children else 1.0
-                sibling_matrix = _transition_matrix(
-                    gain, loss, tree.branch_length(sibling), sibling_multiplier
-                )
-                sibling_product *= sibling_matrix @ inside[sibling]
+        node_log = outside[current] + inside[current]
+        node[current] = np.exp(node_log - np.logaddexp(node_log[0], node_log[1]))
+        children = list(tree.children.get(current, []))
+        if not children:
+            continue
+        child_messages = []
+        child_log_matrices = {}
+        for child in children:
             child_multiplier = multiplier if child in foreground_children else 1.0
             matrix = _transition_matrix(gain, loss, tree.branch_length(child), child_multiplier)
-            parent_context = outside[current] * sibling_product
-            joint = parent_context[:, None] * matrix * inside[child][None, :]
-            joint /= max(float(joint.sum()), 1e-300)
+            log_matrix = _log_array(matrix)
+            child_log_matrices[child] = log_matrix
+            child_messages.append(
+                np.logaddexp(
+                    log_matrix[:, 0] + inside[child][0],
+                    log_matrix[:, 1] + inside[child][1],
+                )
+            )
+        prefix = [np.zeros(2, dtype=float)]
+        for message in child_messages:
+            prefix.append(prefix[-1] + message)
+        suffix = [np.zeros(2, dtype=float) for _child in children]
+        running = np.zeros(2, dtype=float)
+        for idx in range(len(children) - 1, -1, -1):
+            suffix[idx] = running
+            running = running + child_messages[idx]
+        for idx, child in enumerate(children):
+            parent_context = outside[current] + prefix[idx] + suffix[idx]
+            log_matrix = child_log_matrices[child]
+            joint_log = parent_context[:, None] + log_matrix + inside[child][None, :]
+            joint = np.exp(joint_log - logsumexp(joint_log))
             edge[(current, child)] = joint
-            child_outside = parent_context @ matrix
-            outside[child] = child_outside / max(float(child_outside.sum()), 1e-300)
+            outside[child] = np.logaddexp(
+                parent_context[0] + log_matrix[0, :],
+                parent_context[1] + log_matrix[1, :],
+            )
     return node, edge
 
 
 @lru_cache(maxsize=32768)
 def _conditional_transition_count(gain, loss, branch_length, multiplier, start, end, src, dst):
     matrix = _transition_matrix(gain, loss, branch_length, multiplier)
-    denominator = max(float(matrix[start, end]), 1e-300)
+    denominator = float(matrix[start, end])
+    if denominator <= 0.0:
+        return 0.0
     gain_rate = float(gain) * float(multiplier)
     loss_rate = float(loss) * float(multiplier)
     q = np.array([[-gain_rate, gain_rate], [loss_rate, -loss_rate]], dtype=float)
@@ -714,6 +802,7 @@ def infer_single_copy_phylogeny(
                     "aic": _fmt(fit["aic"]),
                     "converged": str(fit["converged"]).lower(),
                     "fit_status": fit["fit_status"],
+                    "inference_status": fit.get("inference_status", fit["fit_status"]),
                     "parameter_at_boundary": str(fit["boundary"]).lower(),
                     "identifiable": str(fit["identifiable"]).lower(),
                     "information_condition": _fmt(fit["information_condition"]),
@@ -760,6 +849,7 @@ def infer_single_copy_phylogeny(
             "q_value": "NA",
             "q_value_method": "not_available",
             "test_status": test_status,
+            "inference_status": "no_observed_contrast" if informative == 0 else test_status,
             "reference_distribution": "chi_square_df1_asymptotic_regular_interior" if estimable else "not_available",
             "n_taxa": observed_taxa,
             "n_structural_sites": site_count,
@@ -767,12 +857,41 @@ def infer_single_copy_phylogeny(
             "n_informative_patterns": informative,
         }
         test_rows.append(test_row)
-        eligible_fits = [fit for fit in (null_fit, alternative_fit) if fit["converged"]]
-        if informative == 0:
-            selected_fit = null_fit if null_fit["converged"] else None
-        else:
-            selected_fit = min(eligible_fits, key=lambda fit: fit["aic"]) if eligible_fits else None
+        eligible_fits = [
+            fit for fit in (null_fit, alternative_fit)
+            if informative > 0 and _fit_valid_for_posterior(fit)
+        ]
+        selected_fit = min(eligible_fits, key=lambda fit: fit["aic"]) if eligible_fits else None
         if selected_fit is None:
+            diagnostic_fit = alternative_fit if informative else null_fit
+            status = diagnostic_fit.get("fit_status", "not_estimable")
+            for site_id, observations in encoded_sites:
+                known = sum(value in {0, 1} for value in observations.values())
+                change_rows.append(
+                    {
+                        "family_id": family,
+                        "layer": layer,
+                        "site_id": site_id,
+                        "parent_node": "NA",
+                        "child_node": "NA",
+                        "branch_scope": "NA",
+                        "structural_change_type": "posterior_not_reported",
+                        "structural_pattern": f"{state_0}<->{state_1}",
+                        "endpoint_change_probability": "NA",
+                        "gain_endpoint_probability": "NA",
+                        "loss_endpoint_probability": "NA",
+                        "direction_probability": "NA",
+                        "expected_gain_count": "NA",
+                        "expected_loss_count": "NA",
+                        "model": diagnostic_fit.get("model", "NA"),
+                        "rate_test_status": test_status,
+                        "conditioning": (
+                            f"posterior_not_reported;fit_status={status};"
+                            f"inference_status={test_row['inference_status']};"
+                            f"known_tip_count={known};requires=successful_identifiable_interior_fit"
+                        ),
+                    }
+                )
             continue
         posterior_conditioning = (
             "conditional_MLE;"
@@ -781,6 +900,42 @@ def infer_single_copy_phylogeny(
         )
 
         for site_id, observations in encoded_sites:
+            site_log_likelihood = _pattern_log_likelihood(
+                tree,
+                observations,
+                selected_fit["gain_rate"],
+                selected_fit["loss_rate"],
+                selected_fit["foreground_multiplier"],
+                foreground_children,
+                selected_fit["root_presence"],
+            )
+            if not math.isfinite(site_log_likelihood):
+                known = sum(value in {0, 1} for value in observations.values())
+                change_rows.append(
+                    {
+                        "family_id": family,
+                        "layer": layer,
+                        "site_id": site_id,
+                        "parent_node": "NA",
+                        "child_node": "NA",
+                        "branch_scope": "NA",
+                        "structural_change_type": "posterior_not_reported",
+                        "structural_pattern": f"{state_0}<->{state_1}",
+                        "endpoint_change_probability": "NA",
+                        "gain_endpoint_probability": "NA",
+                        "loss_endpoint_probability": "NA",
+                        "direction_probability": "NA",
+                        "expected_gain_count": "NA",
+                        "expected_loss_count": "NA",
+                        "model": selected_fit["model"],
+                        "rate_test_status": test_status,
+                        "conditioning": (
+                            "posterior_not_reported;site_likelihood_zero;"
+                            f"known_tip_count={known};requires=positive_probability_observation_pattern"
+                        ),
+                    }
+                )
+                continue
             node_posterior, edge_posterior = _posterior_messages(
                 tree,
                 observations,
@@ -897,7 +1052,7 @@ def infer_single_copy_phylogeny(
             "foreground_multiplier_ci_status", "root_presence", "root_presence_ci_low",
             "root_presence_ci_high", "root_presence_ci_status", "root_frequency_mode", "log_likelihood",
             "parameter_count", "aic", "converged", "fit_status", "parameter_at_boundary", "identifiable",
-            "information_condition", "optimizer_starts", "optimizer_message", "ascertainment",
+            "information_condition", "optimizer_starts", "optimizer_message", "ascertainment", "inference_status",
         ],
     )
     write_tsv(
@@ -907,7 +1062,7 @@ def infer_single_copy_phylogeny(
             "family_id", "layer", "test_id", "null_model", "alternative_model", "null_log_likelihood",
             "alternative_log_likelihood", "lrt_statistic", "df", "p_value", "q_value", "q_value_method",
             "test_status", "reference_distribution", "n_taxa", "n_structural_sites", "n_compressed_patterns",
-            "n_informative_patterns",
+            "n_informative_patterns", "inference_status",
         ],
     )
     write_tsv(

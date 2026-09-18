@@ -6,14 +6,19 @@ from .io import norm_state, to_float
 
 
 EXON_LIKE_ROLES = {"CDS", "exon", "UTR", "noncoding_exon"}
-NONCODING_ROLES = {"intron", "regulatory", "intergenic", "noncoding", "intron_or_noncoding"}
+NONCODING_ROLES = {"intron", "intergenic"}
 HIDDEN_COMPLETION_CALLS = {
     "hidden_segment_candidate",
     "shifted_splice_site_candidate",
     "joined_exon_candidate",
     "hidden_segment_with_frame_disruption",
+    "predicted_exon_candidate",
 }
 HIDDEN_EVIDENCE_STATUS = {"supports_hidden_segment", "conflicts_annotation"}
+ROLE_ALIASES = {
+    "predicted_CDS": "CDS",
+    "predicted_cds": "CDS",
+}
 
 
 def element_id_from_homology(homology_id):
@@ -29,6 +34,7 @@ def element_id_from_homology(homology_id):
 
 
 def role_bucket(role):
+    role = ROLE_ALIASES.get(role, role)
     if role == "CDS":
         return "CDS"
     if role in {"exon", "UTR", "noncoding_exon"}:
@@ -38,14 +44,20 @@ def role_bucket(role):
     return "unknown"
 
 
+def evidence_role(row):
+    predicted = row.get("predicted_role", "")
+    inferred = row.get("inferred_role", "")
+    return ROLE_ALIASES.get(predicted, predicted) or ROLE_ALIASES.get(inferred, inferred)
+
+
 def evidence_promotes_element(row):
     status = row.get("evidence_status", "")
     completion = row.get("completion_call", "")
-    inferred_role = row.get("inferred_role", "")
+    candidate_role = evidence_role(row)
     return (
-        inferred_role in EXON_LIKE_ROLES
-        or (completion in HIDDEN_COMPLETION_CALLS and inferred_role in EXON_LIKE_ROLES)
-        or (status in HIDDEN_EVIDENCE_STATUS and inferred_role in EXON_LIKE_ROLES)
+        candidate_role in EXON_LIKE_ROLES
+        or (completion in HIDDEN_COMPLETION_CALLS and candidate_role in EXON_LIKE_ROLES)
+        or (status in HIDDEN_EVIDENCE_STATUS and candidate_role in EXON_LIKE_ROLES)
     )
 
 
@@ -64,7 +76,7 @@ def collect_element_profiles(homology, occurrences, evidence_rows=None):
         hid = row.get("homology_id")
         if not hid:
             continue
-        profiles[hid]["roles"].add(row.get("inferred_role", "unknown"))
+        profiles[hid]["roles"].add(evidence_role(row) or row.get("inferred_role", "unknown"))
         if row.get("family_id"):
             profiles[hid]["families"].add(row["family_id"])
         if evidence_promotes_element(row):
@@ -80,7 +92,7 @@ def collect_element_profiles(homology, occurrences, evidence_rows=None):
 def element_class_for_occurrence(occ, homology_id, profiles, element_by_homology):
     if homology_id not in element_by_homology:
         return "context"
-    role = occ.get("role", "unknown")
+    role = ROLE_ALIASES.get(occ.get("role", "unknown"), occ.get("role", "unknown"))
     if norm_state(occ.get("presence_status")) == "absent":
         return "absent"
     if role in EXON_LIKE_ROLES:
@@ -89,7 +101,7 @@ def element_class_for_occurrence(occ, homology_id, profiles, element_by_homology
 
 
 def element_role_from_occurrences(rows):
-    roles = {row.get("role", "unknown") for row in rows if norm_state(row.get("presence_status")) == "present"}
+    roles = {ROLE_ALIASES.get(row.get("role", "unknown"), row.get("role", "unknown")) for row in rows if norm_state(row.get("presence_status")) == "present"}
     if not roles:
         return "absent"
     if "CDS" in roles:

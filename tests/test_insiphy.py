@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from insiphy.alignment import AlignmentBackendError, AlignmentStats, global_alignment_stats, phase_compatibility
-from insiphy.annotation import _overlaps_annotated_exon
+from insiphy.annotation import _overlapping_annotation_role
 from insiphy.cli import run_all
 from insiphy.correspondence import simple_identity
 from insiphy.io import read_tsv
@@ -94,9 +94,9 @@ class SingleCopyPhylogenyTests(unittest.TestCase):
             )
             invariant = [row for row in tests if row["layer"] == "exon_presence"][0]
             self.assertEqual(invariant["p_value"], "NA")
-            self.assertTrue(nodes)
-            self.assertTrue(branches)
             self.assertTrue(all(0 <= float(row["posterior_probability"]) <= 1 for row in nodes))
+            self.assertTrue(all("fit_status=success" in row["conditioning"] for row in nodes))
+            self.assertTrue(all("fit_status=success" in row["conditioning"] for row in branches))
 
     def test_foreground_model(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -135,7 +135,7 @@ class SingleCopyPhylogenyTests(unittest.TestCase):
                     input_dir, result_dir, model="foreground", foreground_branches=all_branches
                 )
 
-    def test_sequence_supported_annotation_completion_enters_tip_state(self):
+    def test_predicted_completion_preserves_explicit_nonexonic_observation(self):
         with tempfile.TemporaryDirectory() as tmp:
             input_dir, result_dir = self.write_structural_case(Path(tmp))
             (result_dir / "annotation_completion_candidates.tsv").write_text(
@@ -148,8 +148,8 @@ class SingleCopyPhylogenyTests(unittest.TestCase):
                 for row in read_tsv(result_dir / "structural_site_matrix.tsv")
                 if row["layer"] == "exon_role" and row["site_id"] == "EG_2" and row["species"] == "C"
             ]
-            self.assertEqual(states[0]["state"], "exonic")
-            self.assertIn("sequence_supported_exon_completion", states[0]["evidence"])
+            self.assertEqual(states[0]["state"], "not_exonic")
+            self.assertIn("homologous_non_exonic_sequence", states[0]["evidence"])
 
     def test_orthofinder_single_copy_import(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -160,10 +160,14 @@ class SingleCopyPhylogenyTests(unittest.TestCase):
                 "Orthogroup\tA\tB\nOG0001\tgene_a\tgene_b\n"
             )
             resources = root / "genomes.tsv"
+            gff_a = root / "a.gff3"
+            gff_b = root / "b.gff3"
+            gff_a.write_text("chr1\ttest\tgene\t1\t30\t.\t+\t.\tID=gene_a\n")
+            gff_b.write_text("chr1\ttest\tgene\t1\t30\t.\t+\t.\tID=gene_b\n")
             resources.write_text(
                 "species\tgenome_fasta\tannotation_file\n"
-                "A\t/a.fa\t/a.gff3\n"
-                "B\t/b.fa\t/b.gff3\n"
+                f"A\t/a.fa\t{gff_a}\n"
+                f"B\t/b.fa\t{gff_b}\n"
             )
             tree = root / "tree.nwk"
             tree.write_text("(A:0.1,B:0.1)root;\n")
@@ -187,11 +191,16 @@ class SingleCopyPhylogenyTests(unittest.TestCase):
             input_dir.mkdir()
             result_dir.mkdir()
             (input_dir / "segment_occurrences.tsv").write_text(
-                "occurrence_id\tfamily_id\tspecies\tgene_copy_id\ttranscript_id\trole\tpresence_status\n"
-                "A_left\tfam\tA\tA_gene\tA_tx\tCDS\tpresent\n"
-                "A_intron\tfam\tA\tA_gene\tA_tx\tintron\tpresent\n"
-                "A_right\tfam\tA\tA_gene\tA_tx\tCDS\tpresent\n"
-                "B_whole\tfam\tB\tB_gene\tB_tx\tCDS\tpresent\n"
+                "occurrence_id\tfamily_id\tspecies\tgene_copy_id\ttranscript_id\trole\tpresence_status\tcontig\tstart\tend\tstrand\n"
+                "A_left\tfam\tA\tA_gene\tA_tx\tCDS\tpresent\tchrA\t1\t50\t+\n"
+                "A_intron\tfam\tA\tA_gene\tA_tx\tintron\tpresent\tchrA\t51\t100\t+\n"
+                "A_right\tfam\tA\tA_gene\tA_tx\tCDS\tpresent\tchrA\t101\t150\t+\n"
+                "B_whole\tfam\tB\tB_gene\tB_tx\tCDS\tpresent\tchrB\t1\t100\t+\n"
+            )
+            (input_dir / "segment_matches.tsv").write_text(
+                "match_id\tquery_occurrence_id\tsubject_occurrence_id\tmatch_status\tprojected_reference_blocks\tprojected_reference_strand\n"
+                "m1\tA_left\tB_whole\tmapped\t1-50:1-50\t+\n"
+                "m2\tA_right\tB_whole\tmapped\t1-50:51-100\t+\n"
             )
             (input_dir / "transcript_paths.tsv").write_text(
                 "path_id\tfamily_id\tspecies\tgene_copy_id\ttranscript_id\tpath_rank\toccurrence_id\trole\n"
@@ -210,7 +219,7 @@ class SingleCopyPhylogenyTests(unittest.TestCase):
             junctions = {
                 row["species"]: row["state"]
                 for row in matrix
-                if row["site_id"].startswith("JG_EG_1_ALN_")
+                if row["site_id"] == "JG_EG_1_REF_B_whole_D50_A51"
             }
             self.assertFalse(excluded)
             self.assertEqual(junctions, {"A": "present", "B": "absent"})
@@ -246,8 +255,8 @@ class FixtureTests(unittest.TestCase):
             baselines = read_tsv(Path(tmp) / "baseline_comparison.tsv")
             progressive = read_tsv(Path(tmp) / "progressive_correspondence.tsv")
             progressive_elements = read_tsv(Path(tmp) / "progressive_element_correspondence.tsv")
-            ancestral_graph = read_tsv(Path(tmp) / "ancestral_element_graph.tsv")
-            paths = read_tsv(Path(tmp) / "ancestral_intragenic_paths.tsv")
+            ancestral_graph = read_tsv(Path(tmp) / "observed_element_tree_coverage.tsv")
+            paths = read_tsv(Path(tmp) / "observed_intragenic_paths.tsv")
             events = read_tsv(Path(tmp) / "candidate_structural_events.tsv")
             hints = read_tsv(Path(tmp) / "interpretation_hints.tsv")
             elements = read_tsv(Path(tmp) / "element_correspondence.tsv")
@@ -317,11 +326,26 @@ class PreprocessTests(unittest.TestCase):
         self.assertAlmostEqual(stats.coverage, 0.5)
         self.assertEqual(stats.aligned_pairs, 4)
 
-    def test_auto_alignment_uses_exact_global_alignment_for_short_exons(self):
-        stats = global_alignment_stats("ACGT" * 25, "ACGT" * 25, backend="auto")
-        self.assertEqual(stats.backend, "internal")
+    def test_auto_global_alignment_requires_mafft_for_short_exons(self):
+        sequence = "ACGT" * 25
+        with patch("insiphy.alignment.shutil.which", return_value="/mock/mafft") as available, patch(
+            "insiphy.alignment.subprocess.run"
+        ) as run:
+            run.return_value.returncode = 0
+            run.return_value.stdout = f">query\n{sequence}\n>target\n{sequence}\n"
+            stats = global_alignment_stats(sequence, sequence, backend="auto")
+        available.assert_called_once_with("mafft")
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[0][0], "/mock/mafft")
+        self.assertEqual(stats.backend, "mafft")
         self.assertEqual(stats.identity, 1.0)
         self.assertEqual(stats.coverage, 1.0)
+        with patch("insiphy.alignment.shutil.which", return_value=None), patch(
+            "insiphy.alignment.subprocess.run"
+        ) as run:
+            with self.assertRaisesRegex(AlignmentBackendError, "MAFFT was requested but is not available"):
+                global_alignment_stats(sequence, sequence, backend="auto")
+        run.assert_not_called()
 
     def test_internal_alignment_does_not_count_all_optimal_paths(self):
         import numpy as np
@@ -354,12 +378,14 @@ class PreprocessTests(unittest.TestCase):
         align.assert_called_once_with("ACGT", "ACGA", backend="auto")
 
     def test_locus_hit_on_annotated_exon_is_not_hidden_exon_evidence(self):
-        plus = [{"role": "exon", "contig": "chr1", "start": "120", "end": "150"}]
-        minus = [{"role": "exon", "contig": "chr1", "start": "250", "end": "280"}]
-        self.assertTrue(_overlaps_annotated_exon(20, 50, "Sp|gene|chr1:101-300:+", plus))
-        self.assertFalse(_overlaps_annotated_exon(60, 80, "Sp|gene|chr1:101-300:+", plus))
-        self.assertTrue(_overlaps_annotated_exon(20, 50, "Sp|gene|chr1:101-300:-", minus))
-        self.assertFalse(_overlaps_annotated_exon(60, 80, "Sp|gene|chr1:101-300:-", minus))
+        plus = [{"role": "exon", "contig": "chr1", "start": "120", "end": "150", "strand": "+"}]
+        minus = [{"role": "exon", "contig": "chr1", "start": "250", "end": "280", "strand": "-"}]
+        self.assertEqual(_overlapping_annotation_role(20, 50, "Sp|gene|chr1:101-300:+", plus, "+"), ("exon", True))
+        self.assertEqual(_overlapping_annotation_role(60, 80, "Sp|gene|chr1:101-300:+", plus, "+"), ("unknown", True))
+        self.assertEqual(_overlapping_annotation_role(20, 50, "Sp|gene|chr1:101-300:-", minus, "-"), ("exon", True))
+        self.assertEqual(_overlapping_annotation_role(60, 80, "Sp|gene|chr1:101-300:-", minus, "-"), ("unknown", True))
+        self.assertEqual(_overlapping_annotation_role(20, 50, "Sp|gene|chr1:101-300:+", plus, "-"), ("exon", False))
+        self.assertEqual(_overlapping_annotation_role(20, 50, "Sp|gene|chr1:101-300:-", minus, "+"), ("exon", False))
 
     def test_internal_alignment_refuses_oversized_dynamic_program(self):
         with self.assertRaises(AlignmentBackendError):
@@ -459,7 +485,7 @@ class PreprocessTests(unittest.TestCase):
             self.assertEqual([(int(row["start"]), int(row["end"])) for row in exons], [(10, 40), (80, 120)])
             self.assertEqual({row["coding_status"] for row in exons}, {"coding"})
             self.assertTrue(hom)
-            self.assertIn("phase_score", matches[0])
+            self.assertEqual(matches, [])
             self.assertTrue(paths)
             self.assertEqual(introns[0]["phase_compatibility"], "incompatible")
             self.assertIn("copy_subclass", copy_context[0])

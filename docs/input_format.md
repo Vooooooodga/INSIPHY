@@ -2,26 +2,23 @@
 
 ## Upstream assumption
 
-Formal analysis starts from one single-copy orthologous gene per species. The
-ortholog set can come from OrthoFinder or curation. INSIPHY does not infer
-gene-level orthology.
+Formal v0.14 analysis starts from one single-copy orthologous gene per species. The ortholog set can come from OrthoFinder or manual curation. INSIPHY analyzes internal structure after gene-level homology has been supplied.
 
 ## OrthoFinder importer
 
-`import-orthofinder` reads `Orthogroups/Orthogroups.tsv` and selects one
-orthogroup. The genome resource manifest is tab-delimited and requires:
+`import-orthofinder` reads an OrthoFinder result directory and one orthogroup. The resource manifest is tab-delimited:
 
 ```text
 species	genome_fasta	annotation_file
 ```
 
-Optional provenance fields are `assembly`, `annotation`, `source_url`,
-`release`, and `notes`. Species names must match normalized OrthoFinder
-column names.
+Recommended additional fields:
 
-The importer accepts a Newick or INSIPHY TSV species tree. Newick branch
-lengths are retained. Default parsimony uses the rooted topology alone.
-Optional likelihood analysis needs lengths or `--branch-length-mode unit`.
+```text
+assembly	annotation	source_url	release	notes
+```
+
+Species names must match normalized OrthoFinder column names. Member IDs are mapped exactly to annotation IDs and common attributes such as gene, transcript, protein, Parent, Alias and Dbxref-derived tokens. Multiple transcript or protein members mapping to the same gene locus count once. Single-copy eligibility requires exactly one distinct mapped gene locus per requested species; unresolved IDs, zero loci or multiple loci are recorded as exclusions.
 
 ## Case manifest
 
@@ -31,14 +28,7 @@ Optional likelihood analysis needs lengths or `--branch-length-mode unit`.
 case_id	species	family_id	gene_id	gene_copy_id	genome_fasta	annotation_file
 ```
 
-Formal single-copy input requires exactly one `gene_copy_id` for every
-`family_id, species` pair. Recommended provenance fields are:
-
-```text
-assembly	annotation	source_url	release	notes
-```
-
-Paths may point to plain or gzip-compressed FASTA and GFF3/GTF files.
+Formal single-copy input requires one `gene_copy_id` for every `family_id, species` pair. Paths may point to plain or gzip-compressed FASTA and GFF3/GTF files.
 
 ## Species tree
 
@@ -48,98 +38,99 @@ Paths may point to plain or gzip-compressed FASTA and GFF3/GTF files.
 node_id	parent_id	label	branch_length
 ```
 
-- Exactly one row has an empty `parent_id` and defines the root.
-- Every non-root branch length must be positive in `supplied` mode.
-- Every species in the structural matrix must match one leaf `label`.
-- Internal labels must be unique when they are referenced by foreground files.
+- Exactly one root row has an empty `parent_id`.
+- Every non-root node points to an existing parent.
+- Leaf labels match species in the structural matrix.
+- Node IDs and leaf labels are unique.
+- In supplied mode, every non-root branch length must be finite and nonnegative. Zero is retained as a true zero-length branch with identity transition matrix; missing lengths are an input error. Unit mode explicitly assigns length one.
 
-Branch lengths may represent time or substitutions per site. The fitted
-structural rates inherit that unit.
+Newick input is accepted by the importer and converted to this table.
 
-## Foreground branches
+## Transcript policy
 
-The foreground file may use either:
+The current method description treats all annotated transcript paths as the default biological repertoire. In that mode:
 
-```text
-parent_id	child_id
-```
+- all transcript paths are preserved;
+- identical genomic structures can be deduplicated;
+- alternative splice boundaries remain separate observations;
+- a structure used by any annotated transcript contributes repertoire evidence;
+- conflicts among paths are retained as alternative or unknown states rather than forced into one consensus.
 
-or:
-
-```text
-branch_scope
-parent_label->child_label
-```
-
-Every listed edge must occur in `species_tree.tsv`.
+Canonical transcript selection remains useful for focused analyses and compatibility testing. When used, it should be stated explicitly.
 
 ## Prepared case tables
 
 `build-case` and `derive-tables` generate:
 
-- `segment_occurrences.tsv`: observed or sequence-supported intervals;
+- `segment_occurrences.tsv`: observed, predicted, candidate, or absence intervals;
 - `segment_sequences.fasta`: interval sequences;
+- `gene_loci.tsv`: original gene bounds, search bounds, strand, and source metadata;
 - `gene_loci.fasta`: oriented search-window sequences;
-- `gene_loci.tsv`: original annotation bounds, search bounds and genome source;
-- `segment_matches.tsv`: pairwise alignment and context scores;
-- `segment_homology.tsv`: internal homology-component membership;
 - `transcript_paths.tsv`: ordered transcript paths;
 - `intron_sites.tsv`: intron boundary, motif, and phase evidence;
 - `physical_adjacencies.tsv`: neighboring intervals within each gene;
-- `sequence_synteny_evidence.tsv`: annotation and sequence evidence;
-- `copy_context.tsv`: upstream copy metadata retained for provenance.
+- `segment_matches.tsv`: pairwise alignment and context scores;
+- `segment_homology.tsv`: internal evidence components;
+- `sequence_synteny_evidence.tsv`: annotation-completion and sequence evidence;
+- `copy_context.tsv`: retained upstream copy metadata;
+- `raw_gene_features.tsv`: original annotation features overlapping the declared search window, including feature type, coordinates, parent IDs, attributes and `ownership` (`target_gene_descendant` or `overlapping_context`). Targeted retention tests passed and the first real runs produced this table. Retaining a feature does not establish its homology or add a statistical layer.
 
-`segment-correspondence` generates `element_correspondence.tsv`. Important
-fields are:
+## Alignment blocks used by figures
 
-- `element_id`: exon-like homologous unit (`EG_*`);
-- `occurrence_id`: observed member;
-- `element_class`: `exon_like`, `candidate_source`, or `absent`;
-- `membership_score`: correspondence support;
-- `membership_call`: `core_member` or `ambiguous_member`.
+Ribbons read direct `match_status=mapped` pairs from `segment_matches.tsv`. A result-directory table takes precedence over the prepared input table. Both endpoints must be confirmed exon-like observations. Complete annotation boxes retain their full extent; ribbon endpoints use only accepted aligned intervals.
 
-Only `core_member` observations enter formal tip-state coding. Ambiguous
-members remain in the evidence output and are coded as unknown.
+- `correspondence_basis=annotated_CDS_protein` selects `protein_projected_blocks`; other matches use `projected_reference_blocks`.
+- Blocks use `qstart-qend:tstart-tend`, separated by semicolons. Coordinates are 1-based inclusive nucleotide positions local to each occurrence, oriented 5-prime to 3-prime on either genomic strand.
+- Protein blocks are already transcript-oriented. DNA blocks require positive relative alignment orientation. Missing, conflicting or reverse blocks do not produce a ribbon; protein matches never fall back to DNA blocks.
+- Each SVG ribbon records the match ID, correspondence basis, projection field and endpoint coordinates. Transitive group membership without a direct match retains membership color but has no base-correspondence ribbon.
 
-## Transcript policy
+## Element correspondence
 
-`--transcript-policy canonical` chooses one transcript using
-`--canonical-rule longest_cds` by default. `all` retains every annotated
-transcript. Conflicting states among retained transcripts are coded as unknown
-for the affected structural site.
+`element_correspondence.tsv` is the primary correspondence table. Important fields:
+
+- `element_id`: stable homologous unit label such as `EG_*`;
+- `homology_id`: internal evidence component;
+- `occurrence_id`: member occurrence;
+- `element_class`: `exon_like`, `candidate_source`, `absent`, or `context`;
+- `display_role`: observed or inferred display role;
+- `support_type`: evidence source such as annotation, sequence candidate, prediction, or absence support;
+- `membership_call`: `core_member`, `ambiguous_member`, or equivalent status;
+- `inferred_role`: confirmed or predicted role used by the structure layer;
+- `predicted_role`: predicted annotation class such as `CDS`.
+
+`predicted_exon_candidate`, `inferred_role=predicted_CDS`, and `predicted_role=CDS` indicate prediction evidence. Formal state coding and visualization keep them distinct from confirmed exonic role.
+
+## Structural matrix
+
+`structural_site_matrix.tsv` stores one row per family/layer/site/species observation.
+
+Layers:
+
+- `exon_presence`;
+- `exon_role`;
+- `splice_junction`.
+
+States are `state_0`, `state_1`, or `unknown` under that layer's definition. Unknown means the current input cannot distinguish states.
+
+## Output interface changes in v0.14
+
+The public extant-summary files are:
+
+- `observed_element_tree_coverage.tsv`;
+- `observed_intragenic_paths.tsv`.
+
+The old `ancestral_element_graph.tsv` and `ancestral_intragenic_paths.tsv` names are removed from the v0.14 public interface. Complete ancestral transcript graphs are outside the current formal output.
 
 ## Branch-length and ascertainment flags
 
-- `--branch-length-mode supplied`: use positive lengths from the input tree.
-- `--branch-length-mode unit`: replace every non-root length with one.
-- `--ascertainment observed-at-least-one`: default for sites discovered because
-  at least one species contains the structure.
-- `--ascertainment complete-universe`: use only when the input defines
-  meaningful all-zero candidates.
-- `--ascertainment variable-only`: use only when both constant patterns were
-  deliberately excluded.
+- `--branch-length-mode supplied`: use finite nonnegative lengths from the input tree; zero gives identity transitions and missing lengths are errors.
+- `--branch-length-mode unit`: use one for every non-root branch.
+- `--ascertainment observed-at-least-one`: default for discovered sites.
+- `--ascertainment complete-universe`: use an explicit candidate catalogue.
+- `--ascertainment variable-only`: use when constant patterns were intentionally excluded.
 
-Ascertainment and branch-length modes apply only to the optional probability
-analysis. `--model parsimony` is the default. Gene extraction accepts `--flank`
-and `--max-extension` in bp; these control search extent and do not establish
-biological confidence.
-
-`--ascertainment complete-universe` requires `structural_site_universe.tsv`
-inside the input directory. Its required columns are `family_id`, `layer`,
-and `site_id`. A site-only row declares the candidate set; it contributes no
-absence observation. Optional `species` and `state` columns provide explicit
-curated observations, with `state_0`, `state_1`, and `evidence` recommended.
-Explicit observations replace the generated observation at the same
-family/layer/site/species key. Missing species remain unknown. The declared
-universe must be justified independently of which sites happen to be present.
-
-`--aligner` selects exon correspondence. `--context-aligner` selects local
-exon/non-exonic mapping. `run --evidence-aligner` selects supplementary genomic
-or protein evidence. MAFFT, minimap2 and miniprot serve different alignment
-questions; these choices are recorded with their output evidence.
+Ascertainment affects optional likelihood analysis. Default parsimony uses the topology and observed/unknown states.
 
 ## Experimental multi-copy input
 
-`copy_tree.tsv` and `gene_tree.tsv` remain supported only under
-`--analysis-scope experimental-multicopy`. The formal v0.13 single-copy
-statistics ignore these files.
+`copy_tree.tsv` and `gene_tree.tsv` remain accepted under `--analysis-scope experimental-multicopy`. Formal v0.14 single-copy statistics do not use them.

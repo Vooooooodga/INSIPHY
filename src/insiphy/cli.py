@@ -84,7 +84,12 @@ def main(argv=None):
     extract.add_argument("--gene-copy-id", required=True)
     extract.add_argument("--output-dir", required=True)
     extract.add_argument("--append", action="store_true")
-    extract.add_argument("--transcript-policy", choices=["canonical", "all"], default="canonical")
+    extract.add_argument(
+        "--transcript-policy",
+        choices=["canonical", "all"],
+        default="all",
+        help="Transcript structures to extract; default keeps all annotated transcript paths.",
+    )
     extract.add_argument("--canonical-rule", choices=["longest_cds", "longest_span"], default="longest_cds")
     extract.add_argument("--source-label", default="unknown_source")
     extract.add_argument("--copy-role", choices=["source", "background", "derived", "candidate"], default="candidate")
@@ -101,7 +106,10 @@ def main(argv=None):
     derive.add_argument("--threads", type=int, default=1)
     derive.add_argument("--min-size-ratio", type=float, default=0.25)
 
-    sim = sub.add_parser("simulate")
+    sim = sub.add_parser(
+        "simulate",
+        description="Legacy experimental-multicopy simulator; it does not validate formal single-copy statistics.",
+    )
     sim.add_argument("--output-dir", required=True)
     sim.add_argument("--seed", type=int, default=7)
     sim.add_argument(
@@ -128,7 +136,10 @@ def main(argv=None):
     bench.add_argument("--input-dir", required=True)
     bench.add_argument("--output-dir", required=True)
 
-    cal = sub.add_parser("calibrate")
+    cal = sub.add_parser(
+        "calibrate",
+        description="Legacy experimental-multicopy calibration wrapper; it cannot validate formal single-copy CTMC results.",
+    )
     cal.add_argument("--output-dir", required=True)
     cal.add_argument("--scenario", action="append", choices=DEFAULT_SCENARIOS)
     cal.add_argument("--replicates", type=int, default=10)
@@ -159,7 +170,12 @@ def main(argv=None):
     case.add_argument("--species-tree")
     case.add_argument("--copy-tree")
     case.add_argument("--gene-tree")
-    case.add_argument("--transcript-policy", choices=["canonical", "all"], default="canonical")
+    case.add_argument(
+        "--transcript-policy",
+        choices=["canonical", "all"],
+        default="all",
+        help="Transcript structures to extract; default keeps all annotated transcript paths.",
+    )
     case.add_argument("--canonical-rule", choices=["longest_cds", "longest_span"], default="longest_cds")
     case.add_argument("--aligner", choices=["auto", "internal", "mafft", "minimap2", "lastz"], default="mafft", help="Exon-pair backend: mafft/auto uses overlap projection; others use local alignment.")
     case.add_argument("--context-aligner", choices=["internal", "minimap2", "lastz"], default="minimap2", help="Local backend for pairs involving non-exon sequence.")
@@ -168,11 +184,24 @@ def main(argv=None):
     case.add_argument("--flank", type=int, default=1000)
     case.add_argument("--max-extension", type=int, default=10000)
 
-    orthofinder = sub.add_parser("import-orthofinder")
-    orthofinder.add_argument("--orthofinder-dir", required=True)
+    orthofinder = sub.add_parser(
+        "import-orthofinder",
+        description=(
+            "Import one upstream orthogroup: every selected species must map to exactly "
+            "one annotated gene locus. Multiple isoform members of that locus are accepted "
+            "and their source IDs retained. Ambiguous or unresolved members are excluded."
+        ),
+    )
+    orthofinder.add_argument(
+        "--orthofinder-dir", required=True,
+        help="Completed results directory containing Orthogroups.tsv or Orthogroups.txt; uses WorkingDirectory/SequenceIDs.txt when available.",
+    )
     orthofinder.add_argument("--orthogroup", required=True)
-    orthofinder.add_argument("--genome-manifest", required=True)
-    orthofinder.add_argument("--species-tree")
+    orthofinder.add_argument(
+        "--genome-manifest", required=True,
+        help="TSV selecting species and their genome_fasta/annotation_file resources; gene IDs are resolved from the orthogroup.",
+    )
+    orthofinder.add_argument("--species-tree", help="Supplied TSV or Newick tree, retained without pruning.")
     orthofinder.add_argument("--output-dir", required=True)
 
     hidden = sub.add_parser("scan-hidden-segments")

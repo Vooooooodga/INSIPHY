@@ -42,6 +42,11 @@ class AlignmentStats:
     alignment_meaning: str = "nucleotide alignment"
     query_span_coverage: float = 0.0
     target_span_coverage: float = 0.0
+    mapping_quality: int = 0
+    is_secondary: bool = False
+    hit_count: int = 0
+    ambiguous_hit_count: int = 0
+    alternative_hits: list[dict] = field(default_factory=list)
 
 
 class AlignmentBackendError(RuntimeError):
@@ -333,7 +338,7 @@ def _external_minimap2_stats(query: str, target: str, mode: str, threads: int = 
         proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
     if proc.returncode != 0:
         raise AlignmentBackendError(proc.stderr.strip() or "minimap2 failed")
-    best = None
+    hits = []
     for line in proc.stdout.splitlines():
         if not line.strip() or line.startswith("#"):
             continue
@@ -346,6 +351,10 @@ def _external_minimap2_stats(query: str, target: str, mode: str, threads: int = 
         tstart = int(fields[7])
         tend = int(fields[8])
         strand = fields[4]
+        try:
+            mapq = int(fields[11])
+        except (TypeError, ValueError):
+            mapq = 0
         tags = _parse_paf_tags(fields)
         cigar = tags.get("cg", "NA")
         if cigar == "NA":
@@ -369,12 +378,35 @@ def _external_minimap2_stats(query: str, target: str, mode: str, threads: int = 
             backend="minimap2",
             mode=mode,
         )
+        stat.mapping_quality = mapq
+        stat.is_secondary = tags.get("tp") == "S"
         rank = (stat.coverage * stat.identity, stat.score)
-        if best is None or rank > best[0]:
-            best = (rank, stat)
-    if best is None:
+        hits.append((rank, stat, fields))
+    if not hits:
         return _empty_stats(len(query), len(target), "minimap2")
-    return best[1]
+    hits.sort(key=lambda item: item[0], reverse=True)
+    best = hits[0][1]
+    best.hit_count = len(hits)
+    if len(hits) > 1:
+        best_rank = hits[0][0][0]
+        best.ambiguous_hit_count = sum(1 for rank, _stat, _fields in hits[1:] if rank[0] >= best_rank * 0.95)
+        best.alternative_hits = [
+            {
+                "rank": index,
+                "identity": f"{stat.identity:.6g}",
+                "coverage": f"{stat.coverage:.6g}",
+                "query_start": stat.query_start,
+                "query_end": stat.query_end,
+                "target_start": stat.target_start,
+                "target_end": stat.target_end,
+                "strand": stat.strand,
+                "mapping_quality": stat.mapping_quality,
+                "is_secondary": int(stat.is_secondary),
+                "score": f"{stat.score:.6g}",
+            }
+            for index, (_rank, stat, _fields) in enumerate(hits[1:], start=2)
+        ]
+    return best
 
 
 def _external_miniprot_stats(query: str, target: str, threads: int = 1) -> AlignmentStats:
@@ -432,7 +464,7 @@ def _external_miniprot_stats(query: str, target: str, threads: int = 1) -> Align
     return best[1]
 
 
-def _mafft_pair_alignment(query: str, target: str, threads: int = 1) -> tuple[str, str]:
+def _mafft_pair_alignment(query: str, target: str, threads: int = 1, *, amino: bool = False) -> tuple[str, str]:
     exe = shutil.which("mafft")
     if not exe:
         raise AlignmentBackendError("MAFFT was requested but is not available on PATH")
@@ -440,7 +472,7 @@ def _mafft_pair_alignment(query: str, target: str, threads: int = 1) -> tuple[st
         input_path = Path(tmp) / "pair.fa"
         input_path.write_text(f">query\n{query.upper()}\n>target\n{target.upper()}\n")
         proc = subprocess.run(
-            [exe, "--quiet", "--thread", str(max(1, int(threads or 1))), "--nuc", "--auto", str(input_path)],
+            [exe, "--quiet", "--thread", str(max(1, int(threads or 1))), "--amino" if amino else "--nuc", "--auto", str(input_path)],
             text=True,
             capture_output=True,
             check=False,
@@ -458,6 +490,22 @@ def _mafft_pair_alignment(query: str, target: str, threads: int = 1) -> tuple[st
     left, right = aligned.get("query", ""), aligned.get("target", "")
     if not left or len(left) != len(right):
         raise AlignmentBackendError("MAFFT did not return a valid two-sequence alignment")
+    return left, right
+
+
+def protein_pair_alignment(query: str, target: str, threads: int = 1) -> tuple[str, str]:
+    """Return MAFFT-aligned proteins in query/target order, preserving gaps and X.
+
+    Inputs must be nonempty and ungapped. The caller normalizes internal stops
+    to X and removes terminal stops together with their CDS coordinate entries.
+    Returned strings contain amino acids; nucleotide scoring is not applied.
+    """
+    query, target = query.upper(), target.upper()
+    if not query or not target or any(symbol in sequence for sequence in (query, target) for symbol in "-*"):
+        raise AlignmentBackendError("protein_pair_alignment requires nonempty ungapped proteins with stops normalized by the caller")
+    left, right = _mafft_pair_alignment(query, target, threads, amino=True)
+    if left.replace("-", "") != query or right.replace("-", "") != target:
+        raise AlignmentBackendError("MAFFT protein alignment did not preserve the input residues")
     return left, right
 
 

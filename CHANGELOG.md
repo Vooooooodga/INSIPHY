@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.14.0 - 2026-09-18
+
+- Repair the formal single-copy path around biological state semantics:
+  all-transcript repertoire handling, exact ID mapping, candidate-source
+  evidence, explicit absence, predicted roles and confirmed exonic roles are
+  represented separately.
+- Keep `predicted_exon_candidate`, `inferred_role=predicted_CDS` and
+  `predicted_role=CDS` as prediction evidence rather than hard CDS homology.
+- Rename extant summaries to `observed_element_tree_coverage.tsv` and
+  `observed_intragenic_paths.tsv`; the older `ancestral_element_graph.tsv` and
+  `ancestral_intragenic_paths.tsv` remain historical v0.10 output names.
+- Set `segment_conservation.tsv` conservation calls from distinct species
+  with observed presence: `observed_single_species`,
+  `observed_in_multiple_species`, or `no_species_presence_observed`.
+  Absence records are excluded; multiple fragments within one species count
+  once. Mean DNA identity remains descriptive. Targeted regression passed;
+  broader empirical conservation performance remains unmeasured.
+- Guard branch-history probability displays using selected-fit success and
+  finite endpoint probabilities. LRT eligibility and posterior availability
+  are reported as separate conditions.
+- Update visualization semantics: separate transcript lanes, colorblind-aware
+  default colors, confirmed exon correspondence ribbons only for confirmed
+  exon-like members, and distinct styles for predicted, unknown and
+  candidate-source boxes. Cross-species ribbons use facing transcript lanes
+  for shared occurrences while retaining distinct split members.
+- Retain annotation features and ownership in `raw_gene_features.tsv`.
+  Supplied branch lengths accept finite nonnegative values; zero uses the
+  identity transition matrix and missing lengths are input errors.
+- Add full-transcript CDS/protein correspondence with occurrence-local coding
+  projections, transcript-oriented minus-strand phase handling and explicit
+  unavailable status for missing phase. Preserve original DNA alignment blocks
+  alongside `protein_projected_blocks` and the selected correspondence basis.
+- Exclude no-observed-contrast layers from fitted branch-history posteriors.
+  Targeted regression and reviewed real-output exclusion checks passed.
+- Clip ribbons to direct accepted base blocks, selecting protein projections
+  for coding correspondence; retain full annotation boxes and omit unsupported
+  or conflicting connections. Added SVG semantic tests passed; real-figure
+  inspection remains pending.
+- Record 97 selected formal regression tests and the first five real cases
+  run at two thread counts. The three new positive cases failed to recover
+  expected differences, motivating the subsequent repairs and assessments
+  recorded below. Historical release notes remain version-specific.
+- Pass 132 selected formal regression tests after the additional repairs
+  (Slurm `61609`, 17.717 s in the test report). Complete intermediate baseline
+  `20260918_111929_insiphy` after recovery without repeated alignments; all five
+  case pairs agree in six core tables. This historical baseline exposed the
+  dsx role-evidence conflict addressed in the subsequent repair below.
+- Repair overlapping supported exon-prediction/non-exonic role conflicts and
+  pass 136 selected formal regression tests, including four new conflict cases
+  (Slurm `61625`, 17.063 s). Complete all ten re-inference/visualization tasks
+  and five comparisons in `20260918_121100_insiphy` from existing cases/evidence;
+  all six core tables agree within each thread pair, with no repeated alignments.
+- Record final recovery limits: Hdac3 focal contrast recovered with ambiguous
+  direction, rec8 partial, spo5 unrecovered, and two dsx role contrasts with
+  five unknown species each. Final dsx ER is nonidentifiable; all six P/Q
+  values are unavailable and all four node/branch posterior tables are
+  header-only. SVG semantic and selected endpoint checks passed; no rendered
+  inspection or publication-readiness claim is made.
+
 ## 0.13.0 - 2026-09-16
 
 - Make equal-cost single-copy parsimony the default, retaining all equally

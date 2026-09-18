@@ -52,7 +52,7 @@ def infer_manifest_copy_role(row):
 def feature_tokens(feature):
     attrs = feature.get("attrs", {})
     values = [feature.get("id", ""), feature.get("name", ""), feature.get("parent", "")]
-    for key in ["ID", "Name", "Alias", "gene_id", "gene_name", "transcript_id", "Parent", "Dbxref", "description"]:
+    for key in ["ID", "Name", "Alias", "gene_id", "gene_name", "transcript_id", "protein_id", "Parent", "Dbxref", "description"]:
         values.extend(split_aliases(attrs.get(key, "")))
     tokens = set()
     for value in values:
@@ -156,7 +156,24 @@ def inspect_annotation(annotation, output_dir, queries=None, alias_file=None, sp
 
 
 def write_provenance(manifest_rows, output_dir):
-    fields = ["case_id", "species", "assembly", "annotation", "source_url", "release", "genome_fasta", "annotation_file", "role_hint", "source_label", "copy_role", "notes"]
+    fields = [
+        "case_id",
+        "species",
+        "assembly",
+        "annotation",
+        "source_url",
+        "release",
+        "genome_fasta",
+        "annotation_file",
+        "role_hint",
+        "source_label",
+        "copy_role",
+        "orthofinder_member_ids",
+        "orthofinder_member_count",
+        "orthofinder_locus_count",
+        "orthofinder_mapping_status",
+        "notes",
+    ]
     rows = []
     for row in manifest_rows:
         rows.append({field: row.get(field, "NA") for field in fields})
@@ -176,7 +193,7 @@ def build_case(
     output_dir,
     identity_threshold=0.7,
     species_tree=None,
-    transcript_policy="canonical",
+    transcript_policy="all",
     canonical_rule="longest_cds",
     aligner="mafft",
     threads=1,

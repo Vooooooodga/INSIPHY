@@ -2,184 +2,104 @@
 
 ## Scope
 
-INSIPHY studies internal structure within an upstream-defined homologous gene
-set. The formal v0.13 scope contains one orthologous gene per species and uses
-the species tree. Gene discovery, genome-wide orthology inference, expression
-analysis, and molecular-mechanism assignment remain upstream or downstream
-tasks.
+INSIPHY studies gene-internal structure within an upstream-defined homologous gene set. The formal v0.14 path starts from one orthologous gene per species and a supplied rooted species tree. Gene discovery, genome-wide orthology inference, expression analysis, and molecular-mechanism assignment belong outside the current formal model.
 
-Multi-copy routines remain available under
-`--analysis-scope experimental-multicopy` for continued development. Their
-results are outside the formal single-copy method.
+Multi-copy routines remain available under `--analysis-scope experimental-multicopy` for future development. Current manuscript-level claims should use the repaired single-copy path.
 
-## Stage 1: recover observed gene structure
+## Biological units
 
-`build-case` extracts each selected gene from genome FASTA and GFF3/GTF.
-Canonical-transcript mode chooses a reproducible transcript by CDS or span
-length; all-transcript mode retains every annotated transcript.
+The method distinguishes four related concepts:
 
-The extracted representation uses complete exon intervals and contains:
+- **raw feature**: an original annotation feature overlapping the target search window, including exon, CDS, UTR, noncoding exon, intron, nested RNA, and regulatory/context features when supplied in the annotation;
+- **occurrence**: one observed or sequence-supported interval in one species and gene copy;
+- **element**: a homologous gene-internal unit such as an exon-like block, candidate non-exonic source, or explicit absence record;
+- **structural site**: a binary observation derived from elements or splice junctions and used by parsimony or likelihood models.
 
-- complete exon intervals with CDS and UTR subinterval attributes;
+`EG_*` labels are stable element identifiers. They are not a claim that every member is a confirmed coding exon. Element class and evidence fields carry that biological status.
+
+## Three core observations
+
+1. **Sequence presence**
+   A homologous DNA unit is present, explicitly absent, or unknown. Absence requires sequence evidence from the searched interval and flanking context.
+
+2. **Exonic role**
+   A present homologous sequence has confirmed exonic role, confirmed non-exonic role, predicted exonic role, or unresolved role. Protein projection and `predicted_CDS` are recorded as prediction evidence.
+
+3. **Splice junction**
+   Two homologous units are separated by an intron, directly joined in one exon path, or unknown. Junction homology uses projected donor/acceptor coordinates, not a length-ratio proxy.
+
+## Four operational stages
+
+### Stage 1: recover observed structure
+
+`build-case` extracts target loci from genome FASTA and GFF3/GTF. The v0.14 design treats all transcript paths as the default biological repertoire. Identical genomic structures across isoforms can be deduplicated; distinct splice boundaries and transcript-specific paths remain visible.
+
+The extracted representation records:
+
+- complete exon intervals;
+- CDS and UTR subintervals;
 - intron intervals and splice motifs;
-- exon phase and frame status;
-- transcript order;
-- genomic sequence for every interval.
+- phase and frame attributes;
+- transcript order and path membership;
+- original annotation bounds and expanded search bounds.
 
-The search interval includes flanking sequence and parent-linked GFF features
-outside the original gene bounds. Terminal searches can extend to a declared
-maximum; original annotation bounds remain recorded. DNA correspondence supports
-sequence presence. Protein-to-genome splice projection can additionally support
-a predicted coding exon, without confirming transcription. A deletion call
-requires a source/target genomic alignment spanning both homologous flanks and
-a source-only gap covering the expected exon. This comparison uses genomic
-mapping with exact local alignment offsets and source anchors from one
-transcript path. DNA deletion evidence can be evaluated without a protein
-reference. Annotation absence stays unknown.
+`raw_gene_features.tsv` preserves annotation feature types, coordinates, parent relationships and attributes within the search window, distinguishing target-gene descendants from overlapping context. Targeted retention tests passed and the first real runs produced this table. Additional feature types need their own correspondence evidence and observation model before they can enter formal phylogenetic analysis.
 
-## Stage 2: infer gene-internal correspondence
+### Stage 2: supplement incomplete annotation
 
-The correspondence problem asks which exon-like intervals in different
-orthologs derive from the same ancestral sequence unit.
+Within the target gene and declared flanking/search window, INSIPHY records evidence for hidden or incomplete annotation:
 
-Candidate pairs are evaluated with:
+- DNA evidence supports sequence presence;
+- miniprot or protein-to-genome projection can support a predicted CDS-like interval;
+- boundary conflicts mark disagreement between annotation and projected structure;
+- deletion evidence requires ordered flanks and searched intervening sequence.
 
-- nucleotide or protein-to-genome alignment;
-- aligned coverage and length compatibility;
-- left and right local context;
-- splice-boundary compatibility;
-- exon phase and reading-frame compatibility;
+Predicted records do not overwrite the input GFF. They enter downstream tables with evidence status and role qualifiers.
+
+### Stage 3: infer internal correspondence
+
+The correspondence problem asks which gene-internal intervals across species represent the same structural unit. Pairwise evidence uses:
+
+- sequence identity and aligned coverage;
+- exact boundary projection;
+- local left/right context;
 - strand and order consistency;
-- reciprocal-best support.
+- phase and reading-frame compatibility where applicable;
+- tree-guided close-to-distant merging inside the supplied ortholog set.
 
-Users may select `internal`, `mafft`, `minimap2`, or `lastz` for correspondence.
-MAFFT overlap projection is the default. It trims terminal overhangs from a
-pairwise multiple-alignment result; it is not a local alignment algorithm.
-Exon/non-exonic comparisons use a separately specified local context mapper
-(`--context-aligner minimap2` by default); they are not aligned across entire
-long introns with MAFFT. Short candidates without adequate mapper support remain
-unknown, a sensitivity limitation recorded with the selected backend.
-The internal backend uses Biopython `PairwiseAligner` and refuses sequence
-pairs above its declared dynamic-programming limit. miniprot is restricted to
-reconstructed protein-to-locus searches.
+Split/fusion relations are represented by ordered complementary projections. A `1:n` split can involve more than two descendants when each part maps to a distinct, ordered part of the same reference unit. Repeated full-overlap hits are retained as repeats or ambiguous evidence.
 
-Pairwise evidence is merged from close to distant species on the supplied
-tree. A merge must satisfy direct sequence support across the two profiles;
-split fragments must project to ordered, disjoint parts of the same reference
-exon. They need not resemble one another.
-This prevents a chain of unrelated pairwise matches from forming one group.
-`HC_*` and `EG_*` are stable identifiers. Their members remain traceable to
-complete exon intervals and aligned coordinates.
+INSIPHY uses mature alignment tools and adapter code. It does not introduce a new general-purpose alignment algorithm.
 
-Tree-guided progressive summarization first evaluates close relatives, then
-within-clade and deeper comparisons. This applies the progressive-alignment
-principle inside the supplied gene set. It does not run a whole-genome
-alignment and does not search for additional homologous genes.
+### Stage 4: locate changes on the tree
 
-## Stage 3: construct structural sites
+The default analysis is equal-cost maximum parsimony on the supplied rooted tree. For every structural site, INSIPHY retains all globally optimal node states and branch endpoint pairs.
 
-Three observation layers separate distinct biological changes.
+- `required`: every minimum-change history places that directed change on the branch.
+- `possible`: at least one minimum-change history places that directed change on the branch.
 
-### Exon sequence presence
+These terms describe branch placement under the cost model. They do not provide a P value.
 
-For each EG and species:
+Optional ER/ARD and foreground likelihood models estimate shared rates within a family-layer and compare nested models when regular conditions hold. These models can help describe rate asymmetry or foreground rate shifts, but the current first-version emphasis is qualitative branch placement and transparent uncertainty.
 
-- `present`: homologous sequence is observed;
-- `absent`: explicit searched absence is available;
-- `unknown`: correspondence, coverage, or annotation evidence is inadequate.
+## Classic branch units and gene-structure events
 
-Gain/loss in this layer describes appearance or disappearance of the homologous
-sequence unit within the gene.
+Classical systematics often assigns events to branches of a fixed tree. INSIPHY follows that framework, but the characters are gene-internal structural sites. A branch event therefore means:
 
-### Exonic role
+```text
+one structural site changes state between the parent and child endpoints of one tree branch
+```
 
-For each observed homologous sequence:
-
-- `exonic`: CDS, exon, UTR, or noncoding exon;
-- `not_exonic`: homologous sequence is present in intronic/non-exonic context;
-- `unknown`: sequence role cannot be assigned reliably.
-
-A change in this layer is compatible with exonization or loss of exonic role.
-The model reports the role transition and leaves its molecular cause open.
-
-### Splice junction
-
-Transcript paths and homologous flanking units define splice-junction sites:
-
-- `present`: an annotated intron separates the corresponding units;
-- `absent`: the units are directly contiguous in an exon path;
-- `unknown`: the relevant units cannot both be placed reliably.
-
-Every junction is keyed by actual donor/acceptor bases projected through supported
-alignment blocks into common reference coordinates. Unaligned boundaries and
-opposite-strand matches do not establish collinear junction correspondence.
-Distinct junctions inside one homologous exon block remain distinct.
-Unknown correspondence breaks adjacency. Junction-state changes describe the
-structural pattern used to study exon splitting and fusion.
-
-## Stage 4: locate structural changes
-
-Default analysis uses equal-cost maximum parsimony on the supplied rooted tree.
-Gain and loss each cost one change; unknown observations allow either state.
-An inside/outside calculation retains all globally optimal node states and
-branch endpoint pairs without enumerating all histories. Repeated observed
-patterns reuse the calculation.
-
-`required` means a directed change occurs on that branch in every minimum-change
-history. `possible` means it occurs in some such histories. These labels describe
-reconstruction under the cost assumptions; they are not probabilities or P values.
-Within-exon junction gain/loss describes a split/fusion pattern. Sequence presence
-and exonic role remain separate layers and do not constitute independent events.
-
-Root placement and change costs affect reconstruction. The method does not
-estimate calendar time or identify unobserved repeated changes. Alternative
-equally parsimonious histories remain explicit.
-
-## Optional phylogenetic likelihood
-
-All sites in one family-layer share ER or ARD CTMC parameters. Likelihood is
-computed on the fixed species tree with Felsenstein pruning. The software
-reports:
-
-- maximum-likelihood gain and loss rates;
-- profile-likelihood intervals;
-- ER-versus-ARD or homogeneous-versus-foreground LRT;
-- node-state empirical-Bayes probabilities conditional on fitted parameters;
-- branch endpoint-transition probabilities conditional on fitted parameters;
-- expected gain and loss counts.
-
-Ancestral states are probabilistic reconstructions. Several histories can
-produce the same terminal pattern, especially with few species or short gene
-structures. Joint parameter-uncertainty propagation remains unimplemented:
-sensitivity ranges are `NA` with `uncertainty_status=sensitivity_not_estimated`.
-Profile searches distinguish optimization failures from numerical search limits.
-Ascertainment conditions on the observed-taxon mask. Complete-universe analysis
-requires an explicit site catalogue; unobserved states remain unknown.
-
-## Transition reporting
-
-Default tables report branch placement under parsimony, including alternatives.
-Optional probability tables retain both directional endpoint transitions.
-Mechanistic explanations remain the user's biological analysis.
+It does not directly name a molecular mechanism. For example, a junction gain/loss pattern can describe an exon split/fusion structure, while the cause may involve mutation, annotation uncertainty, lineage-specific transcript usage, or additional molecular processes.
 
 ## Visualization
 
-The synteny panel follows the standard comparative-genomics grammar:
-species/gene tracks contain ordered exon blocks, and curves or ribbons connect
-homologous EGs between tracks. Introns are thin gray context spans.
+The default figure uses horizontal gene tracks, complete annotated exon boxes and ribbons clipped to directly aligned bases between confirmed exon-like observations. Membership colors remain on the complete boxes. Protein-supported correspondence selects `protein_projected_blocks`, limiting the ribbon to coding bases without extending across UTR. Missing direct matches produce no ribbon. Transcript alternatives are drawn as separate lanes. Shared occurrences use the facing lanes of neighboring species for correspondence ribbons; distinct split members retain their connections to complementary intervals. Candidate source, predicted exon, and unknown states use distinct visual styles and do not create confirmed homology ribbons.
 
-The default phylogeny panel marks required changes with solid symbols and
-possible changes with hollow symbols. Optional probability figures use continuous
-marker size and opacity. The integrated panel aligns tree tips with gene tracks.
+The integrated figure aligns the supplied tree with gene tracks. Parsimony symbols show required or possible branch placements. Optional probability symbols are drawn only when the selected fitted posterior is valid.
 
-Default EG colors use the Okabe-Ito colorblind-aware palette. A
-`--correspondence-encoding pattern` mode uses hatching, dots, grids, line
-styles, labels, and connecting curves.
+Both tree figures use supplied non-root branch lengths when all are known, preserving zero lengths. If any non-root length is missing, every branch is drawn with unit length and the figure labels this topological layout. A missing root length has no effect. This display rule leaves the input tree and optional CTMC branch-length requirements unchanged.
 
-## Real-data control
+## Current empirical status
 
-The real demonstrations contain RpL32 from five Drosophila genomes and dsx from
-seven bee genomes. Both use genome and annotation data; dsx retains annotated
-transcript alternatives. Results are recorded in `real_data_benchmark.md`.
-These demonstrations do not establish event-detection precision or recall
-without independently curated event truth.
+The final v0.14.0 assessment passed 136 selected formal regression tests under Slurm `61625` and completed ten re-inference/visualization tasks plus five comparisons from unchanged cases/evidence. Six core tables agree in every pair. Hdac3's focal contrast is recovered with ambiguous direction; rec8 is partial, spo5 unrecovered, and RpL32/dsx retain incomplete observations. Final dsx has two role contrasts, nonidentifiable/boundary-limited fits and no node/branch posteriors. SVG semantic and selected endpoint checks are complete; rendered inspection and broader biological performance assessment remain outstanding. The [benchmark record](real_data_benchmark.md) separates this assessment from the historical 97- and 132-test iterations and v0.13 demonstrations.

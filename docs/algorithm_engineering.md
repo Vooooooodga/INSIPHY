@@ -2,122 +2,106 @@
 
 ## Architecture
 
-INSIPHY is a Python package with explicit modules for extraction, alignment,
-annotation completion, correspondence, structural-site construction,
-phylogenetic likelihood, and visualization. CLI commands call the same library
-functions exposed to Python users. The package does not embed a workflow engine
-or scheduler.
+INSIPHY is a Python package with library modules and CLI commands over the same implementation. The package analyzes prepared gene sets; it does not embed a scheduler or workflow engine.
 
-Shared biological observations live in `structural_sites.py`. Default
-single-copy event placement lives in `parsimony.py`; optional probability
-models remain in `structural_phylogeny.py`. The older
-multi-copy implementation remains isolated behind
-`--analysis-scope experimental-multicopy`.
+Core modules:
 
-## Alignment
+- extraction and case building;
+- annotation evidence and bounded locus search;
+- alignment adapters;
+- correspondence graph construction;
+- structural-site matrix construction;
+- parsimony;
+- optional CTMC likelihood;
+- visualization.
 
-The internal backend uses Biopython `PairwiseAligner` with affine gaps.
-`minimap2` and `miniprot` are optional external backends. All backends return
-the same `AlignmentStats` interface: identity, coverage, score, coordinates,
-CIGAR, strand, supported paired blocks and backend. Protein and nucleotide
-identity retain explicit different units.
+The formal path is single-copy. Multi-copy code remains isolated under `experimental-multicopy`.
 
-Candidate generation groups by gene family and excludes intron-intron pairs.
-Short split-exon fragments are not removed by a fixed whole-exon length ratio.
-Exon/exon correspondence uses explicit overlap projections. Exon/non-exonic
-comparisons use a separately selected local mapper, avoiding whole-intron
-MAFFT alignments. The internal
-backend calls the declared Biopython dependency; no hand-written dynamic
-programming fallback or silent replacement of a failed external backend is
-used.
+## One validation boundary
 
-For (n) interval occurrences, unrestricted pair generation is (O(n^2)).
-Species, copy and role restrictions reduce the number of aligned pairs.
-External aligners remain preferable for long genomic intervals.
+The code should validate biological assumptions at interface boundaries:
+
+- every formal family has one gene per species;
+- IDs map exactly to gene/transcript/protein annotation records;
+- the tree is rooted, connected, acyclic, and matches species labels;
+- foreground branches exist in the tree;
+- branch lengths are finite and compatible with the selected mode;
+- ascertainment settings match the available candidate universe.
+
+After those checks, internal functions rely on clear invariants. Repeating broad defensive guards inside every helper makes the model harder to read and can hide invalid biological input. Invalid assumptions should fail at the boundary with a concrete message.
+
+## Alignment adapters
+
+INSIPHY should use mature tools for mature alignment problems:
+
+- MAFFT for exon-level multiple/pair projection where appropriate;
+- minimap2 for genomic local context and long nucleotide intervals;
+- miniprot for protein-to-genome coding projections;
+- Biopython `PairwiseAligner` for bounded short intervals.
+
+Each adapter returns a common alignment-statistics record with identity, coverage, strand, coordinates, paired blocks and backend identity. If a requested backend fails or is unavailable, the result is reported as unavailable for that evidence class. Hidden replacement by another algorithm is avoided.
+
+INSIPHY does not try to become a new general-purpose alignment package. The method contribution is the structural interpretation and phylogenetic use of the evidence.
 
 ## Correspondence graph
 
-Accepted pairwise matches form a graph for tree-ordered constrained merging.
-Direct matches and disjoint projections onto a common reference establish
-merge compatibility. Split fragments need not resemble one another; a chain
-of similarity without these coordinates is insufficient. Graph storage is
-(O(V+E)); the accepted graph can still be dense in the worst case.
+For `n` intervals, unrestricted pair generation is `O(n^2)`. Candidate filters by family, role, size, species distance and local context reduce practical work. Accepted relations form a graph with `O(V + E)` storage, where `E` can still be dense in difficult genes.
 
-Public `EG_*` identifiers are assigned only to components containing an
-annotated exon-like member or sequence-supported candidate exonic source.
-Context introns remain available for boundary calculations without becoming
-displayed homologous blocks.
+Tree-guided merging proceeds from close to distant comparisons. Merges require sequence or projection compatibility, not mere transitive similarity. Split/fusion evidence uses ordered coordinate projections. Repeated hits to the same reference region remain repeated or ambiguous evidence.
 
-## Parsimony and likelihood
+## Structural-site construction
 
-For binary states, inside/outside parsimony messages give globally compatible
-node states and branch endpoint pairs without enumerating all tied histories.
-With U distinct observation/missingness patterns and N nodes, message
-calculation takes O(UN); producing individual site outputs additionally costs
-O(SN). No local node tie-breaking is used for branch calls.
+The structural matrix is the single source for formal models. Sequence presence, exonic role and splice junctions are separate layers. Predicted roles remain predicted evidence. Candidate source intervals can support sequence presence or role uncertainty without becoming confirmed exon homology.
 
-For (S) structural sites, (N) tree nodes, and two states, one likelihood
-evaluation is O(UN) after exact observation-pattern compression. Repeated
-patterns retain multiplicity weights. Binary transition probabilities use
-closed forms with stable exponential subtraction. Structural-site independence
-is still a biological assumption; compression does not establish it.
+This design keeps statistical meaning stable across commands and figures.
 
-Scaled pruning stores one length-two vector per node. Site processing is
-sequential in memory, so the core likelihood memory cost is (O(N)) plus the
-input site matrix.
+## Parsimony complexity
 
-Optimization uses log-transformed positive parameters, bounded L-BFGS-B, and
-multiple deterministic starts. `--threads` parallelizes independent optimizer
-starts. Profile-likelihood intervals remain serial because each profile point
-depends on a constrained nested optimization.
+For `U` distinct observed patterns and `N` tree nodes, binary parsimony messages cost `O(U N)`. Producing per-site outputs costs `O(S N)` after pattern compression. The implementation keeps all globally optimal node and branch endpoint states, avoiding local tie-breaking.
 
-## Posterior calculation
+## Likelihood complexity
 
-Inside-outside messages compute node marginals and parent-child joint
-posteriors in (O(N)) per site. Expected directional transition counts use
-exact matrix-reward calculations. These calculations run after one family-layer
-model has been selected, avoiding repeated parameter fitting per site.
+For `U` compressed patterns and `N` nodes, one binary likelihood evaluation costs `O(U N)`. `_inside_log_messages` stores length-two log-likelihood vectors per node. Binary child-state sums use `np.logaddexp`; child contributions are added in log space, and the root prior is combined by the same stable log-sum-exp operation.
 
-## Data and memory discipline
+The posterior pass also propagates log-space messages. Prefix and suffix sums of child messages provide each child's sibling contribution in constant time after linear preparation at its parent. Thus a pattern's inside/outside passes cost `O(E)` over `E` tree edges, including multifurcations, with `O(N)` working message storage. Parameter optimization uses deterministic starts and bounded L-BFGS-B.
 
-- FASTA extraction uses existing uncompressed FASTA indexes when available;
-  otherwise interval reads stream the source without retaining a chromosome.
-- Original annotation bounds and expanded search bounds are recorded separately.
-- GFF gene hierarchies use bounded in-memory caching; no reference files change.
-- Pairwise diagnostics are streamed; accepted relations remain in memory for
-  correspondence inference. Worst-case dense accepted graphs remain quadratic.
-- Large all-genome indexes and databases remain external to the package.
-- Result tables are plain TSV/JSON and can be processed incrementally.
-- Unknown observations use likelihood marginalization and do not create
-  imputed sequence states.
-- Output directories contain only declared result tables and figures.
+Independent optimizer starts can use multiple threads. Profile-likelihood scans are more expensive because every profile point requires a constrained fit.
+
+## Memory and I/O
+
+- FASTA intervals are read from existing sources without rewriting reference files.
+- Search bounds and original gene bounds are recorded separately.
+- Pairwise diagnostics can be streamed.
+- Accepted correspondence relations stay in memory for graph construction.
+- Result files are TSV/JSON/SVG and can be inspected with ordinary tools.
+- Output directories should contain declared outputs only.
 
 ## Code policy
 
-The implementation favors small typed concepts and direct library calls:
+The project follows these concrete policies:
 
-- one representation for tree rows and branch lengths;
-- one alignment result type across backends;
-- one structural-site matrix feeding every formal model;
-- one likelihood engine for ER, ARD, and foreground variants;
-- explicit errors for violated biological assumptions;
-- no automatic biological mechanism labels;
-- no silent correction of malformed single-copy input;
-- no hidden thresholds for statistical significance or branch support.
+- one structural-site matrix feeds all formal models;
+- one tree representation is used by parsimony and likelihood;
+- one alignment-statistics interface wraps external tools;
+- mature libraries and external aligners are preferred over new local algorithms;
+- no silent fallback when a requested backend fails;
+- no arbitrary threshold retuning to make a demo look cleaner;
+- no automatic mechanism labels in core statistical outputs;
+- no invented probabilities for invalid fitted models;
+- no replacement of missing biological evidence by absence.
 
-Validation belongs at biological interfaces: copy count, species-tree labels,
-positive branch lengths, foreground edges, and ascertainment assumptions.
-Internal helpers rely on those established invariants instead of repeating
-defensive checks at every line.
+Thresholds should be named parameters or documented defaults. Changing them for a benchmark or manuscript figure requires a recorded reason and rerun.
 
-## Reproducibility
+## Visualization engineering
 
-`run_parameters.json` records analysis scope, model, branch-length mode,
-ascertainment, foreground file, thread count, and tree path.
-`excluded_families.tsv` records copy-count violations.
-`model_fits.tsv` records optimizer starts, convergence messages, parameter
-boundaries, and confidence intervals.
+Visualization is a consumer of biological state, not a second inference engine. It must preserve:
 
-The current repair is exercised through the explicitly requested real-data
-demo workflow. Simulation, checksum and additional smoke-test runs are outside
-this execution. Existing unit tests have not been rerun for v0.13.
+- confirmed exon homology ribbons only for confirmed exon-like members;
+- separate visual style for predicted, candidate and unknown states;
+- separate transcript lanes for alternative paths;
+- colorblind-friendly defaults and optional pattern encoding;
+- valid probability symbols only when the selected fitted posterior is valid.
+
+## Reproducibility status
+
+Final v0.14.0 run `20260918_121100_insiphy` passed 136 selected formal regression tests under Slurm `61625` ([report](/data/projects/intragenic_structure/results/20260918_121100_insiphy/regression_tests.txt)), including four new role-conflict tests. All ten re-inference/visualization tasks and five comparison tasks completed using unchanged cases/evidence; all six core tables agree in each case pair. Audits establish recovered Hdac3 structure, partial rec8 recovery, unresolved spo5, incomplete RpL32 coverage and two final dsx role contrasts. Final dsx fits emit no node/branch posteriors. The 132-test run is historical. SVG semantic and selected endpoint checks are complete; no rendered inspection was performed. Broader scientific limitations remain in the [real-data benchmark](real_data_benchmark.md).

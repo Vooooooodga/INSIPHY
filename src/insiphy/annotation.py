@@ -1,11 +1,23 @@
 """Sequence-supported annotation completion."""
 
+import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from .alignment import AlignmentBackendError, local_alignment_stats, revcomp
+from .alignment import (
+    AlignmentBackendError,
+    local_alignment_stats,
+    protein_locus_exons,
+    revcomp,
+)
 from .elements import EXON_LIKE_ROLES
 from .io import fasta_record_length, parse_fasta, read_fasta_interval, read_tsv, to_float, write_tsv
+
+
+_PROTEIN_QUERY_INTERVAL_FIELDS = (
+    "protein_cds_query_start", "protein_cds_query_end",
+    "protein_overlap_query_start", "protein_overlap_query_end",
+)
 
 
 def support_score(row):
@@ -21,6 +33,20 @@ def completion_call(row, score, threshold):
     event = row.get("inferred_event", "")
     frame = row.get("frame_status", "")
     inferred_role = row.get("inferred_role", "unknown")
+    if (
+        status == "supports_hidden_segment"
+        and event == "protein_cds_projection"
+        and row.get("predicted_role") in EXON_LIKE_ROLES
+        and score >= threshold
+    ):
+        return "predicted_exon_candidate"
+    if (
+        status == "conflicts_annotation"
+        and row.get("annotation_status") == "protein_projection_boundary_conflict"
+        and row.get("predicted_role") in EXON_LIKE_ROLES
+        and score >= threshold
+    ):
+        return "boundary_conflict_candidate"
     if status == "supports_hidden_segment" and inferred_role in EXON_LIKE_ROLES and score >= threshold:
         if event == "shifted_splice_site":
             return "shifted_splice_site_candidate"
@@ -372,6 +398,92 @@ def _projected_interval_coverage(blocks, query_interval, target_interval):
     return covered / max(1, q_end - q_start + 1)
 
 
+def _flank_support_from_spanning_blocks(source_span, target_span, blocks, source_interval, target_interval):
+    source_start, source_end = int(source_interval[0]), int(source_interval[1])
+    target_start, target_end = int(target_interval[0]), int(target_interval[1])
+    source_low, source_high = min(source_start, source_end), max(source_start, source_end)
+    target_low, target_high = min(target_start, target_end), max(target_start, target_end)
+    matches = mismatches = paired = 0
+    for block in blocks:
+        q_left = max(source_low, int(block["query_start"]))
+        q_right = min(source_high, int(block["query_end"]))
+        if q_left > q_right:
+            continue
+        offset = q_left - int(block["query_start"])
+        t_left = int(block["target_start"]) + offset
+        for q_pos in range(q_left, q_right + 1):
+            t_pos = t_left + (q_pos - q_left)
+            if t_pos < target_low or t_pos > target_high:
+                continue
+            q_base = source_span[q_pos - 1].upper()
+            t_base = target_span[t_pos - 1].upper()
+            if q_base not in {"A", "C", "G", "T"} or t_base not in {"A", "C", "G", "T"}:
+                continue
+            paired += 1
+            if q_base == t_base:
+                matches += 1
+            else:
+                mismatches += 1
+    identity = matches / max(1, matches + mismatches)
+    coverage = paired / max(1, source_high - source_low + 1)
+    return {
+        "identity": identity,
+        "coverage": coverage,
+        "matches": matches,
+        "mismatches": mismatches,
+        "paired_bases": paired,
+    }
+
+
+def _format_alternative_hits(alignment):
+    if alignment is None or not alignment.alternative_hits:
+        return "NA"
+    tokens = []
+    for hit in alignment.alternative_hits:
+        tokens.append(
+            "rank{rank}:{target_start}-{target_end}:{strand}:id{identity}:cov{coverage}:mapq{mapping_quality}:secondary{is_secondary}".format(
+                **hit
+            )
+        )
+    return ";".join(tokens)
+
+
+def _ambiguous_repeated_mapping(alignment):
+    if alignment is None:
+        return False
+    if int(alignment.ambiguous_hit_count or 0) > 0:
+        return True
+    return bool(alignment.hit_count) and (
+        alignment.is_secondary or int(alignment.mapping_quality or 0) == 0
+    )
+
+
+def _nucleotide_interval_candidates(alignment, locus_header):
+    if alignment is None or alignment.target_start <= 0 or alignment.target_end <= 0:
+        return []
+    hits = [{
+        "target_start": alignment.target_start,
+        "target_end": alignment.target_end,
+        "strand": alignment.strand,
+        "identity": alignment.identity,
+        "coverage": alignment.query_coverage or alignment.coverage,
+        "mapping_quality": alignment.mapping_quality,
+        "is_secondary": alignment.is_secondary,
+    }, *alignment.alternative_hits]
+    candidates = []
+    for hit in hits:
+        contig, start, end, strand = _project_locus_interval(hit["target_start"], hit["target_end"], locus_header)
+        candidates.append({
+            "contig": contig, "start": start, "end": end,
+            "strand": strand if hit["strand"] == "+" else ("-" if strand == "+" else "+"),
+            "backend": alignment.backend,
+            "interval_scope": "aligned_sequence",
+            "identity": hit["identity"], "coverage": hit["coverage"],
+            "mapping_quality": hit["mapping_quality"], "is_secondary": hit["is_secondary"],
+        })
+    return candidates
+
+
 def _ordered_anchor_deletion_support(
     source_occurrences,
     target_occurrences,
@@ -387,7 +499,12 @@ def _ordered_anchor_deletion_support(
     min_coverage,
     threads=1,
 ):
-    provenance = {"backend": "NA", "cigar": "NA"}
+    provenance = {
+        "backend": "NA",
+        "cigar": "NA",
+        "left_flank_backend": "NA",
+        "right_flank_backend": "NA",
+    }
     if not left_element or not right_element:
         return False, "missing_flanking_homolog_anchor", provenance
     if not source_locus_header or not source_locus_sequence:
@@ -446,16 +563,52 @@ def _ordered_anchor_deletion_support(
     local_target_sequence = target_span[local_target_start - 1 : local_target_end]
     if "N" in expected_sequence.upper() or "N" in local_target_sequence.upper():
         return False, "deletion_interval_or_local_target_sequence_contains_N", provenance
+    target_gap_left = min(target_left_interval[1], target_right_interval[1]) + 1
+    target_gap_right = max(target_left_interval[0], target_right_interval[0]) - 1
+    if target_gap_left <= target_gap_right and "N" in target_span[target_gap_left - 1 : target_gap_right].upper():
+        return False, "target_sequence_between_flanking_homologs_contains_N", provenance
     try:
         alignment = local_alignment_stats(source_span, target_span, backend="minimap2", threads=threads)
     except AlignmentBackendError as exc:
         return False, f"deletion_spanning_alignment_unresolved:{exc}", provenance
-    provenance = {"backend": alignment.backend, "cigar": alignment.cigar}
+    provenance.update({"backend": alignment.backend, "cigar": alignment.cigar})
     if alignment.strand != "+":
         return False, "deletion_spanning_alignment_not_relative_plus_strand", provenance
-    if alignment.identity < min_identity:
-        return False, "deletion_spanning_alignment_identity_insufficient", provenance
+    if _ambiguous_repeated_mapping(alignment):
+        return False, "deletion_spanning_alignment_ambiguous_repeated_mapping", provenance
     blocks = _supported_alignment_blocks(alignment)
+    left_support = _flank_support_from_spanning_blocks(
+        source_span, target_span, blocks, source_left_interval, target_left_interval
+    )
+    right_support = _flank_support_from_spanning_blocks(
+        source_span, target_span, blocks, source_right_interval, target_right_interval
+    )
+    provenance.update(
+        {
+            "left_flank_backend": alignment.backend,
+            "left_flank_cigar": alignment.cigar,
+            "left_flank_identity": f"{left_support['identity']:.6g}",
+            "left_flank_coverage": f"{left_support['coverage']:.6g}",
+            "left_flank_paired_bases": left_support["paired_bases"],
+            "left_flank_matches": left_support["matches"],
+            "left_flank_mismatches": left_support["mismatches"],
+            "right_flank_backend": alignment.backend,
+            "right_flank_cigar": alignment.cigar,
+            "right_flank_identity": f"{right_support['identity']:.6g}",
+            "right_flank_coverage": f"{right_support['coverage']:.6g}",
+            "right_flank_paired_bases": right_support["paired_bases"],
+            "right_flank_matches": right_support["matches"],
+            "right_flank_mismatches": right_support["mismatches"],
+        }
+    )
+    if left_support["identity"] < min_identity:
+        return False, "left_flanking_homolog_identity_insufficient_in_spanning_alignment", provenance
+    if left_support["coverage"] < min_coverage:
+        return False, "left_flanking_homolog_coverage_insufficient_in_spanning_alignment", provenance
+    if right_support["identity"] < min_identity:
+        return False, "right_flanking_homolog_identity_insufficient_in_spanning_alignment", provenance
+    if right_support["coverage"] < min_coverage:
+        return False, "right_flanking_homolog_coverage_insufficient_in_spanning_alignment", provenance
     deletions = _query_only_gaps(
         alignment.cigar,
         query_start=alignment.query_start,
@@ -494,55 +647,118 @@ def _ordered_anchor_deletion_support(
     return False, "no_query_only_gap_covers_expected_exon", provenance
 
 
+def _protein_context_provenance(context):
+    if not context:
+        return {
+            "reference_protein_id": "NA",
+            "reference_transcript_id": "NA",
+            "reference_protein_query_start": "NA",
+            "reference_protein_query_end": "NA",
+            "reference_cds_length": "NA",
+            "reference_cds_phase": "NA",
+        }
+    return {
+        "reference_protein_id": context.get("protein_id", "NA"),
+        "reference_transcript_id": context.get("transcript_id", "NA"),
+        "reference_protein_query_start": context.get("query_start", "NA"),
+        "reference_protein_query_end": context.get("query_end", "NA"),
+        "reference_cds_length": context.get("cds_length", "NA"),
+        "reference_cds_phase": context.get("cds_phase", "NA"),
+    }
+
+
+def _coding_length_and_phase(path_row, occurrence):
+    length = 0
+    for record in (path_row, occurrence):
+        if record.get("coding_status") in {"noncoding", "not_applicable"}:
+            break
+        value = next((record[key] for key in ("cds_length", "coding_length")
+                      if record.get(key) not in {None, "", "NA", "."}), None)
+        if value is not None:
+            length = int(value)
+            break
+        intervals = record.get("cds_intervals", "NA")
+        if intervals not in {None, "", "NA", "."}:
+            previous_end = 0
+            for start, end in sorted(tuple(map(int, interval.split("-"))) for interval in intervals.split(";")):
+                length += max(0, end - max(start, previous_end + 1) + 1)
+                previous_end = max(previous_end, end)
+            break
+    phase = next((record[key] for record in (path_row, occurrence) for key in ("cds_phase", "phase")
+                  if str(record.get(key)) in {"0", "1", "2"}), ".")
+    return length, phase
+
+
 def _reference_protein_context(representative, transcript_paths, proteins, occ_by_id):
-    transcript_id = representative.get("transcript_id")
-    if not transcript_id:
-        for row in transcript_paths:
-            if row.get("occurrence_id") == representative.get("occurrence_id"):
-                transcript_id = row.get("transcript_id")
+    occurrence_id = representative.get("occurrence_id")
+    path_rows_by_transcript = defaultdict(list)
+    containing_transcripts = []
+    for row in transcript_paths:
+        if (
+            row.get("species") == representative.get("species")
+            and row.get("gene_copy_id") == representative.get("gene_copy_id")
+            and row.get("transcript_id")
+        ):
+            path_rows_by_transcript[row.get("transcript_id")].append(row)
+            if row.get("occurrence_id") == occurrence_id:
+                containing_transcripts.append(row.get("transcript_id"))
+
+    if not containing_transcripts:
+        for transcript_id in _split_transcript_ids(representative.get("transcript_id")):
+            if transcript_id:
+                containing_transcripts.append(transcript_id)
+    if not containing_transcripts:
+        return None
+
+    seen = set()
+    contexts = []
+    for transcript_id in containing_transcripts:
+        if transcript_id in seen:
+            continue
+        seen.add(transcript_id)
+        protein_id = f"{representative['species']}|{representative['gene_copy_id']}|{transcript_id}"
+        protein = proteins.get(protein_id, "")
+        if not protein:
+            continue
+        rows = path_rows_by_transcript.get(transcript_id, [])
+        if not rows:
+            continue
+        ordered = sorted(rows, key=lambda item: _safe_int(item.get("path_rank"), 0))
+        coding_rows = []
+        initial_phase = None
+        for row in ordered:
+            occurrence = occ_by_id.get(row.get("occurrence_id"), {})
+            if row.get("coding_status", occurrence.get("coding_status")) != "coding":
+                continue
+            cds_length, phase = _coding_length_and_phase(row, occurrence)
+            if cds_length <= 0:
+                continue
+            if initial_phase is None and str(phase) in {"0", "1", "2"}:
+                initial_phase = int(phase)
+            coding_rows.append((row, cds_length, phase))
+        if initial_phase is None:
+            initial_phase = 0
+        cds_offset = 0
+        for row, cds_length, phase in coding_rows:
+            if row.get("occurrence_id") == occurrence_id:
+                translated_start = max(0, cds_offset - initial_phase)
+                translated_end = min(len(protein) * 3, max(0, cds_offset + cds_length - initial_phase)) - 1
+                if translated_end >= translated_start:
+                    contexts.append(
+                        {
+                            "protein_id": protein_id,
+                            "protein": protein,
+                            "query_start": translated_start // 3 + 1,
+                            "query_end": translated_end // 3 + 1,
+                            "transcript_id": transcript_id,
+                            "cds_length": cds_length,
+                            "cds_phase": phase,
+                        }
+                    )
                 break
-    if not transcript_id:
-        return None
-    protein_id = f"{representative['species']}|{representative['gene_copy_id']}|{transcript_id}"
-    protein = proteins.get(protein_id, "")
-    if not protein:
-        return None
-    rows = [
-        row for row in transcript_paths
-        if row.get("species") == representative.get("species")
-        and row.get("gene_copy_id") == representative.get("gene_copy_id")
-        and row.get("transcript_id") == transcript_id
-    ]
-    ordered = sorted(rows, key=lambda item: int(item.get("path_rank", 0) or 0))
-    coding_rows = []
-    initial_phase = None
-    for row in ordered:
-        occurrence = occ_by_id.get(row.get("occurrence_id"), {})
-        if occurrence.get("coding_status") != "coding" and row.get("coding_status") != "coding":
-            continue
-        cds_length = int(occurrence.get("cds_length", 0) or 0)
-        if cds_length <= 0:
-            continue
-        phase = occurrence.get("cds_phase") or row.get("cds_phase") or "."
-        if initial_phase is None and phase in {"0", "1", "2"}:
-            initial_phase = int(phase)
-        coding_rows.append((row, cds_length))
-    if initial_phase is None:
-        initial_phase = 0
-    cds_offset = 0
-    for row, cds_length in coding_rows:
-        if row.get("occurrence_id") == representative.get("occurrence_id"):
-            translated_start = max(0, cds_offset - initial_phase)
-            translated_end = max(0, cds_offset + cds_length - initial_phase) - 1
-            if translated_end < translated_start:
-                return None
-            return {
-                "protein_id": protein_id,
-                "protein": protein,
-                "query_start": translated_start // 3 + 1,
-                "query_end": translated_end // 3 + 1,
-            }
-        cds_offset += cds_length
+            cds_offset += cds_length
+    if contexts:
+        return max(contexts, key=lambda item: (item["cds_length"], item["query_end"] - item["query_start"], item["transcript_id"]))
     return None
 
 
@@ -560,11 +776,14 @@ def _protein_projection(
     context = _reference_protein_context(representative, transcript_paths, proteins, occ_by_id)
     if context is None:
         return None, "protein_reference_context_unavailable"
-    from .alignment import protein_locus_exons
     try:
         projections = protein_locus_exons({context["protein_id"]: context["protein"]}, locus, threads=threads)
     except AlignmentBackendError as exc:
         return None, f"protein_projection_unresolved:{exc}"
+    return _protein_projection_from_rows(context, projections, locus_header, min_identity, min_coverage)
+
+
+def _protein_projection_from_rows(context, projections, locus_header, min_identity, min_coverage, candidates=None):
     matches = []
     exon_aa_length = max(1, context["query_end"] - context["query_start"] + 1)
     for row in projections:
@@ -585,9 +804,32 @@ def _protein_projection(
             and to_float(row.get("identity")) >= min_identity
             and per_exon_coverage >= min_coverage
         ):
-            matches.append({**row, "per_exon_coverage": per_exon_coverage})
+            matches.append({
+                **row,
+                "per_exon_coverage": per_exon_coverage,
+                "protein_cds_query_start": query_start,
+                "protein_cds_query_end": query_end,
+                "protein_overlap_query_start": overlap_start,
+                "protein_overlap_query_end": overlap_end,
+            })
     if not matches:
         return None, "protein_projection_did_not_unambiguously_cover_reference_cds_interval"
+    if candidates is not None:
+        for row in matches:
+            contig, start, end, strand = _project_locus_interval(row["target_start"], row["target_end"], locus_header)
+            candidates.append({
+                "contig": contig, "start": start, "end": end,
+                "strand": strand if row.get("strand", "+") == "+" else ("-" if strand == "+" else "+"),
+                "backend": "miniprot", "identity": to_float(row.get("identity")),
+                "interval_scope": "projected_cds_container",
+                **{field: row[field] for field in _PROTEIN_QUERY_INTERVAL_FIELDS},
+                "reference_protein_id": context["protein_id"],
+                "reference_protein_query_start": context["query_start"],
+                "reference_protein_query_end": context["query_end"],
+                "coverage": row["per_exon_coverage"], "parent_id": row.get("parent_id", "NA"),
+                "identity_scope": row.get("identity_scope", "unknown"),
+                "phase": row.get("phase", "NA"), "cigar": row.get("cigar", "NA"),
+            })
     signatures = {
         (
             row.get("parent_id", "NA"),
@@ -604,6 +846,7 @@ def _protein_projection(
     projected_strand = best.get("strand", "+")
     if projected_strand in {"+", "-"} and strand in {"+", "-"}:
         strand = "+" if projected_strand == strand else "-"
+    # Query overlap identifies a CDS container, without localizing exact segment bounds inside it.
     return {
         "contig": contig,
         "start": start,
@@ -614,7 +857,41 @@ def _protein_projection(
         "phase": best.get("phase", "NA"),
         "cigar": best.get("cigar", "NA"),
         "parent_id": best.get("parent_id", "NA"),
+        "identity_scope": best.get("identity_scope", "unknown"),
+        "interval_scope": "projected_cds_container",
+        **{field: best[field] for field in _PROTEIN_QUERY_INTERVAL_FIELDS},
     }, "protein_projection_supports_cds"
+
+
+def _cached_protein_projection(
+    context,
+    family,
+    copy_key,
+    locus_header,
+    locus,
+    protein_contexts_by_family,
+    projection_cache,
+    min_identity,
+    min_coverage,
+    threads,
+    candidates=None,
+):
+    if context is None:
+        return None, "protein_reference_context_unavailable"
+    cache_key = (family, copy_key[1], copy_key[2], locus_header)
+    if cache_key not in projection_cache:
+        proteins = {
+            protein_id: protein_context["protein"]
+            for protein_id, protein_context in protein_contexts_by_family.get(family, {}).items()
+        }
+        try:
+            projection_cache[cache_key] = (protein_locus_exons(proteins, locus, threads=threads), "")
+        except AlignmentBackendError as exc:
+            projection_cache[cache_key] = ([], f"protein_projection_unresolved:{exc}")
+    projections, error = projection_cache[cache_key]
+    if error:
+        return None, error
+    return _protein_projection_from_rows(context, projections, locus_header, min_identity, min_coverage, candidates)
 
 
 def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_coverage=0.60, threads=1, aligner="internal"):
@@ -639,6 +916,7 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
     occurrences_by_copy = defaultdict(list)
     present_elements = defaultdict(set)
     core_exonic_occurrences = set()
+    annotated_exon_counts = Counter()
     for occurrence in occurrences:
         key = (occurrence["family_id"], occurrence["species"])
         copies_by_family_species[key].add(occurrence["gene_copy_id"])
@@ -651,13 +929,23 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
         if (
             occurrence
             and row.get("element_class") == "exon_like"
-            and row.get("membership_call", "core_member") == "core_member"
             and occurrence.get("role") in EXON_LIKE_ROLES
         ):
-            rows_by_element[(occurrence["family_id"], row["element_id"])].append((row, occurrence))
-            core_exonic_occurrences.add(row.get("occurrence_id"))
+            annotated_exon_counts[(occurrence["family_id"], row["element_id"])] += 1
+    for row in elements:
+        occurrence = occ_by_id.get(row.get("occurrence_id", ""))
+        if (
+            occurrence
+            and row.get("element_class") == "exon_like"
+            and occurrence.get("role") in EXON_LIKE_ROLES
+        ):
+            key = (occurrence["family_id"], row["element_id"])
+            if row.get("membership_call", "core_member") == "core_member" or annotated_exon_counts[key] == 1:
+                rows_by_element[key].append((row, occurrence))
+            if row.get("membership_call", "core_member") == "core_member":
+                core_exonic_occurrences.add(row.get("occurrence_id"))
 
-    evidence = []
+    representative_infos = []
     for (family, element), members in sorted(rows_by_element.items()):
         representative_row, representative = max(
             members,
@@ -671,11 +959,42 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
             if protein_members:
                 representative_row, representative = min(
                     protein_members,
-                    key=lambda pair: (-int(pair[1]["cds_length"]), pair[1]["occurrence_id"]),
+                    key=lambda pair: (-_safe_int(pair[1].get("cds_length"), 0), pair[1]["occurrence_id"]),
                 )
         query = sequences.get(representative["occurrence_id"], "")
         if not query:
             continue
+        representative_infos.append(
+            {
+                "family": family,
+                "element": element,
+                "members": members,
+                "representative_row": representative_row,
+                "representative": representative,
+                "query": query,
+                "protein_context": _reference_protein_context(representative, transcript_paths, proteins, occ_by_id)
+                if aligner == "miniprot"
+                else None,
+            }
+        )
+
+    protein_contexts_by_family = defaultdict(dict)
+    if aligner == "miniprot":
+        for info in representative_infos:
+            context = info.get("protein_context")
+            if context is not None:
+                protein_contexts_by_family[info["family"]][context["protein_id"]] = context
+
+    protein_projection_cache = {}
+    evidence = []
+    for info in representative_infos:
+        family = info["family"]
+        element = info["element"]
+        representative_row = info["representative_row"]
+        representative = info["representative"]
+        query = info["query"]
+        protein_context = info.get("protein_context")
+        protein_context_provenance = _protein_context_provenance(protein_context)
         source_occurrences, source_path_status = _source_occurrence_path(
             family,
             representative,
@@ -717,24 +1036,40 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
             alignment = None
             alignment_error = ""
             identity = coverage = 0.0
-            if aligner != "miniprot":
-                try:
-                    alignment = local_alignment_stats(query, locus, backend=aligner, threads=threads)
-                    identity = alignment.identity
-                    coverage = alignment.query_coverage or alignment.coverage
-                except AlignmentBackendError as exc:
-                    alignment_error = str(exc)
+            dna_identity = dna_coverage = 0.0
+            nucleotide_aligner = "minimap2" if aligner == "miniprot" else aligner
+            try:
+                alignment = local_alignment_stats(query, locus, backend=nucleotide_aligner, threads=threads)
+                dna_identity = alignment.identity
+                dna_coverage = alignment.query_coverage or alignment.coverage
+                identity = dna_identity
+                coverage = dna_coverage
+            except AlignmentBackendError as exc:
+                alignment_error = str(exc)
             supported = alignment is not None and identity >= min_identity and coverage >= min_coverage
             projected = None
+            protein_candidates = []
             projection_reason = "not_requested"
+            protein_identity = protein_coverage = 0.0
             if aligner == "miniprot":
-                projected, projection_reason = _protein_projection(
-                    representative, locus, locus_header, transcript_paths, proteins,
-                    occ_by_id, min_identity, min_coverage, threads,
+                projected, projection_reason = _cached_protein_projection(
+                    protein_context,
+                    family,
+                    copy_key,
+                    locus_header,
+                    locus,
+                    protein_contexts_by_family,
+                    protein_projection_cache,
+                    min_identity,
+                    min_coverage,
+                    threads,
+                    candidates=protein_candidates,
                 )
                 if projected:
-                    identity = projected["identity"]
-                    coverage = projected["coverage"]
+                    protein_identity = projected["identity"]
+                    protein_coverage = projected["coverage"]
+                    identity = protein_identity
+                    coverage = protein_coverage
             if not source_occurrences:
                 deletion_supported = False
                 deletion_reason = source_path_status
@@ -755,8 +1090,39 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                     min_coverage,
                     threads=threads,
                 )
-            if projected:
-                inferred_role = "CDS"
+            ambiguous_dna = supported and _ambiguous_repeated_mapping(alignment)
+            ambiguous_protein = projection_reason == "protein_projection_ambiguous_multiple_possible_mappings"
+            interval_candidates = _nucleotide_interval_candidates(alignment, locus_header) + protein_candidates
+            correspondence_status = "resolved"
+            if ambiguous_dna or ambiguous_protein:
+                primary_mapping_status = "ambiguous_repeated_mapping"
+                interval_scope = "ambiguous_candidates"
+                correspondence_status = "unknown"
+                primary_backend = "miniprot" if protein_candidates else alignment.backend
+                primary_cigar = "NA"
+                if protein_candidates:
+                    primary_candidate = max(protein_candidates, key=lambda row: (row["coverage"], row["identity"]))
+                    primary_score = primary_candidate["identity"]
+                    primary_coverage = primary_candidate["coverage"]
+                else:
+                    primary_score, primary_coverage = dna_identity, dna_coverage
+                predicted_role = "CDS" if protein_candidates else "unknown"
+                inferred_role = "unknown"
+                status = "homologous_sequence_candidate"
+                annotation_status = "alignment_ambiguous_repeated_mapping"
+                conclusion = "sequence_present_repeated_mapping_ambiguous"
+                contig = _locus_geometry(locus_header)[0]
+                start = end = strand = "NA"
+                confidence = "low"
+            elif projected:
+                primary_mapping_status = "protein_projection"
+                interval_scope = "projected_cds_container"
+                primary_backend = "miniprot"
+                primary_cigar = projected.get("cigar", "NA")
+                primary_score = protein_identity
+                primary_coverage = protein_coverage
+                predicted_role = "CDS"
+                inferred_role = "predicted_CDS"
                 contig = projected["contig"]
                 start = projected["start"]
                 end = projected["end"]
@@ -770,34 +1136,44 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                     and int(row["start"]) <= end
                     and int(row["end"]) >= start
                 ]
-                contained = any(
-                    int(row["start"]) <= start and end <= int(row["end"])
-                    for row in overlapping_exons
-                )
+                contained_roles = {
+                    row["role"] for row in overlapping_exons
+                    if int(row["start"]) <= start and end <= int(row["end"])
+                }
                 if strand != _locus_geometry(locus_header)[3]:
                     status = "homologous_sequence_candidate"
                     annotation_status = "protein_projection_antisense_to_gene_locus"
                     inferred_role = "unknown"
+                    predicted_role = "CDS"
                     conclusion = "sequence_present_role_unknown"
-                elif contained:
+                elif contained_roles:
                     status = "supports_annotation"
                     annotation_status = "protein_projection_contained_in_annotated_exon"
+                    inferred_role = "CDS" if "CDS" in contained_roles else sorted(contained_roles)[0]
                     conclusion = "annotated_exon_sequence_present"
                 elif overlapping_exons:
                     status = "conflicts_annotation"
                     annotation_status = "protein_projection_boundary_conflict"
+                    inferred_role = "predicted_CDS"
                     conclusion = "predicted_cds_boundary_conflict"
                 else:
                     status = "supports_hidden_segment"
                     annotation_status = "protein_projection_supports_missing_cds"
-                    conclusion = "predicted_exon"
+                    conclusion = "predicted_exon_candidate"
                 confidence = "high" if identity >= min_identity and coverage >= min_coverage else "low"
             elif supported:
+                interval_scope = "aligned_sequence"
+                primary_backend = alignment.backend
+                primary_cigar = alignment.cigar
+                primary_score = dna_identity
+                primary_coverage = dna_coverage
+                predicted_role = "unknown"
                 contig, start, end, strand = _project_locus_interval(
                     alignment.target_start, alignment.target_end, locus_header
                 )
                 if alignment.strand in {"+", "-"} and strand in {"+", "-"}:
                     strand = "+" if alignment.strand == strand else "-"
+                primary_mapping_status = "unique_nucleotide_mapping"
                 overlap_role, sense_overlap = _overlapping_annotation_role(
                     alignment.target_start, alignment.target_end,
                     locus_header, occurrences_by_copy[copy_key], strand,
@@ -819,6 +1195,13 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                     conclusion = "sequence_present_role_unknown"
                 confidence = "medium"
             elif deletion_supported:
+                primary_mapping_status = "ordered_flank_deletion"
+                interval_scope = "not_applicable"
+                primary_backend = deletion_provenance.get("backend", "NA")
+                primary_cigar = deletion_provenance.get("cigar", "NA")
+                primary_score = None
+                primary_coverage = None
+                predicted_role = "unknown"
                 status = "supports_absence"
                 annotation_status = "sequence_absence_between_ordered_flanking_homologs"
                 inferred_role = "unknown"
@@ -828,6 +1211,14 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                 conclusion = "targeted_deletion_supported"
                 confidence = "medium"
             else:
+                primary_mapping_status = "unresolved"
+                interval_scope = "unresolved"
+                correspondence_status = "unknown"
+                primary_backend = nucleotide_aligner
+                primary_cigar = "NA"
+                primary_score = 0.0
+                primary_coverage = 0.0
+                predicted_role = "unknown"
                 status = "ambiguous"
                 annotation_status = (
                     "alignment_backend_error" if alignment_error else
@@ -850,29 +1241,65 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                     "annotation_status": annotation_status,
                     "evidence_status": status,
                     "inferred_role": inferred_role,
+                    "predicted_role": predicted_role,
                     "contig": contig,
                     "start": start,
                     "end": end,
                     "strand": strand,
-                    "sequence_score": "NA" if status == "supports_absence" else f"{identity:.6g}",
-                    "sequence_coverage": "NA" if status == "supports_absence" else f"{coverage:.6g}",
+                    "sequence_score": "NA" if primary_score is None else f"{primary_score:.6g}",
+                    "sequence_coverage": "NA" if primary_coverage is None else f"{primary_coverage:.6g}",
                     "left_synteny_score": "1" if left_element in present_elements[copy_key] else "0",
                     "right_synteny_score": "1" if right_element in present_elements[copy_key] else "0",
                     "splice_motif_score": "NA",
-                    "phase_compatibility": projected.get("phase", "unknown") if projected else "unknown",
+                    "phase_compatibility": "unknown",
                     "inferred_event": "protein_cds_projection" if projected else "homologous_exon_sequence_search",
                     "frame_status": "unknown",
                     "evidence_conclusion": conclusion,
                     "confidence_flag": confidence,
                     "absence_evidence": deletion_reason,
-                    "alignment_backend": aligner,
+                    "alignment_backend": primary_backend,
+                    "primary_mapping_status": primary_mapping_status,
+                    "correspondence_status": correspondence_status,
+                    "interval_scope": interval_scope,
+                    "interval_candidates": json.dumps(interval_candidates, separators=(",", ":")) if interval_candidates else "NA",
+                    "evidence_aligner": aligner,
                     "alignment_error": alignment_error or "NA",
-                    "alignment_cigar": (
-                        projected.get("cigar", "NA") if projected else
-                        alignment.cigar if alignment is not None else "NA"
-                    ),
+                    "alignment_cigar": primary_cigar,
+                    "dna_sequence_score": f"{dna_identity:.6g}" if alignment is not None else "NA",
+                    "dna_sequence_coverage": f"{dna_coverage:.6g}" if alignment is not None else "NA",
+                    "dna_alignment_backend": alignment.backend if alignment is not None else nucleotide_aligner,
+                    "dna_alignment_cigar": alignment.cigar if alignment is not None else "NA",
+                    "protein_sequence_score": f"{protein_identity:.6g}" if projected else "NA",
+                    "protein_sequence_coverage": f"{protein_coverage:.6g}" if projected else "NA",
+                    "protein_alignment_backend": "miniprot" if projected else "NA",
+                    "protein_alignment_cigar": projected.get("cigar", "NA") if projected else "NA",
+                    "protein_projection_parent_id": projected.get("parent_id", "NA") if projected else "NA",
+                    "protein_projection_reason": projection_reason,
+                    **{field: projected.get(field, "NA") if projected else "NA" for field in _PROTEIN_QUERY_INTERVAL_FIELDS},
+                    "protein_identity_scope": projected.get("identity_scope", "unknown") if projected else "NA",
+                    "protein_cigar_scope": "parent_alignment" if projected and projected.get("cigar", "NA") != "NA" else "NA",
+                    "protein_cds_phase": projected.get("phase", "NA") if projected else "NA",
+                    **protein_context_provenance,
+                    "alignment_hit_count": len(protein_candidates) if primary_backend == "miniprot" else alignment.hit_count if alignment is not None and primary_mapping_status != "ordered_flank_deletion" else "NA",
+                    "alignment_ambiguous_hit_count": max(0, len(protein_candidates) - 1) if primary_backend == "miniprot" else alignment.ambiguous_hit_count if alignment is not None and primary_mapping_status != "ordered_flank_deletion" else "NA",
+                    "alignment_mapping_quality": alignment.mapping_quality if alignment is not None and primary_backend != "miniprot" and primary_mapping_status != "ordered_flank_deletion" else "NA",
+                    "alignment_alternative_hits": _format_alternative_hits(alignment) if primary_backend != "miniprot" and primary_mapping_status != "ordered_flank_deletion" else "NA",
+                    "dna_alignment_hit_count": alignment.hit_count if alignment is not None else 0,
+                    "dna_alignment_ambiguous_hit_count": alignment.ambiguous_hit_count if alignment is not None else 0,
+                    "dna_alignment_mapping_quality": alignment.mapping_quality if alignment is not None else "NA",
+                    "dna_alignment_alternative_hits": _format_alternative_hits(alignment),
                     "deletion_alignment_backend": deletion_provenance.get("backend", "NA"),
                     "deletion_alignment_cigar": deletion_provenance.get("cigar", "NA"),
+                    "left_flank_identity": deletion_provenance.get("left_flank_identity", "NA"),
+                    "left_flank_coverage": deletion_provenance.get("left_flank_coverage", "NA"),
+                    "left_flank_paired_bases": deletion_provenance.get("left_flank_paired_bases", "NA"),
+                    "left_flank_matches": deletion_provenance.get("left_flank_matches", "NA"),
+                    "left_flank_mismatches": deletion_provenance.get("left_flank_mismatches", "NA"),
+                    "right_flank_identity": deletion_provenance.get("right_flank_identity", "NA"),
+                    "right_flank_coverage": deletion_provenance.get("right_flank_coverage", "NA"),
+                    "right_flank_paired_bases": deletion_provenance.get("right_flank_paired_bases", "NA"),
+                    "right_flank_matches": deletion_provenance.get("right_flank_matches", "NA"),
+                    "right_flank_mismatches": deletion_provenance.get("right_flank_mismatches", "NA"),
                     "search_expansion_status": expansion.get("search_expansion_status", "not_requested"),
                     "search_original_start": expansion.get("search_original_start", metadata.get("search_start", "NA")),
                     "search_original_end": expansion.get("search_original_end", metadata.get("search_end", "NA")),
@@ -883,12 +1310,26 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
             )
     fields = [
         "evidence_id", "family_id", "species", "gene_copy_id", "homology_id",
-        "annotation_status", "evidence_status", "inferred_role", "contig", "start", "end",
+        "annotation_status", "evidence_status", "inferred_role", "predicted_role", "contig", "start", "end",
         "strand", "sequence_score", "sequence_coverage", "left_synteny_score",
         "right_synteny_score", "splice_motif_score", "phase_compatibility",
         "inferred_event", "frame_status", "evidence_conclusion", "confidence_flag",
-        "absence_evidence", "alignment_backend", "alignment_error", "alignment_cigar",
+        "absence_evidence", "alignment_backend", "primary_mapping_status", "evidence_aligner", "alignment_error", "alignment_cigar",
+        "correspondence_status", "interval_scope", "interval_candidates",
+        "dna_sequence_score", "dna_sequence_coverage", "dna_alignment_backend", "dna_alignment_cigar",
+        "protein_sequence_score", "protein_sequence_coverage", "protein_alignment_backend", "protein_alignment_cigar",
+        "protein_projection_parent_id", "protein_projection_reason",
+        *_PROTEIN_QUERY_INTERVAL_FIELDS,
+        "protein_identity_scope", "protein_cigar_scope", "protein_cds_phase",
+        "reference_protein_id", "reference_transcript_id", "reference_protein_query_start",
+        "reference_protein_query_end", "reference_cds_length", "reference_cds_phase",
+        "alignment_hit_count", "alignment_ambiguous_hit_count", "alignment_mapping_quality", "alignment_alternative_hits",
+        "dna_alignment_hit_count", "dna_alignment_ambiguous_hit_count", "dna_alignment_mapping_quality", "dna_alignment_alternative_hits",
         "deletion_alignment_backend", "deletion_alignment_cigar",
+        "left_flank_identity", "left_flank_coverage", "left_flank_paired_bases",
+        "left_flank_matches", "left_flank_mismatches",
+        "right_flank_identity", "right_flank_coverage", "right_flank_paired_bases",
+        "right_flank_matches", "right_flank_mismatches",
         "search_expansion_status", "search_original_start", "search_original_end",
         "search_expanded_start", "search_expanded_end", "range_status",
     ]
@@ -921,6 +1362,17 @@ def complete_annotation(input_dir, output_dir, threshold=0.55):
                 "interval": f"{row.get('contig', 'NA')}:{row.get('start', 'NA')}-{row.get('end', 'NA')}:{row.get('strand', 'NA')}",
                 "annotation_status": row.get("annotation_status", "unknown"),
                 "inferred_role": row.get("inferred_role", "unknown"),
+                "predicted_role": row.get("predicted_role", "unknown"),
+                "primary_mapping_status": row.get("primary_mapping_status", "unknown"),
+                # Legacy evidence lacks this field; only explicit unknown marks unresolved correspondence.
+                "correspondence_status": row.get("correspondence_status", "unspecified"),
+                "interval_scope": row.get("interval_scope", "unspecified"),
+                **{field: row.get(field, "NA") for field in _PROTEIN_QUERY_INTERVAL_FIELDS},
+                "reference_protein_id": row.get("reference_protein_id", "NA"),
+                "reference_transcript_id": row.get("reference_transcript_id", "NA"),
+                "reference_protein_query_start": row.get("reference_protein_query_start", "NA"),
+                "reference_protein_query_end": row.get("reference_protein_query_end", "NA"),
+                "interval_candidates": row.get("interval_candidates", "NA"),
                 "support_score": "NA" if score is None else f"{score:.6g}",
                 "completion_call": call,
                 "evidence_status": status,
@@ -936,7 +1388,11 @@ def complete_annotation(input_dir, output_dir, threshold=0.55):
         rows,
         [
             "evidence_id", "family_id", "species", "gene_copy_id", "homology_id",
-            "interval", "annotation_status", "inferred_role", "support_score",
+            "interval", "annotation_status", "inferred_role", "predicted_role", "support_score",
+            "primary_mapping_status", "correspondence_status", "interval_scope", "interval_candidates",
+            *_PROTEIN_QUERY_INTERVAL_FIELDS,
+            "reference_protein_id", "reference_transcript_id",
+            "reference_protein_query_start", "reference_protein_query_end",
             "completion_call", "evidence_status", "inferred_event", "frame_status",
             "evidence_conclusion", "confidence_flag", "absence_evidence",
         ],
