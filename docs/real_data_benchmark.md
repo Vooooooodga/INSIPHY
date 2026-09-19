@@ -1,18 +1,44 @@
 # Real-Data Demonstration
 
-## v0.14.0 completed assessment
+## v0.15.0 formal assessment: pending
+
+The v0.15.0 five-case assessment has not been run. No v0.15 recovery count,
+site count, likelihood result, thread comparison, or figure assessment is
+available yet. The planned roles are:
+
+| Case | v0.15 assessment role | Upstream qualification |
+|---|---|---|
+| RpL32 | Qualitative conservation control | Supplied single-copy grouping must be recorded with the run |
+| spo5 / `spbc29a10_02` | Positive observable benchmark | Curated grouping only; no independent genome-wide single-copy qualification yet |
+| rec8 / `spog_00055` | Positive observable benchmark | Curated grouping only; no independent genome-wide single-copy qualification yet |
+| Hdac3 | Positive observable benchmark | Curated grouping only; no independent genome-wide single-copy qualification yet |
+| dsx | Descriptive case for annotation coverage and unresolved structure | No positive-event or mechanism claim |
+
+The formal run must first create and freeze one schema-v3 repertoire matrix per
+case. Parsimony, ER/ARD, and foreground analyses must consume that same file.
+Canonical analyses, when run, use a separate view-specific sensitivity matrix.
+After completion, this section will record the run identifier, exact input and
+execution provenance, upstream single-copy qualification, matrix source and
+view, total and CTMC-included site counts, focal-site recovery, parsimony
+alternatives, model-test availability, thread comparison, and rendered-figure
+review. Until those fields are filled, the v0.15 status remains `pending`.
+
+All numerical results below belong to pre-v0.15 software and are historical
+records. They do not describe v0.15 behavior.
+
+## Historical v0.14.0 completed assessment
 
 Run `20260918_121100_insiphy` started at 12:15 on 2026-09-18. Its **136 selected
 formal regression tests passed** under Slurm job `61625` in **17.063 s**
 ([test report](/data/projects/intragenic_structure/results/20260918_121100_insiphy/regression_tests.txt)).
-This includes four new role-conflict tests. All ten re-inference/visualization
+This included four new role-conflict tests. All ten re-inference/visualization
 tasks and five thread-comparison tasks completed. The run covers parsimony,
 ER/ARD, foreground analysis and SVG output for five biological cases at 1 and
 16 threads, reusing existing prepared cases and sequence evidence without
-repeating alignments. This completes the scheduled software assessment; the
-scientific limitations below remain. Earlier runs are historical records.
+repeating alignments. This completed the scheduled v0.14 software assessment;
+the scientific limitations below remain.
 
-### Final outputs and thread agreement
+### v0.14 outputs and thread agreement
 
 Each comparison report records `same_observations=true` for all six core
 tables. Counts exclude headers; branch rows represent endpoint assignments,
@@ -33,7 +59,7 @@ The six tables are `case/segment_occurrences.tsv`, `case/segment_homology.tsv`,
 `results_parsimony/branch_structural_events.tsv`. These comparisons establish
 agreement for the named tables only.
 
-### Final biological assessment
+### v0.14 biological assessment
 
 - **RpL32:** 20 sites (5 presence, 5 role, 10 junction), with no observed
   contrast and zero minimum changes. Unknown observations remain; this
@@ -68,7 +94,7 @@ sites (65 known / 145 unknown). EG_0029 retains Bign exonic usage and has zero
 minimum changes. EG_0013 and EG_0055 each require one minimum change overall,
 with respectively two and three possible placements and no unique branch.
 
-### Final dsx likelihood status
+### v0.14 dsx likelihood status
 
 The final [ER/ARD tests](/data/projects/intragenic_structure/results/20260918_121100_insiphy/dsx_bees/threads_16/analysis/results_er-ard/model_tests.tsv)
 and [foreground tests](/data/projects/intragenic_structure/results/20260918_121100_insiphy/dsx_bees/threads_16/analysis/results_foreground/model_tests.tsv)
@@ -85,7 +111,7 @@ posterior rows are historical and must not be used to interpret this final run.
 Default parsimony retains the qualitative alternatives. No significant rate
 comparison or validated branch-probability claim follows from this assessment.
 
-### Figure assessment scope
+### v0.14 figure assessment scope
 
 SVG semantic regression tests passed. Read-only checks of the final integrated
 SVGs confirmed `protein_projected_blocks` endpoints `1-597:471-1067` for
@@ -476,7 +502,7 @@ This control does not measure sensitivity to known exon gains or losses.
 
 ## Bee dsx: alternative exon organization
 
-Seven bee orthologs from OrthoFinder group OG0009654 retain all annotated
+Seven bee orthologs from OrthoFinder group OG0006454 retain all annotated
 transcripts: Apis cerana, Apis mellifera, Bombus ignitus, Bombus pascuorum,
 Bombus terrestris, Frieseomelitta varia and Tetragonisca angustula. Genome and
 annotation accessions are in the case manifest. No expression or sex-specific

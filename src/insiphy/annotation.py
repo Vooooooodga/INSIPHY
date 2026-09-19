@@ -10,6 +10,7 @@ from .alignment import (
     protein_locus_exons,
     revcomp,
 )
+from .coordinates import ClosedInterval1, local_interval_to_genome
 from .elements import EXON_LIKE_ROLES
 from .io import fasta_record_length, parse_fasta, read_fasta_interval, read_tsv, to_float, write_tsv
 
@@ -17,6 +18,65 @@ from .io import fasta_record_length, parse_fasta, read_fasta_interval, read_tsv,
 _PROTEIN_QUERY_INTERVAL_FIELDS = (
     "protein_cds_query_start", "protein_cds_query_end",
     "protein_overlap_query_start", "protein_overlap_query_end",
+)
+
+_EVIDENCE_PROVENANCE_FIELDS = (
+    "homologous_dna_presence",
+    "homologous_dna_evidence",
+    "predicted_exonic_role",
+    "supplied_annotation_role",
+    "supplied_annotation_roles",
+    "source_parent_occurrence_id",
+    "source_parent_transcript_ids",
+    "target_parent_occurrence_ids",
+    "target_parent_transcript_ids",
+    "dna_aligned_blocks",
+    "predicted_role_blocks",
+    "supplied_annotation_overlaps",
+    "annotation_conflict_blocks",
+    "candidate_resolution_status",
+    "candidate_search_complete",
+    "candidate_search_incomplete_reason",
+    "left_anchor_id",
+    "right_anchor_id",
+    "anchor_interval_status",
+    "search_interval",
+    "alignment_evidence_scope",
+    "alignment_sequence_kind",
+    "alignment_backend_version",
+    "alignment_score_scheme",
+    "alignment_nt_identity",
+    "alignment_aa_identity",
+    "alignment_known_aligned_pairs",
+    "alignment_unknown_aligned_pairs",
+    "alignment_query_covered_bases",
+    "alignment_target_covered_bases",
+    "alignment_query_length",
+    "alignment_target_length",
+    "alignment_gap_blocks",
+    "alignment_relative_strand",
+    "alignment_candidate_id",
+    "alignment_alternative_candidate_ids",
+    "alignment_enumeration_complete",
+    "alignment_incomplete_reason",
+    "original_annotation_start",
+    "original_annotation_end",
+    "linked_feature_start",
+    "linked_feature_end",
+    "search_bound_start",
+    "search_bound_end",
+    "search_left_limit_status",
+    "search_right_limit_status",
+    "hit_search_limit_status",
+)
+
+_SEARCH_COMPAT_FIELDS = (
+    "search_expansion_status",
+    "search_original_start",
+    "search_original_end",
+    "search_expanded_start",
+    "search_expanded_end",
+    "range_status",
 )
 
 
@@ -30,6 +90,12 @@ def support_score(row):
 
 def completion_call(row, score, threshold):
     status = row.get("evidence_status", "ambiguous")
+    anchor_status = row.get("anchor_interval_status", "unknown")
+    if anchor_status not in {
+        "ordered_double_flank_bounded_interval",
+        "ordered_double_flank_empty_interval",
+    }:
+        return "ambiguous_evidence"
     event = row.get("inferred_event", "")
     frame = row.get("frame_status", "")
     inferred_role = row.get("inferred_role", "unknown")
@@ -82,13 +148,214 @@ def _locus_geometry(locus_header):
 
 def _project_locus_interval(start, end, locus_header):
     contig, lower, upper, strand = _locus_geometry(locus_header)
-    start = int(start)
-    end = int(end)
-    if strand == "-":
-        hit_start, hit_end = upper - end + 1, upper - start + 1
-    else:
-        hit_start, hit_end = lower + start - 1, lower + end - 1
-    return contig, min(hit_start, hit_end), max(hit_start, hit_end), strand
+    local = ClosedInterval1(int(start), int(end)).to_interval0()
+    locus = ClosedInterval1(lower, upper).to_interval0()
+    projected = ClosedInterval1.from_interval0(local_interval_to_genome(local, locus, strand))
+    return contig, projected.start, projected.end, strand
+
+
+def _project_occurrence_interval(start, end, occurrence):
+    local = ClosedInterval1(int(start), int(end)).to_interval0()
+    parent = ClosedInterval1(int(occurrence["start"]), int(occurrence["end"])).to_interval0()
+    projected = ClosedInterval1.from_interval0(
+        local_interval_to_genome(local, parent, occurrence.get("strand", "+"))
+    )
+    return projected.start, projected.end
+
+
+def _json_records(records):
+    return json.dumps(records, separators=(",", ":"), sort_keys=True) if records else "NA"
+
+
+def _transcripts_for_occurrence(occurrence, transcript_ids_by_occurrence):
+    transcript_ids = transcript_ids_by_occurrence.get(occurrence.get("occurrence_id"), set())
+    if transcript_ids:
+        return sorted(transcript_ids)
+    return sorted(set(_split_transcript_ids(occurrence.get("transcript_id"))))
+
+
+def _alignment_genome_blocks(alignment, locus_header, source_occurrence, source_transcript_ids):
+    if alignment is None:
+        return []
+    blocks = []
+    for rank, (query_start, query_end, target_start, target_end) in enumerate(
+        alignment.aligned_blocks, start=1
+    ):
+        source_start, source_end = _project_occurrence_interval(
+            query_start, query_end, source_occurrence
+        )
+        target_contig, target_genome_start, target_genome_end, target_locus_strand = (
+            _project_locus_interval(target_start, target_end, locus_header)
+        )
+        target_strand = target_locus_strand
+        if alignment.strand in {"+", "-"}:
+            target_strand = (
+                target_locus_strand
+                if alignment.strand == "+"
+                else ("-" if target_locus_strand == "+" else "+")
+            )
+        blocks.append(
+            {
+                "block_id": f"dna_block_{rank}",
+                "block_resolution": "aligned_block",
+                "query_start": int(query_start),
+                "query_end": int(query_end),
+                "target_locus_start": int(target_start),
+                "target_locus_end": int(target_end),
+                "source_contig": source_occurrence.get("contig", "NA"),
+                "source_start": source_start,
+                "source_end": source_end,
+                "source_strand": source_occurrence.get("strand", "NA"),
+                "source_occurrence_id": source_occurrence.get("occurrence_id", "NA"),
+                "source_transcript_ids": source_transcript_ids,
+                "target_contig": target_contig,
+                "target_start": target_genome_start,
+                "target_end": target_genome_end,
+                "target_strand": target_strand,
+                "relative_strand": alignment.strand,
+            }
+        )
+    return blocks
+
+
+def _protein_projection_blocks(candidates, source_occurrence, source_transcript_ids):
+    blocks = []
+    for rank, candidate in enumerate(candidates, start=1):
+        try:
+            start = int(candidate["start"])
+            end = int(candidate["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        blocks.append(
+            {
+                "block_id": f"protein_projection_{rank}",
+                "block_resolution": "projected_cds_block",
+                "source_occurrence_id": source_occurrence.get("occurrence_id", "NA"),
+                "source_transcript_ids": (
+                    [candidate["reference_transcript_id"]]
+                    if candidate.get("reference_transcript_id") not in {None, "", "NA"}
+                    else source_transcript_ids
+                ),
+                "source_protein_id": candidate.get("reference_protein_id", "NA"),
+                "source_protein_start": candidate.get("protein_overlap_query_start", "NA"),
+                "source_protein_end": candidate.get("protein_overlap_query_end", "NA"),
+                "projection_parent_id": candidate.get("parent_id", "NA"),
+                "target_contig": candidate.get("contig", "NA"),
+                "target_start": start,
+                "target_end": end,
+                "target_strand": candidate.get("strand", "NA"),
+            }
+        )
+    return blocks
+
+
+def _candidate_span_blocks(candidates, source_occurrence, source_transcript_ids, backend=None):
+    blocks = []
+    for rank, candidate in enumerate(candidates, start=1):
+        if backend and candidate.get("backend") != backend:
+            continue
+        try:
+            start = int(candidate["start"])
+            end = int(candidate["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        blocks.append(
+            {
+                "block_id": f"candidate_span_{rank}",
+                "block_resolution": "candidate_span",
+                "source_occurrence_id": source_occurrence.get("occurrence_id", "NA"),
+                "source_transcript_ids": source_transcript_ids,
+                "target_contig": candidate.get("contig", "NA"),
+                "target_start": start,
+                "target_end": end,
+                "target_strand": candidate.get("strand", "NA"),
+            }
+        )
+    return blocks
+
+
+def _annotation_overlaps_for_blocks(
+    blocks,
+    occurrences,
+    transcript_ids_by_occurrence,
+):
+    records = []
+    seen = set()
+    for block in blocks:
+        try:
+            block_interval = ClosedInterval1(
+                int(block["target_start"]), int(block["target_end"])
+            ).to_interval0()
+        except (KeyError, TypeError, ValueError):
+            continue
+        for occurrence in occurrences:
+            if occurrence.get("presence_status") != "present":
+                continue
+            if occurrence.get("contig") != block.get("target_contig"):
+                continue
+            try:
+                occurrence_interval = ClosedInterval1(
+                    int(occurrence["start"]), int(occurrence["end"])
+                ).to_interval0()
+            except (KeyError, TypeError, ValueError):
+                continue
+            intersection = block_interval.intersection(occurrence_interval)
+            if intersection is None:
+                continue
+            closed = ClosedInterval1.from_interval0(intersection)
+            transcript_ids = _transcripts_for_occurrence(
+                occurrence, transcript_ids_by_occurrence
+            )
+            key = (
+                block.get("block_id", "NA"),
+                occurrence.get("occurrence_id", "NA"),
+                closed.start,
+                closed.end,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            records.append(
+                {
+                    "block_id": block.get("block_id", "NA"),
+                    "occurrence_id": occurrence.get("occurrence_id", "NA"),
+                    "transcript_ids": transcript_ids,
+                    "source_feature_ids": _split_transcript_ids(
+                        occurrence.get("source_feature_id")
+                    ),
+                    "source_parent_ids": _split_transcript_ids(
+                        occurrence.get("source_parents")
+                        or occurrence.get("source_parent")
+                    ),
+                    "role": occurrence.get("role", "unknown"),
+                    "coding_status": occurrence.get("coding_status", "unknown"),
+                    "strand_relation": (
+                        "sense"
+                        if occurrence.get("strand") == block.get("target_strand")
+                        else "antisense"
+                    ),
+                    "overlap_start": closed.start,
+                    "overlap_end": closed.end,
+                    "contains_block": (
+                        occurrence_interval.start0 <= block_interval.start0
+                        and block_interval.end0 <= occurrence_interval.end0
+                    ),
+                }
+            )
+    return records
+
+
+def _supplied_annotation_role(records):
+    if not records:
+        return "unknown"
+    sense_roles = sorted(
+        {record["role"] for record in records if record["strand_relation"] == "sense"}
+    )
+    if len(sense_roles) == 1:
+        return sense_roles[0]
+    if len(sense_roles) > 1:
+        return "multiple_supplied_roles"
+    return "antisense_annotation_only"
 
 
 def _overlapping_annotation_role(start, end, locus_header, occurrences, hit_strand):
@@ -124,6 +391,73 @@ def _read_locus_metadata(input_dir):
     return {(row.get("species"), row.get("gene_copy_id")): row for row in rows}
 
 
+def _search_provenance(metadata, locus_header, terminal_need, candidates):
+    try:
+        _contig, bound_start, bound_end, _strand = _locus_geometry(locus_header)
+    except (IndexError, TypeError, ValueError):
+        bound_start = bound_end = None
+    annotation_start = _safe_int(metadata.get("annotation_start"), 0)
+    annotation_end = _safe_int(metadata.get("annotation_end"), 0)
+    linked_start = _safe_int(metadata.get("linked_start"), 0)
+    linked_end = _safe_int(metadata.get("linked_end"), 0)
+    contig_length = _safe_int(metadata.get("contig_length"), 0)
+    max_extension = _safe_int(metadata.get("max_extension"), 0)
+
+    left_limit = "unassessed"
+    right_limit = "unassessed"
+    if bound_start is not None:
+        if bound_start == 1:
+            left_limit = "contig_boundary_reached"
+        elif annotation_start and max_extension and bound_start <= annotation_start - max_extension:
+            left_limit = "max_extension_reached"
+        else:
+            left_limit = "within_declared_search_limit"
+        if contig_length and bound_end == contig_length:
+            right_limit = "contig_boundary_reached"
+        elif annotation_end and max_extension and bound_end >= annotation_end + max_extension:
+            right_limit = "max_extension_reached"
+        else:
+            right_limit = "within_declared_search_limit"
+
+    touches_left = False
+    touches_right = False
+    for candidate in candidates:
+        try:
+            touches_left = touches_left or int(candidate["start"]) <= int(bound_start)
+            touches_right = touches_right or int(candidate["end"]) >= int(bound_end)
+        except (KeyError, TypeError, ValueError):
+            continue
+    if touches_left and touches_right:
+        hit_limit = "candidate_touches_both_search_bounds"
+    elif touches_left:
+        hit_limit = "candidate_touches_left_search_bound"
+    elif touches_right:
+        hit_limit = "candidate_touches_right_search_bound"
+    elif candidates:
+        hit_limit = "candidate_inside_search_bounds"
+    elif terminal_need == "left" and left_limit in {
+        "contig_boundary_reached", "max_extension_reached"
+    }:
+        hit_limit = "no_hit_with_left_search_limit_reached"
+    elif terminal_need == "right" and right_limit in {
+        "contig_boundary_reached", "max_extension_reached"
+    }:
+        hit_limit = "no_hit_with_right_search_limit_reached"
+    else:
+        hit_limit = "no_candidate_reported"
+    return {
+        "original_annotation_start": annotation_start or "NA",
+        "original_annotation_end": annotation_end or "NA",
+        "linked_feature_start": linked_start or "NA",
+        "linked_feature_end": linked_end or "NA",
+        "search_bound_start": bound_start if bound_start is not None else "NA",
+        "search_bound_end": bound_end if bound_end is not None else "NA",
+        "search_left_limit_status": left_limit,
+        "search_right_limit_status": right_limit,
+        "hit_search_limit_status": hit_limit,
+    }
+
+
 def _extended_locus(input_dir, locus_header, locus, metadata, need_side):
     if need_side not in {"left", "right"} or not metadata:
         return locus_header, locus, {"search_expansion_status": "not_requested"}
@@ -152,7 +486,16 @@ def _extended_locus(input_dir, locus_header, locus, metadata, need_side):
     else:
         new_end = max(search_end, min(contig_length, annotation_end + max_extension))
     if (new_start, new_end) == (search_start, search_end):
-        return locus_header, locus, {"search_expansion_status": "at_contig_boundary"}
+        boundary = (
+            new_start == 1
+            if (need_side == "left" and strand != "-") or (need_side == "right" and strand == "-")
+            else new_end == contig_length
+        )
+        return locus_header, locus, {
+            "search_expansion_status": (
+                "at_contig_boundary" if boundary else "at_declared_search_limit"
+            )
+        }
     sequence = read_fasta_interval(genome, contig, new_start, new_end)
     if strand == "-":
         sequence = revcomp(sequence)
@@ -176,6 +519,14 @@ def _occurrence_for_element(copy_occurrences, element_by_occurrence, element):
         ):
             return occurrence
     return None
+
+
+def _occurrences_for_element(copy_occurrences, element_by_occurrence, element):
+    return [
+        occurrence for occurrence in copy_occurrences
+        if element_by_occurrence.get(occurrence.get("occurrence_id")) == element
+        and occurrence.get("presence_status") == "present"
+    ]
 
 
 def _safe_int(value, default=0):
@@ -309,6 +660,201 @@ def _ordered_occurrence_pair(left, right):
     return left_end < right_start
 
 
+def _ordered_anchor_search_context(
+    source_occurrences,
+    target_occurrences,
+    element_by_occurrence,
+    expected_occurrence,
+    left_element,
+    right_element,
+    target_locus_header,
+    target_locus_sequence,
+):
+    context = {
+        "valid_double_flank": False,
+        "status": "missing_flanking_homolog_anchor",
+        "left_anchor_id": "NA",
+        "right_anchor_id": "NA",
+        "search_interval": None,
+        "sequence": "",
+        "target_offset0": 0,
+    }
+    if not left_element or not right_element:
+        return context
+    source_left_matches = _occurrences_for_element(
+        source_occurrences, element_by_occurrence, left_element
+    )
+    source_right_matches = _occurrences_for_element(
+        source_occurrences, element_by_occurrence, right_element
+    )
+    target_left_matches = _occurrences_for_element(target_occurrences, element_by_occurrence, left_element)
+    target_right_matches = _occurrences_for_element(target_occurrences, element_by_occurrence, right_element)
+    if not source_left_matches or not source_right_matches or not target_left_matches or not target_right_matches:
+        context["status"] = "flanking_homolog_anchor_not_observed"
+        return context
+    if len(source_left_matches) != 1 or len(source_right_matches) != 1:
+        context["status"] = "source_flanking_homolog_anchor_mapping_ambiguous"
+        return context
+    if len(target_left_matches) != 1 or len(target_right_matches) != 1:
+        context["status"] = "flanking_homolog_anchor_mapping_ambiguous"
+        return context
+    source_left = source_left_matches[0]
+    source_right = source_right_matches[0]
+    target_left = target_left_matches[0]
+    target_right = target_right_matches[0]
+    context["left_anchor_id"] = target_left.get("occurrence_id", "NA")
+    context["right_anchor_id"] = target_right.get("occurrence_id", "NA")
+    if not _ordered_occurrence_triplet(source_left, expected_occurrence, source_right):
+        context["status"] = "source_expected_exon_not_between_ordered_flanks"
+        return context
+    if not _ordered_occurrence_pair(target_left, target_right):
+        context["status"] = "target_flanking_homolog_anchors_not_ordered"
+        return context
+    try:
+        locus_contig, locus_start, locus_end, locus_strand = _locus_geometry(target_locus_header)
+        if target_left.get("contig") != locus_contig or target_left.get("strand") != locus_strand:
+            context["status"] = "target_flanking_homolog_anchors_incompatible_with_locus"
+            return context
+        if locus_strand == "-":
+            interval_start = int(target_right["end"]) + 1
+            interval_end = int(target_left["start"]) - 1
+        else:
+            interval_start = int(target_left["end"]) + 1
+            interval_end = int(target_right["start"]) - 1
+    except (KeyError, TypeError, ValueError):
+        context["status"] = "flanking_homolog_anchor_coordinates_unusable"
+        return context
+
+    search_interval = {
+        "contig": locus_contig,
+        "start": interval_start,
+        "end": interval_end,
+        "strand": locus_strand,
+        "coordinate_system": "1-based-closed",
+    }
+    context["search_interval"] = search_interval
+    context["valid_double_flank"] = True
+    if interval_start > interval_end:
+        context["status"] = "ordered_double_flank_empty_interval"
+        return context
+    sequence, interval_status = _oriented_locus_slice(
+        target_locus_header,
+        target_locus_sequence,
+        interval_start,
+        interval_end,
+    )
+    if interval_status != "ok":
+        context["valid_double_flank"] = False
+        context["status"] = f"target_{interval_status}"
+        return context
+    local_interval = _relative_interval_within_span(
+        target_locus_header,
+        locus_start,
+        locus_end,
+        interval_start,
+        interval_end,
+    )
+    context.update(
+        {
+            "status": "ordered_double_flank_bounded_interval",
+            "sequence": sequence,
+            "target_offset0": local_interval[0] - 1,
+        }
+    )
+    return context
+
+
+def _offset_alignment_target(alignment, target_offset0):
+    if alignment is None or not target_offset0:
+        return alignment
+    if alignment.target_start > 0:
+        alignment.target_start += target_offset0
+    if alignment.target_end > 0:
+        alignment.target_end += target_offset0
+    alignment.aligned_blocks = [
+        (query_start, query_end, target_start + target_offset0, target_end + target_offset0)
+        for query_start, query_end, target_start, target_end in alignment.aligned_blocks
+    ]
+    for gap in alignment.gap_blocks:
+        if gap.get("target_start0") is not None:
+            gap["target_start0"] = int(gap["target_start0"]) + target_offset0
+        if gap.get("target_end0") is not None:
+            gap["target_end0"] = int(gap["target_end0"]) + target_offset0
+    for hit in alignment.alternative_hits:
+        if hit.get("target_start") not in {None, "", "NA"}:
+            hit["target_start"] = int(hit["target_start"]) + target_offset0
+        if hit.get("target_end") not in {None, "", "NA"}:
+            hit["target_end"] = int(hit["target_end"]) + target_offset0
+        if hit.get("aligned_blocks"):
+            hit["aligned_blocks"] = [
+                (int(block[0]), int(block[1]), int(block[2]) + target_offset0, int(block[3]) + target_offset0)
+                for block in hit["aligned_blocks"]
+            ]
+        for gap in hit.get("gap_blocks", ()):
+            if gap.get("target_start0") is not None:
+                gap["target_start0"] = int(gap["target_start0"]) + target_offset0
+            if gap.get("target_end0") is not None:
+                gap["target_end0"] = int(gap["target_end0"]) + target_offset0
+    return alignment
+
+
+def _set_alignment_context(
+    alignment,
+    query_occurrence_id,
+    target_occurrence_id,
+    query_transcript_id,
+    left_anchor_id,
+    right_anchor_id,
+    search_interval,
+):
+    if alignment is None:
+        return None
+    alignment.query_occurrence_id = query_occurrence_id
+    alignment.target_occurrence_id = target_occurrence_id
+    alignment.query_transcript_id = query_transcript_id
+    alignment.left_anchor_id = left_anchor_id
+    alignment.right_anchor_id = right_anchor_id
+    alignment.search_interval = search_interval
+    query_candidate_scope = query_occurrence_id or "query"
+    target_candidate_scope = target_occurrence_id or "target_interval"
+    candidate_ids = [
+        alignment.candidate_id or f"{query_candidate_scope}->{target_candidate_scope}.candidate_001"
+    ]
+    for index, hit in enumerate(alignment.alternative_hits, start=2):
+        candidate_ids.append(
+            hit.get("candidate_id") or f"{query_candidate_scope}->{target_candidate_scope}.candidate_{index:03d}"
+        )
+    alignment.candidate_id = candidate_ids[0]
+    alignment.hit_count = max(int(alignment.hit_count or 0), len(candidate_ids))
+    alignment.alternative_candidate_ids = candidate_ids[1:]
+    for index, hit in enumerate(alignment.alternative_hits, start=1):
+        hit["candidate_id"] = candidate_ids[index]
+        hit.setdefault("query_occurrence_id", query_occurrence_id)
+        hit.setdefault("target_occurrence_id", target_occurrence_id or "NA")
+        hit.setdefault("query_transcript_id", query_transcript_id or "NA")
+        hit.setdefault("target_transcript_id", "NA")
+        hit.setdefault("left_anchor_id", left_anchor_id)
+        hit.setdefault("right_anchor_id", right_anchor_id)
+        hit.setdefault("search_interval", search_interval)
+        hit.setdefault("alternative_candidate_ids", [value for value in candidate_ids if value != hit["candidate_id"]])
+    return alignment
+
+
+def _projection_within_anchor_interval(projection, anchor_context):
+    interval = anchor_context.get("search_interval") or {}
+    if not projection or not anchor_context.get("valid_double_flank"):
+        return False
+    try:
+        return (
+            projection.get("contig") == interval["contig"]
+            and projection.get("strand") == interval["strand"]
+            and int(projection["start"]) >= int(interval["start"])
+            and int(projection["end"]) <= int(interval["end"])
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 def _oriented_locus_slice(locus_header, locus_sequence, start, end):
     contig, locus_start, locus_end, strand = _locus_geometry(locus_header)
     start = int(start)
@@ -379,6 +925,59 @@ def _query_only_gaps(cigar, query_start=1, target_start=1):
     return query_only_gaps
 
 
+def _alternative_supports_expected_deletion(hit, expected_interval):
+    """Return True/False for verifiable CIGAR evidence, or None if unavailable."""
+    cigar = hit.get("cigar")
+    raw_blocks = hit.get("aligned_blocks")
+    if not cigar or cigar == "NA" or not raw_blocks or hit.get("strand") not in {"+", "-"}:
+        return None
+    if hit["strand"] != "+":
+        return False
+    try:
+        query_start = int(hit["query_start"])
+        target_start = int(hit["target_start"])
+        blocks = [
+            {
+                "query_start": int(block[0]),
+                "query_end": int(block[1]),
+                "target_start": int(block[2]),
+                "target_end": int(block[3]),
+            }
+            for block in raw_blocks
+        ]
+    except (KeyError, TypeError, ValueError, IndexError):
+        return None
+    for deletion in _query_only_gaps(cigar, query_start, target_start):
+        if not (
+            deletion["query_start"] <= expected_interval[0]
+            and deletion["query_end"] >= expected_interval[1]
+        ):
+            continue
+        previous = next(
+            (
+                block for block in blocks
+                if block["query_end"] == deletion["previous_query_end"]
+                and block["target_end"] == deletion["previous_target_end"]
+            ),
+            None,
+        )
+        following = next(
+            (
+                block for block in blocks
+                if block["query_start"] == deletion["next_query_start"]
+                and block["target_start"] == deletion["next_target_start"]
+            ),
+            None,
+        )
+        if (
+            previous is not None
+            and following is not None
+            and following["target_start"] == previous["target_end"] + 1
+        ):
+            return True
+    return False
+
+
 def _projected_interval_coverage(blocks, query_interval, target_interval):
     q_start, q_end = query_interval
     t_start, t_end = target_interval
@@ -441,11 +1040,73 @@ def _format_alternative_hits(alignment):
     tokens = []
     for hit in alignment.alternative_hits:
         tokens.append(
-            "rank{rank}:{target_start}-{target_end}:{strand}:id{identity}:cov{coverage}:mapq{mapping_quality}:secondary{is_secondary}".format(
-                **hit
-            )
+            f"rank{hit.get('rank', 'NA')}:{hit.get('target_start', 'NA')}-{hit.get('target_end', 'NA')}:"
+            f"{hit.get('strand', 'NA')}:id{hit.get('identity', 'NA')}:cov{hit.get('coverage', 'NA')}:"
+            f"mapq{hit.get('mapping_quality', 'NA')}:secondary{hit.get('is_secondary', 'NA')}:"
+            f"candidate{hit.get('candidate_id', 'NA')}"
         )
     return ";".join(tokens)
+
+
+def _alignment_evidence_provenance(alignment, query_length=0, target_length=0):
+    if alignment is None:
+        return {
+            "alignment_sequence_kind": "unknown",
+            "alignment_backend_version": "NA",
+            "alignment_score_scheme": "NA",
+            "alignment_nt_identity": "NA",
+            "alignment_aa_identity": "NA",
+            "alignment_known_aligned_pairs": "NA",
+            "alignment_unknown_aligned_pairs": "NA",
+            "alignment_query_covered_bases": "NA",
+            "alignment_target_covered_bases": "NA",
+            "alignment_query_length": query_length or "NA",
+            "alignment_target_length": target_length or "NA",
+            "alignment_gap_blocks": "NA",
+            "alignment_relative_strand": "unknown",
+            "alignment_candidate_id": "NA",
+            "alignment_alternative_candidate_ids": "NA",
+            "alignment_enumeration_complete": "unknown",
+            "alignment_incomplete_reason": "NA",
+        }
+    known_pairs = int(getattr(alignment, "known_aligned_pairs", 0) or alignment.aligned_pairs or 0)
+    query_covered = int(getattr(alignment, "query_covered_bases", 0) or known_pairs)
+    target_covered = int(getattr(alignment, "target_covered_bases", 0) or known_pairs)
+    candidate_ids = [
+        hit.get("candidate_id")
+        for hit in alignment.alternative_hits
+        if hit.get("candidate_id") not in {None, "", "NA"}
+    ]
+    candidate_ids = list(getattr(alignment, "alternative_candidate_ids", ()) or candidate_ids)
+    return {
+        "alignment_sequence_kind": getattr(alignment, "sequence_kind", "nucleotide"),
+        "alignment_backend_version": getattr(alignment, "backend_version", None) or "NA",
+        "alignment_score_scheme": getattr(alignment, "score_scheme", None) or "NA",
+        "alignment_nt_identity": (
+            f"{alignment.nt_identity:.6g}"
+            if getattr(alignment, "nt_identity", None) is not None
+            else f"{alignment.identity:.6g}"
+        ),
+        "alignment_aa_identity": (
+            f"{alignment.aa_identity:.6g}"
+            if getattr(alignment, "aa_identity", None) is not None
+            else "NA"
+        ),
+        "alignment_known_aligned_pairs": known_pairs,
+        "alignment_unknown_aligned_pairs": int(getattr(alignment, "unknown_aligned_pairs", 0) or 0),
+        "alignment_query_covered_bases": query_covered,
+        "alignment_target_covered_bases": target_covered,
+        "alignment_query_length": int(getattr(alignment, "query_length", 0) or query_length),
+        "alignment_target_length": int(getattr(alignment, "target_length", 0) or target_length),
+        "alignment_gap_blocks": json.dumps(
+            getattr(alignment, "gap_blocks", ()) or (), separators=(",", ":")
+        ),
+        "alignment_relative_strand": getattr(alignment, "relative_strand", None) or alignment.strand,
+        "alignment_candidate_id": getattr(alignment, "candidate_id", None) or "NA",
+        "alignment_alternative_candidate_ids": ";".join(candidate_ids) or "NA",
+        "alignment_enumeration_complete": str(bool(alignment.enumeration_complete)).lower(),
+        "alignment_incomplete_reason": alignment.incomplete_reason or "NA",
+    }
 
 
 def _ambiguous_repeated_mapping(alignment):
@@ -453,13 +1114,19 @@ def _ambiguous_repeated_mapping(alignment):
         return False
     if int(alignment.ambiguous_hit_count or 0) > 0:
         return True
-    return bool(alignment.hit_count) and (
-        alignment.is_secondary or int(alignment.mapping_quality or 0) == 0
+    return int(alignment.hit_count or 0) > 1 and (
+        alignment.is_secondary
+        or (alignment.mapping_quality is not None and int(alignment.mapping_quality) == 0)
     )
 
 
 def _nucleotide_interval_candidates(alignment, locus_header):
-    if alignment is None or alignment.target_start <= 0 or alignment.target_end <= 0:
+    if (
+        alignment is None
+        or alignment.target_start <= 0
+        or alignment.target_end <= 0
+        or (not alignment.aligned_blocks and int(alignment.aligned_pairs or 0) <= 0)
+    ):
         return []
     hits = [{
         "target_start": alignment.target_start,
@@ -467,8 +1134,14 @@ def _nucleotide_interval_candidates(alignment, locus_header):
         "strand": alignment.strand,
         "identity": alignment.identity,
         "coverage": alignment.query_coverage or alignment.coverage,
-        "mapping_quality": alignment.mapping_quality,
+        "mapping_quality": alignment.mapping_quality if alignment.mapping_quality is not None else "NA",
         "is_secondary": alignment.is_secondary,
+        "candidate_id": alignment.candidate_id or "NA",
+        "left_anchor_id": alignment.left_anchor_id or "NA",
+        "right_anchor_id": alignment.right_anchor_id or "NA",
+        "search_interval": alignment.search_interval or "NA",
+        "enumeration_complete": alignment.enumeration_complete,
+        "incomplete_reason": alignment.incomplete_reason or "NA",
     }, *alignment.alternative_hits]
     candidates = []
     for hit in hits:
@@ -479,7 +1152,13 @@ def _nucleotide_interval_candidates(alignment, locus_header):
             "backend": alignment.backend,
             "interval_scope": "aligned_sequence",
             "identity": hit["identity"], "coverage": hit["coverage"],
-            "mapping_quality": hit["mapping_quality"], "is_secondary": hit["is_secondary"],
+            "mapping_quality": hit.get("mapping_quality", "NA"), "is_secondary": hit.get("is_secondary", "NA"),
+            "candidate_id": hit.get("candidate_id", "NA"),
+            "left_anchor_id": hit.get("left_anchor_id", "NA"),
+            "right_anchor_id": hit.get("right_anchor_id", "NA"),
+            "search_interval": hit.get("search_interval", "NA"),
+            "enumeration_complete": hit.get("enumeration_complete", alignment.enumeration_complete),
+            "incomplete_reason": hit.get("incomplete_reason", alignment.incomplete_reason or "NA"),
         })
     return candidates
 
@@ -513,10 +1192,14 @@ def _ordered_anchor_deletion_support(
         return False, "target_locus_sequence_unavailable", provenance
     source_left = _occurrence_for_element(source_occurrences, element_by_occurrence, left_element)
     source_right = _occurrence_for_element(source_occurrences, element_by_occurrence, right_element)
-    target_left = _occurrence_for_element(target_occurrences, element_by_occurrence, left_element)
-    target_right = _occurrence_for_element(target_occurrences, element_by_occurrence, right_element)
-    if not source_left or not source_right or not target_left or not target_right:
+    target_left_matches = _occurrences_for_element(target_occurrences, element_by_occurrence, left_element)
+    target_right_matches = _occurrences_for_element(target_occurrences, element_by_occurrence, right_element)
+    if not source_left or not source_right or not target_left_matches or not target_right_matches:
         return False, "flanking_homolog_anchor_not_observed", provenance
+    if len(target_left_matches) != 1 or len(target_right_matches) != 1:
+        return False, "flanking_homolog_anchor_mapping_ambiguous", provenance
+    target_left = target_left_matches[0]
+    target_right = target_right_matches[0]
     if not _ordered_occurrence_triplet(source_left, expected_occurrence, source_right):
         return False, "source_expected_exon_not_between_ordered_flanks", provenance
     if not _ordered_occurrence_pair(target_left, target_right):
@@ -561,12 +1244,17 @@ def _ordered_anchor_deletion_support(
     local_target_end = min(len(target_span), max(target_left_interval[1], target_right_interval[0]) + 10)
     expected_sequence = source_span[expected_interval[0] - 1 : expected_interval[1]]
     local_target_sequence = target_span[local_target_start - 1 : local_target_end]
-    if "N" in expected_sequence.upper() or "N" in local_target_sequence.upper():
-        return False, "deletion_interval_or_local_target_sequence_contains_N", provenance
     target_gap_left = min(target_left_interval[1], target_right_interval[1]) + 1
     target_gap_right = max(target_left_interval[0], target_right_interval[0]) - 1
-    if target_gap_left <= target_gap_right and "N" in target_span[target_gap_left - 1 : target_gap_right].upper():
-        return False, "target_sequence_between_flanking_homologs_contains_N", provenance
+    if any(base not in "ACGT" for base in expected_sequence.upper()):
+        return False, "deletion_interval_contains_non_acgt_bases", provenance
+    if target_gap_left <= target_gap_right and any(
+        base not in "ACGT"
+        for base in target_span[target_gap_left - 1 : target_gap_right].upper()
+    ):
+        return False, "target_sequence_between_flanking_homologs_contains_non_acgt_bases", provenance
+    if any(base not in "ACGT" for base in local_target_sequence.upper()):
+        return False, "local_target_sequence_contains_non_acgt_bases", provenance
     try:
         alignment = local_alignment_stats(source_span, target_span, backend="minimap2", threads=threads)
     except AlignmentBackendError as exc:
@@ -574,7 +1262,21 @@ def _ordered_anchor_deletion_support(
     provenance.update({"backend": alignment.backend, "cigar": alignment.cigar})
     if alignment.strand != "+":
         return False, "deletion_spanning_alignment_not_relative_plus_strand", provenance
-    if _ambiguous_repeated_mapping(alignment):
+    acceptable_alternatives = []
+    for hit in alignment.alternative_hits:
+        identity = to_float(hit.get("identity"), 0.0)
+        coverage = to_float(hit.get("coverage"), 0.0)
+        if identity >= min_identity and coverage >= min_coverage:
+            acceptable_alternatives.append(hit)
+    alternative_support = [
+        _alternative_supports_expected_deletion(hit, expected_interval)
+        for hit in acceptable_alternatives
+    ]
+    if any(support is None for support in alternative_support):
+        return False, "alternative_alignment_concordance_unverifiable", provenance
+    if any(not support for support in alternative_support):
+        return False, "alternative_alignment_does_not_support_same_deletion", provenance
+    if _ambiguous_repeated_mapping(alignment) and not acceptable_alternatives:
         return False, "deletion_spanning_alignment_ambiguous_repeated_mapping", provenance
     blocks = _supported_alignment_blocks(alignment)
     left_support = _flank_support_from_spanning_blocks(
@@ -824,6 +1526,7 @@ def _protein_projection_from_rows(context, projections, locus_header, min_identi
                 "interval_scope": "projected_cds_container",
                 **{field: row[field] for field in _PROTEIN_QUERY_INTERVAL_FIELDS},
                 "reference_protein_id": context["protein_id"],
+                "reference_transcript_id": context.get("transcript_id", "NA"),
                 "reference_protein_query_start": context["query_start"],
                 "reference_protein_query_end": context["query_end"],
                 "coverage": row["per_exon_coverage"], "parent_id": row.get("parent_id", "NA"),
@@ -894,7 +1597,15 @@ def _cached_protein_projection(
     return _protein_projection_from_rows(context, projections, locus_header, min_identity, min_coverage, candidates)
 
 
-def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_coverage=0.60, threads=1, aligner="internal"):
+def generate_sequence_evidence(
+    input_dir,
+    result_dir,
+    min_identity=0.70,
+    min_coverage=0.60,
+    threads=1,
+    aligner="internal",
+    short_context_max_length=300,
+):
     """Search missing homologous exon sequences inside supplied homologous gene loci."""
     input_dir = Path(input_dir)
     result_dir = Path(result_dir)
@@ -904,6 +1615,10 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
     locus_records = parse_fasta(input_dir / "gene_loci.fasta")
     locus_metadata = _read_locus_metadata(input_dir)
     transcript_paths = read_tsv(input_dir / "transcript_paths.tsv", optional=True)
+    transcript_ids_by_occurrence = defaultdict(set)
+    for path_row in transcript_paths:
+        if path_row.get("occurrence_id") and path_row.get("transcript_id"):
+            transcript_ids_by_occurrence[path_row["occurrence_id"]].add(path_row["transcript_id"])
     proteins = parse_fasta(input_dir / "protein_sequences.fasta") if aligner == "miniprot" else {}
     loci = {_locus_key(name): (name, sequence) for name, sequence in locus_records.items()}
     if not elements or not loci:
@@ -995,6 +1710,9 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
         query = info["query"]
         protein_context = info.get("protein_context")
         protein_context_provenance = _protein_context_provenance(protein_context)
+        source_transcript_ids = _transcripts_for_occurrence(
+            representative, transcript_ids_by_occurrence
+        )
         source_occurrences, source_path_status = _source_occurrence_path(
             family,
             representative,
@@ -1033,26 +1751,99 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
             locus_header, locus, expansion = _extended_locus(
                 input_dir, locus_header, locus, metadata, terminal_need
             )
+            anchor_context = _ordered_anchor_search_context(
+                source_occurrences,
+                occurrences_by_copy[copy_key],
+                element_by_occ,
+                representative,
+                left_element,
+                right_element,
+                locus_header,
+                locus,
+            )
             alignment = None
             alignment_error = ""
+            alignment_evidence_scope = "unavailable"
             identity = coverage = 0.0
             dna_identity = dna_coverage = 0.0
             nucleotide_aligner = "minimap2" if aligner == "miniprot" else aligner
-            try:
-                alignment = local_alignment_stats(query, locus, backend=nucleotide_aligner, threads=threads)
+            bounded_target = anchor_context.get("sequence", "")
+            bounded_backend = (
+                "internal"
+                if len(query) <= int(short_context_max_length)
+                else nucleotide_aligner
+            )
+            if anchor_context["valid_double_flank"] and bounded_target:
+                try:
+                    alignment = local_alignment_stats(
+                        query,
+                        bounded_target,
+                        backend=bounded_backend,
+                        threads=threads,
+                        query_occurrence_id=representative.get("occurrence_id"),
+                        target_occurrence_id=None,
+                        query_transcript_id=(source_transcript_ids[0] if len(source_transcript_ids) == 1 else None),
+                        left_anchor_id=anchor_context["left_anchor_id"],
+                        right_anchor_id=anchor_context["right_anchor_id"],
+                        search_interval=anchor_context["search_interval"],
+                    )
+                    alignment_evidence_scope = (
+                        "anchor_bounded_short_local"
+                        if bounded_backend == "internal"
+                        else "anchor_bounded_external_local"
+                    )
+                except AlignmentBackendError as exc:
+                    if bounded_backend == "internal" and nucleotide_aligner != "internal":
+                        try:
+                            alignment = local_alignment_stats(
+                                query,
+                                bounded_target,
+                                backend=nucleotide_aligner,
+                                threads=threads,
+                            )
+                            alignment_evidence_scope = "anchor_bounded_external_local"
+                        except AlignmentBackendError as fallback_exc:
+                            alignment_error = f"bounded_alignment_unavailable:{fallback_exc}"
+                    else:
+                        alignment_error = f"bounded_alignment_unavailable:{exc}"
+                if alignment is not None:
+                    _set_alignment_context(
+                        alignment,
+                        representative.get("occurrence_id", "NA"),
+                        None,
+                        source_transcript_ids[0] if len(source_transcript_ids) == 1 else None,
+                        anchor_context["left_anchor_id"],
+                        anchor_context["right_anchor_id"],
+                        anchor_context["search_interval"],
+                    )
+                    _offset_alignment_target(alignment, anchor_context["target_offset0"])
+            if alignment is None and not anchor_context["valid_double_flank"]:
+                try:
+                    alignment = local_alignment_stats(
+                        query, locus, backend=nucleotide_aligner, threads=threads
+                    )
+                    alignment_evidence_scope = "whole_locus_descriptive_fallback"
+                except AlignmentBackendError as exc:
+                    alignment_error = str(exc)
+            if alignment is not None:
                 dna_identity = alignment.identity
                 dna_coverage = alignment.query_coverage or alignment.coverage
                 identity = dna_identity
                 coverage = dna_coverage
-            except AlignmentBackendError as exc:
-                alignment_error = str(exc)
-            supported = alignment is not None and identity >= min_identity and coverage >= min_coverage
+            supported = (
+                alignment_evidence_scope.startswith("anchor_bounded_")
+                and alignment is not None
+                and (bool(alignment.aligned_blocks) or int(alignment.aligned_pairs or 0) > 0)
+                and identity >= min_identity
+                and coverage >= min_coverage
+            )
             projected = None
+            projected_candidate = None
             protein_candidates = []
             projection_reason = "not_requested"
             protein_identity = protein_coverage = 0.0
             if aligner == "miniprot":
-                projected, projection_reason = _cached_protein_projection(
+                projected_candidate, projection_reason = _cached_protein_projection(
                     protein_context,
                     family,
                     copy_key,
@@ -1064,6 +1855,11 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                     min_coverage,
                     threads,
                     candidates=protein_candidates,
+                )
+                projected = (
+                    projected_candidate
+                    if _projection_within_anchor_interval(projected_candidate, anchor_context)
+                    else None
                 )
                 if projected:
                     protein_identity = projected["identity"]
@@ -1090,23 +1886,85 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                     min_coverage,
                     threads=threads,
                 )
+            bounded_protein_candidates = [
+                candidate for candidate in protein_candidates
+                if _projection_within_anchor_interval(candidate, anchor_context)
+            ]
+            if projected is None and len(bounded_protein_candidates) == 1:
+                projected = bounded_protein_candidates[0]
+                projection_reason = "protein_projection_resolved_by_ordered_anchor_interval"
+                protein_identity = projected["identity"]
+                protein_coverage = projected["coverage"]
+                identity = protein_identity
+                coverage = protein_coverage
+            elif projected_candidate is not None and projected is None:
+                projection_reason = "protein_projection_outside_ordered_anchor_interval"
             ambiguous_dna = supported and _ambiguous_repeated_mapping(alignment)
-            ambiguous_protein = projection_reason == "protein_projection_ambiguous_multiple_possible_mappings"
+            ambiguous_protein = len(bounded_protein_candidates) > 1
             interval_candidates = _nucleotide_interval_candidates(alignment, locus_header) + protein_candidates
+            dna_blocks = _alignment_genome_blocks(
+                alignment, locus_header, representative, source_transcript_ids
+            )
+            dna_annotation_overlaps = _annotation_overlaps_for_blocks(
+                dna_blocks,
+                occurrences_by_copy[copy_key],
+                transcript_ids_by_occurrence,
+            )
+            protein_blocks = _protein_projection_blocks(
+                bounded_protein_candidates, representative, source_transcript_ids
+            )
+            projection_annotation_overlaps = _annotation_overlaps_for_blocks(
+                protein_blocks,
+                occurrences_by_copy[copy_key],
+                transcript_ids_by_occurrence,
+            )
+            conflict_blocks = []
             correspondence_status = "resolved"
-            if ambiguous_dna or ambiguous_protein:
+            if not anchor_context["valid_double_flank"]:
+                has_descriptive_candidate = (
+                    (
+                        alignment is not None
+                        and (bool(alignment.aligned_blocks) or int(alignment.aligned_pairs or 0) > 0)
+                        and dna_identity >= min_identity
+                        and dna_coverage >= min_coverage
+                    )
+                    or bool(protein_candidates)
+                )
+                primary_mapping_status = (
+                    "whole_locus_descriptive_candidate" if has_descriptive_candidate else "unresolved"
+                )
+                interval_scope = alignment_evidence_scope
+                correspondence_status = "unknown"
+                primary_backend = (
+                    "miniprot"
+                    if protein_candidates
+                    else alignment.backend if alignment is not None else nucleotide_aligner
+                )
+                primary_cigar = alignment.cigar if alignment is not None else "NA"
+                primary_score = dna_identity if alignment is not None else 0.0
+                primary_coverage = dna_coverage if alignment is not None else 0.0
+                predicted_role = "unknown"
+                inferred_role = "unknown"
+                status = "ambiguous"
+                annotation_status = anchor_context["status"]
+                conclusion = "unknown"
+                contig = metadata.get("contig") or _locus_geometry(locus_header)[0]
+                start = end = "NA"
+                strand = metadata.get("strand") or _locus_geometry(locus_header)[3]
+                confidence = "low"
+            elif ambiguous_dna or ambiguous_protein:
                 primary_mapping_status = "ambiguous_repeated_mapping"
                 interval_scope = "ambiguous_candidates"
                 correspondence_status = "unknown"
-                primary_backend = "miniprot" if protein_candidates else alignment.backend
+                primary_backend = "miniprot" if bounded_protein_candidates else alignment.backend
                 primary_cigar = "NA"
-                if protein_candidates:
-                    primary_candidate = max(protein_candidates, key=lambda row: (row["coverage"], row["identity"]))
+                if bounded_protein_candidates:
+                    primary_candidate = max(bounded_protein_candidates, key=lambda row: (row["coverage"], row["identity"]))
                     primary_score = primary_candidate["identity"]
                     primary_coverage = primary_candidate["coverage"]
                 else:
                     primary_score, primary_coverage = dna_identity, dna_coverage
-                predicted_role = "CDS" if protein_candidates else "unknown"
+                predicted_role = "CDS" if bounded_protein_candidates else "unknown"
                 inferred_role = "unknown"
                 status = "homologous_sequence_candidate"
                 annotation_status = "alignment_ambiguous_repeated_mapping"
@@ -1128,17 +1986,12 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                 end = projected["end"]
                 strand = projected["strand"]
                 overlapping_exons = [
-                    row for row in occurrences_by_copy[copy_key]
-                    if row.get("presence_status") == "present"
-                    and row.get("role") in EXON_LIKE_ROLES
-                    and row.get("contig") == contig
-                    and row.get("strand") == strand
-                    and int(row["start"]) <= end
-                    and int(row["end"]) >= start
+                    row for row in projection_annotation_overlaps
+                    if row.get("role") in EXON_LIKE_ROLES
+                    and row.get("strand_relation") == "sense"
                 ]
                 contained_roles = {
-                    row["role"] for row in overlapping_exons
-                    if int(row["start"]) <= start and end <= int(row["end"])
+                    row["role"] for row in overlapping_exons if row.get("contains_block")
                 }
                 if strand != _locus_geometry(locus_header)[3]:
                     status = "homologous_sequence_candidate"
@@ -1156,6 +2009,7 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                     annotation_status = "protein_projection_boundary_conflict"
                     inferred_role = "predicted_CDS"
                     conclusion = "predicted_cds_boundary_conflict"
+                    conflict_blocks = overlapping_exons
                 else:
                     status = "supports_hidden_segment"
                     annotation_status = "protein_projection_supports_missing_cds"
@@ -1174,20 +2028,26 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                 if alignment.strand in {"+", "-"} and strand in {"+", "-"}:
                     strand = "+" if alignment.strand == strand else "-"
                 primary_mapping_status = "unique_nucleotide_mapping"
-                overlap_role, sense_overlap = _overlapping_annotation_role(
-                    alignment.target_start, alignment.target_end,
-                    locus_header, occurrences_by_copy[copy_key], strand,
+                sense_roles = {
+                    row["role"] for row in dna_annotation_overlaps
+                    if row.get("strand_relation") == "sense"
+                }
+                antisense_exonic = any(
+                    row.get("role") in EXON_LIKE_ROLES
+                    and row.get("strand_relation") == "antisense"
+                    for row in dna_annotation_overlaps
                 )
-                if overlap_role in EXON_LIKE_ROLES and sense_overlap:
+                exonic_roles = sense_roles & EXON_LIKE_ROLES
+                if exonic_roles:
                     status = "supports_annotation"
                     annotation_status = "alignment_overlaps_annotated_exon"
-                    inferred_role = overlap_role
+                    inferred_role = "CDS" if "CDS" in exonic_roles else sorted(exonic_roles)[0]
                     conclusion = "annotated_exon_sequence_present"
                 else:
                     status = "homologous_sequence_candidate"
-                    if overlap_role in EXON_LIKE_ROLES and not sense_overlap:
+                    if antisense_exonic:
                         annotation_status = "homologous_sequence_overlaps_antisense_exon_annotation"
-                    elif overlap_role != "unknown":
+                    elif sense_roles:
                         annotation_status = "homologous_sequence_overlaps_non_exonic_annotation"
                     else:
                         annotation_status = "unannotated_homologous_sequence_candidate"
@@ -1231,6 +2091,104 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                 strand = metadata.get("strand") or "+"
                 conclusion = "unknown"
                 confidence = "low"
+
+            if protein_blocks and (projected or ambiguous_protein):
+                observation_blocks = protein_blocks
+                annotation_overlaps = projection_annotation_overlaps
+            elif ambiguous_dna:
+                observation_blocks = _candidate_span_blocks(
+                    interval_candidates,
+                    representative,
+                    source_transcript_ids,
+                    backend=alignment.backend,
+                )
+                annotation_overlaps = _annotation_overlaps_for_blocks(
+                    observation_blocks,
+                    occurrences_by_copy[copy_key],
+                    transcript_ids_by_occurrence,
+                )
+            elif dna_blocks:
+                observation_blocks = dna_blocks
+                annotation_overlaps = dna_annotation_overlaps
+            else:
+                observation_blocks = []
+                annotation_overlaps = []
+
+            supplied_role = (
+                "ambiguous_candidate_roles"
+                if ambiguous_dna or ambiguous_protein
+                else _supplied_annotation_role(annotation_overlaps)
+            )
+            supplied_roles = sorted({row["role"] for row in annotation_overlaps})
+            target_parent_occurrence_ids = sorted(
+                {row["occurrence_id"] for row in annotation_overlaps}
+            )
+            target_parent_transcript_ids = sorted(
+                {
+                    transcript_id
+                    for row in annotation_overlaps
+                    for transcript_id in row.get("transcript_ids", [])
+                }
+            )
+
+            if status == "supports_absence":
+                homologous_dna_presence = "absent"
+                homologous_dna_evidence = "ordered_flank_deletion"
+            elif supported or projected or bounded_protein_candidates:
+                homologous_dna_presence = "present"
+                dna_evidence_types = []
+                if supported:
+                    dna_evidence_types.append("anchor_bounded_nucleotide_alignment")
+                if projected or bounded_protein_candidates:
+                    dna_evidence_types.append("anchor_bounded_protein_coding_projection")
+                homologous_dna_evidence = ";".join(dna_evidence_types)
+            else:
+                homologous_dna_presence = "unknown"
+                homologous_dna_evidence = "no_resolved_sequence_evidence"
+
+            search_provenance = _search_provenance(
+                metadata, locus_header, terminal_need, interval_candidates
+            )
+            incomplete_reasons = []
+            if alignment is not None and not alignment.enumeration_complete:
+                incomplete_reasons.append(
+                    alignment.incomplete_reason or "nucleotide_candidate_enumeration_truncated"
+                )
+            if search_provenance["hit_search_limit_status"].startswith("candidate_touches_"):
+                incomplete_reasons.append(
+                    search_provenance["hit_search_limit_status"]
+                )
+            if search_provenance["hit_search_limit_status"].startswith("no_hit_with_"):
+                incomplete_reasons.append(
+                    search_provenance["hit_search_limit_status"]
+                )
+            if incomplete_reasons:
+                candidate_resolution_status = "candidate_search_incomplete"
+                candidate_search_complete = "false"
+                correspondence_status = "unknown"
+            elif ambiguous_dna or ambiguous_protein:
+                candidate_resolution_status = "ambiguous"
+                candidate_search_complete = (
+                    "true"
+                    if not bounded_protein_candidates
+                    and alignment is not None
+                    and alignment.enumeration_complete
+                    else "unknown"
+                )
+            elif correspondence_status == "resolved" and homologous_dna_presence in {"present", "absent"}:
+                candidate_resolution_status = "resolved"
+                candidate_search_complete = (
+                    "true"
+                    if supported
+                    and not bounded_protein_candidates
+                    and alignment is not None
+                    and alignment.enumeration_complete
+                    else "unknown"
+                )
+            else:
+                candidate_resolution_status = "unresolved"
+                candidate_search_complete = "unknown"
+
             evidence.append(
                 {
                     "evidence_id": f"completion_{family}_{element}_{species}",
@@ -1242,6 +2200,41 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                     "evidence_status": status,
                     "inferred_role": inferred_role,
                     "predicted_role": predicted_role,
+                    "homologous_dna_presence": homologous_dna_presence,
+                    "homologous_dna_evidence": homologous_dna_evidence,
+                    "predicted_exonic_role": predicted_role,
+                    "supplied_annotation_role": supplied_role,
+                    "supplied_annotation_roles": ";".join(supplied_roles) or "NA",
+                    "source_parent_occurrence_id": representative.get("occurrence_id", "NA"),
+                    "source_parent_transcript_ids": ";".join(source_transcript_ids) or "NA",
+                    "target_parent_occurrence_ids": ";".join(target_parent_occurrence_ids) or "NA",
+                    "target_parent_transcript_ids": ";".join(target_parent_transcript_ids) or "NA",
+                    "dna_aligned_blocks": _json_records(dna_blocks),
+                    "predicted_role_blocks": _json_records(protein_blocks if predicted_role in EXON_LIKE_ROLES else []),
+                    "supplied_annotation_overlaps": _json_records(annotation_overlaps),
+                    "annotation_conflict_blocks": _json_records(conflict_blocks),
+                    "candidate_resolution_status": candidate_resolution_status,
+                    "candidate_search_complete": candidate_search_complete,
+                    "candidate_search_incomplete_reason": ";".join(sorted(set(incomplete_reasons))) or "NA",
+                    "left_anchor_id": anchor_context["left_anchor_id"],
+                    "right_anchor_id": anchor_context["right_anchor_id"],
+                    "anchor_interval_status": anchor_context["status"],
+                    "search_interval": (
+                        json.dumps(anchor_context["search_interval"], separators=(",", ":"))
+                        if anchor_context["search_interval"] is not None
+                        else "NA"
+                    ),
+                    "alignment_evidence_scope": alignment_evidence_scope,
+                    **_alignment_evidence_provenance(
+                        alignment,
+                        query_length=len(query),
+                        target_length=(
+                            len(bounded_target)
+                            if alignment_evidence_scope.startswith("anchor_bounded_")
+                            else len(locus)
+                        ),
+                    ),
+                    **search_provenance,
                     "contig": contig,
                     "start": start,
                     "end": end,
@@ -1282,11 +2275,11 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
                     **protein_context_provenance,
                     "alignment_hit_count": len(protein_candidates) if primary_backend == "miniprot" else alignment.hit_count if alignment is not None and primary_mapping_status != "ordered_flank_deletion" else "NA",
                     "alignment_ambiguous_hit_count": max(0, len(protein_candidates) - 1) if primary_backend == "miniprot" else alignment.ambiguous_hit_count if alignment is not None and primary_mapping_status != "ordered_flank_deletion" else "NA",
-                    "alignment_mapping_quality": alignment.mapping_quality if alignment is not None and primary_backend != "miniprot" and primary_mapping_status != "ordered_flank_deletion" else "NA",
+                    "alignment_mapping_quality": alignment.mapping_quality if alignment is not None and alignment.mapping_quality is not None and primary_backend != "miniprot" and primary_mapping_status != "ordered_flank_deletion" else "NA",
                     "alignment_alternative_hits": _format_alternative_hits(alignment) if primary_backend != "miniprot" and primary_mapping_status != "ordered_flank_deletion" else "NA",
                     "dna_alignment_hit_count": alignment.hit_count if alignment is not None else 0,
                     "dna_alignment_ambiguous_hit_count": alignment.ambiguous_hit_count if alignment is not None else 0,
-                    "dna_alignment_mapping_quality": alignment.mapping_quality if alignment is not None else "NA",
+                    "dna_alignment_mapping_quality": alignment.mapping_quality if alignment is not None and alignment.mapping_quality is not None else "NA",
                     "dna_alignment_alternative_hits": _format_alternative_hits(alignment),
                     "deletion_alignment_backend": deletion_provenance.get("backend", "NA"),
                     "deletion_alignment_cigar": deletion_provenance.get("cigar", "NA"),
@@ -1311,6 +2304,7 @@ def generate_sequence_evidence(input_dir, result_dir, min_identity=0.70, min_cov
     fields = [
         "evidence_id", "family_id", "species", "gene_copy_id", "homology_id",
         "annotation_status", "evidence_status", "inferred_role", "predicted_role", "contig", "start", "end",
+        *_EVIDENCE_PROVENANCE_FIELDS,
         "strand", "sequence_score", "sequence_coverage", "left_synteny_score",
         "right_synteny_score", "splice_motif_score", "phase_compatibility",
         "inferred_event", "frame_status", "evidence_conclusion", "confidence_flag",
@@ -1363,6 +2357,23 @@ def complete_annotation(input_dir, output_dir, threshold=0.55):
                 "annotation_status": row.get("annotation_status", "unknown"),
                 "inferred_role": row.get("inferred_role", "unknown"),
                 "predicted_role": row.get("predicted_role", "unknown"),
+                **{
+                    field: row.get(
+                        field,
+                        "unknown"
+                        if field in {
+                            "homologous_dna_presence",
+                            "homologous_dna_evidence",
+                            "predicted_exonic_role",
+                            "supplied_annotation_role",
+                            "candidate_resolution_status",
+                            "candidate_search_complete",
+                        }
+                        else "NA",
+                    )
+                    for field in _EVIDENCE_PROVENANCE_FIELDS
+                },
+                **{field: row.get(field, "NA") for field in _SEARCH_COMPAT_FIELDS},
                 "primary_mapping_status": row.get("primary_mapping_status", "unknown"),
                 # Legacy evidence lacks this field; only explicit unknown marks unresolved correspondence.
                 "correspondence_status": row.get("correspondence_status", "unspecified"),
@@ -1389,6 +2400,8 @@ def complete_annotation(input_dir, output_dir, threshold=0.55):
         [
             "evidence_id", "family_id", "species", "gene_copy_id", "homology_id",
             "interval", "annotation_status", "inferred_role", "predicted_role", "support_score",
+            *_EVIDENCE_PROVENANCE_FIELDS,
+            *_SEARCH_COMPAT_FIELDS,
             "primary_mapping_status", "correspondence_status", "interval_scope", "interval_candidates",
             *_PROTEIN_QUERY_INTERVAL_FIELDS,
             "reference_protein_id", "reference_transcript_id",

@@ -1,6 +1,6 @@
 # Bee Dsx Real Case
 
-This case uses the upstream OrthoFinder group `OG0009654` and retains seven
+This case uses the upstream OrthoFinder group `OG0006454` and retains seven
 species containing one Dsx-family gene member each. The supplied tree is the
 corresponding pruned subtree of the OrthoFinder species tree, with path lengths
 preserved when omitted taxa were removed.

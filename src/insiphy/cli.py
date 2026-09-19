@@ -14,7 +14,7 @@ from .case import build_case, inspect_annotation, scan_hidden_segments
 from .correspondence import infer_correspondence
 from .orthofinder import import_orthofinder
 from .phylogeny import infer_phylogeny
-from .preprocess import derive_tables, extract_gene
+from .preprocess import assess_short_candidate_thresholds, derive_tables, extract_gene
 from .simulate import simulate_dataset
 from .visualize import visualize_results
 
@@ -34,10 +34,19 @@ def run_all(
     root_frequency="estimated",
     root_presence=0.5,
     evidence_aligner="minimap2",
+    short_context_max_length=300,
+    annotation_view="repertoire",
+    structural_site_matrix_path=None,
 ):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     infer_correspondence(input_dir, output_dir)
-    generate_sequence_evidence(input_dir, output_dir, threads=threads, aligner=evidence_aligner)
+    generate_sequence_evidence(
+        input_dir,
+        output_dir,
+        threads=threads,
+        aligner=evidence_aligner,
+        short_context_max_length=short_context_max_length,
+    )
     complete_annotation(input_dir, output_dir)
     infer_phylogeny(
         input_dir,
@@ -53,13 +62,23 @@ def run_all(
         threads=threads,
         root_frequency=root_frequency,
         root_presence=root_presence,
+        annotation_view=annotation_view,
+        structural_site_matrix_path=structural_site_matrix_path,
     )
-    _record_evidence_aligner(output_dir, evidence_aligner)
+    _record_evidence_aligner(
+        output_dir,
+        evidence_aligner,
+        short_context_max_length=short_context_max_length,
+    )
     if analysis_scope == "experimental-multicopy":
         evaluate_baselines(input_dir, output_dir)
 
 
-def _record_evidence_aligner(output_dir, evidence_aligner):
+def _record_evidence_aligner(
+    output_dir,
+    evidence_aligner,
+    short_context_max_length=None,
+):
     parameter_path = Path(output_dir) / "run_parameters.json"
     if not parameter_path.exists():
         return
@@ -67,6 +86,8 @@ def _record_evidence_aligner(output_dir, evidence_aligner):
     if not isinstance(parameters, dict):
         raise ValueError(f"{parameter_path} does not contain a JSON object")
     parameters["evidence_aligner"] = evidence_aligner
+    if short_context_max_length is not None:
+        parameters["short_context_max_length"] = int(short_context_max_length)
     parameter_path.write_text(json.dumps(parameters, indent=2, sort_keys=True) + "\n")
 
 
@@ -103,6 +124,18 @@ def main(argv=None):
     derive.add_argument("--distance-table")
     derive.add_argument("--aligner", choices=["auto", "internal", "mafft", "minimap2", "lastz"], default="mafft", help="Exon-pair backend: mafft/auto uses overlap projection; others use local alignment.")
     derive.add_argument("--context-aligner", choices=["internal", "minimap2", "lastz"], default="minimap2", help="Local backend for pairs involving non-exon sequence.")
+    derive.add_argument(
+        "--coding-msa-mode",
+        choices=["linsi", "einsi"],
+        default="linsi",
+        help="MAFFT strategy for the family-level protein alignment.",
+    )
+    derive.add_argument(
+        "--short-context-max-length",
+        type=int,
+        default=300,
+        help="Maximum anchor-bounded nucleotide interval length for enumerating short-alignment candidates.",
+    )
     derive.add_argument("--threads", type=int, default=1)
     derive.add_argument("--min-size-ratio", type=float, default=0.25)
 
@@ -179,6 +212,18 @@ def main(argv=None):
     case.add_argument("--canonical-rule", choices=["longest_cds", "longest_span"], default="longest_cds")
     case.add_argument("--aligner", choices=["auto", "internal", "mafft", "minimap2", "lastz"], default="mafft", help="Exon-pair backend: mafft/auto uses overlap projection; others use local alignment.")
     case.add_argument("--context-aligner", choices=["internal", "minimap2", "lastz"], default="minimap2", help="Local backend for pairs involving non-exon sequence.")
+    case.add_argument(
+        "--coding-msa-mode",
+        choices=["linsi", "einsi"],
+        default="linsi",
+        help="MAFFT strategy for the family-level protein alignment.",
+    )
+    case.add_argument(
+        "--short-context-max-length",
+        type=int,
+        default=300,
+        help="Maximum anchor-bounded nucleotide interval length for enumerating short-alignment candidates.",
+    )
     case.add_argument("--threads", type=int, default=1)
     case.add_argument("--min-size-ratio", type=float, default=0.25)
     case.add_argument("--flank", type=int, default=1000)
@@ -216,6 +261,30 @@ def main(argv=None):
     hidden.add_argument("--aligner", choices=["internal", "minimap2", "miniprot"], default="internal")
     hidden.add_argument("--threads", type=int, default=1)
 
+    sensitivity = sub.add_parser(
+        "candidate-sensitivity",
+        description=(
+            "Re-evaluate saved nucleotide candidates while retaining each species "
+            "pair's original acceptance threshold."
+        ),
+    )
+    sensitivity.add_argument("--segment-matches", required=True)
+    sensitivity.add_argument("--output", required=True)
+    sensitivity.add_argument(
+        "--identity",
+        action="append",
+        type=float,
+        required=True,
+        help="Short-fragment minimum nucleotide identity; repeat for a threshold grid.",
+    )
+    sensitivity.add_argument(
+        "--coverage",
+        action="append",
+        type=float,
+        required=True,
+        help="Short-fragment minimum query coverage; repeat for a threshold grid.",
+    )
+
     for name in ["complete-annotation", "segment-correspondence", "compare-baselines"]:
         cmd = sub.add_parser(name)
         cmd.add_argument("--input-dir", required=True)
@@ -242,11 +311,21 @@ def main(argv=None):
             default="estimated",
         )
         cmd.add_argument("--root-presence", type=float, default=0.5)
+        cmd.add_argument(
+            "--annotation-view",
+            choices=["repertoire", "canonical"],
+            default="repertoire",
+            help="Summarize all supplied transcript paths or the explicitly marked canonical path.",
+        )
         cmd.add_argument("--threads", type=int, default=1)
         cmd.add_argument("--bootstrap-replicates", type=int, default=0)
         cmd.add_argument("--stochastic-maps", type=int, default=0)
         cmd.add_argument("--seed", type=int, default=7)
         cmd.add_argument("--foreground-branches")
+        cmd.add_argument(
+            "--structural-site-matrix",
+            help="Frozen schema-v3 structural observation matrix shared across model fits.",
+        )
         if name == "run":
             cmd.add_argument(
                 "--evidence-aligner",
@@ -254,12 +333,29 @@ def main(argv=None):
                 default="minimap2",
                 help="Aligner for sequence/protein evidence projection.",
             )
+            cmd.add_argument(
+                "--short-context-max-length",
+                type=int,
+                default=300,
+                help="Maximum anchor-bounded interval length for the short local DNA route.",
+            )
 
     args = parser.parse_args(argv)
     if args.command == "extract-gene":
         extract_gene(args.genome, args.annotation, args.gene_id, args.family_id, args.species, args.gene_copy_id, args.output_dir, args.append, args.transcript_policy, args.canonical_rule, args.source_label, args.copy_role, flank=args.flank, max_extension=args.max_extension)
     elif args.command == "derive-tables":
-        derive_tables(args.input_dir, args.output_dir, args.identity_threshold, args.distance_table, args.aligner, args.threads, args.min_size_ratio, context_aligner=args.context_aligner)
+        derive_tables(
+            args.input_dir,
+            args.output_dir,
+            args.identity_threshold,
+            args.distance_table,
+            args.aligner,
+            args.threads,
+            args.min_size_ratio,
+            context_aligner=args.context_aligner,
+            coding_msa_mode=args.coding_msa_mode,
+            short_context_max_length=args.short_context_max_length,
+        )
     elif args.command == "simulate":
         simulate_dataset(args.output_dir, args.seed, args.scenario)
     elif args.command == "benchmark":
@@ -275,11 +371,35 @@ def main(argv=None):
     elif args.command == "inspect-annotation":
         inspect_annotation(args.annotation, args.output_dir, args.query, args.alias_file, args.species, args.case_id)
     elif args.command == "build-case":
-        build_case(args.manifest, args.output_dir, args.identity_threshold, args.species_tree, args.transcript_policy, args.canonical_rule, args.aligner, args.threads, args.min_size_ratio, args.copy_tree, args.gene_tree, flank=args.flank, max_extension=args.max_extension, context_aligner=args.context_aligner)
+        build_case(
+            args.manifest,
+            args.output_dir,
+            args.identity_threshold,
+            args.species_tree,
+            args.transcript_policy,
+            args.canonical_rule,
+            args.aligner,
+            args.threads,
+            args.min_size_ratio,
+            args.copy_tree,
+            args.gene_tree,
+            flank=args.flank,
+            max_extension=args.max_extension,
+            context_aligner=args.context_aligner,
+            coding_msa_mode=args.coding_msa_mode,
+            short_context_max_length=args.short_context_max_length,
+        )
     elif args.command == "import-orthofinder":
         import_orthofinder(args.orthofinder_dir, args.orthogroup, args.genome_manifest, args.output_dir, args.species_tree)
     elif args.command == "scan-hidden-segments":
         scan_hidden_segments(args.source_fasta, args.target_fasta, args.output_dir, args.family_id, args.species, args.gene_copy_id, args.min_identity, args.min_coverage, args.aligner, args.threads)
+    elif args.command == "candidate-sensitivity":
+        assess_short_candidate_thresholds(
+            args.segment_matches,
+            args.output,
+            args.identity,
+            args.coverage,
+        )
     elif args.command == "complete-annotation":
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         complete_annotation(args.input_dir, args.output_dir)
@@ -289,19 +409,21 @@ def main(argv=None):
     elif args.command == "infer-phylogeny":
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         infer_phylogeny(
-            args.input_dir,
-            args.output_dir,
-            args.bootstrap_replicates,
-            args.stochastic_maps,
-            args.seed,
-            args.foreground_branches,
-            args.analysis_scope,
-            args.model,
-            args.branch_length_mode,
-            args.ascertainment,
-            args.threads,
-            args.root_frequency,
-            args.root_presence,
+            input_dir=args.input_dir,
+            output_dir=args.output_dir,
+            bootstrap_replicates=args.bootstrap_replicates,
+            stochastic_maps=args.stochastic_maps,
+            seed=args.seed,
+            foreground_branches=args.foreground_branches,
+            analysis_scope=args.analysis_scope,
+            model=args.model,
+            branch_length_mode=args.branch_length_mode,
+            ascertainment=args.ascertainment,
+            threads=args.threads,
+            root_frequency=args.root_frequency,
+            root_presence=args.root_presence,
+            structural_site_matrix_path=args.structural_site_matrix,
+            annotation_view=args.annotation_view,
         )
     elif args.command == "compare-baselines":
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
@@ -309,20 +431,23 @@ def main(argv=None):
     elif args.command == "run":
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         run_all(
-            args.input_dir,
-            args.output_dir,
-            args.bootstrap_replicates,
-            args.stochastic_maps,
-            args.seed,
-            args.foreground_branches,
-            args.analysis_scope,
-            args.model,
-            args.branch_length_mode,
-            args.ascertainment,
-            args.threads,
-            args.root_frequency,
-            args.root_presence,
+            input_dir=args.input_dir,
+            output_dir=args.output_dir,
+            bootstrap_replicates=args.bootstrap_replicates,
+            stochastic_maps=args.stochastic_maps,
+            seed=args.seed,
+            foreground_branches=args.foreground_branches,
+            analysis_scope=args.analysis_scope,
+            model=args.model,
+            branch_length_mode=args.branch_length_mode,
+            ascertainment=args.ascertainment,
+            threads=args.threads,
+            root_frequency=args.root_frequency,
+            root_presence=args.root_presence,
             evidence_aligner=args.evidence_aligner,
+            short_context_max_length=args.short_context_max_length,
+            annotation_view=args.annotation_view,
+            structural_site_matrix_path=args.structural_site_matrix,
         )
 
 

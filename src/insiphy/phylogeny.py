@@ -717,6 +717,8 @@ def infer_phylogeny(
     threads=1,
     root_frequency="estimated",
     root_presence=0.5,
+    structural_site_matrix_path=None,
+    annotation_view="repertoire",
 ):
     if analysis_scope == "single-copy":
         if bootstrap_replicates or stochastic_maps:
@@ -731,7 +733,13 @@ def infer_phylogeny(
         if model == "parsimony":
             from .parsimony import infer_single_copy_parsimony
 
-            return infer_single_copy_parsimony(input_dir, output_dir, threads=threads)
+            return infer_single_copy_parsimony(
+                input_dir,
+                output_dir,
+                threads=threads,
+                structural_site_matrix_path=structural_site_matrix_path,
+                annotation_view=annotation_view,
+            )
         from .structural_phylogeny import infer_single_copy_phylogeny
 
         return infer_single_copy_phylogeny(
@@ -744,6 +752,8 @@ def infer_phylogeny(
             threads=threads,
             root_frequency=root_frequency,
             root_presence=root_presence,
+            structural_site_matrix_path=structural_site_matrix_path,
+            annotation_view=annotation_view,
         )
     occurrences = read_tsv(f"{input_dir}/segment_occurrences.tsv", ["occurrence_id", "family_id", "species", "gene_copy_id", "role", "presence_status"])
     homology = read_tsv(f"{input_dir}/segment_homology.tsv", ["homology_id", "occurrence_id", "support_type", "confidence"])

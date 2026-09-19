@@ -4,14 +4,45 @@ from __future__ import annotations
 
 import math
 import csv
+import json
+import re
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from functools import lru_cache
 from itertools import islice
 from pathlib import Path
 
-from .alignment import available_alignment_backends, local_alignment_stats, overlap_alignment_stats, phase_compatibility, splice_motif_score
+from .alignment import (
+    AlignmentBackendError,
+    AlignmentStats,
+    NT_BLASTN_V1_GAP_EXTEND,
+    NT_BLASTN_V1_GAP_OPEN,
+    NT_BLASTN_V1_MATCH,
+    NT_BLASTN_V1_MISMATCH,
+    anchored_short_alignment,
+    available_alignment_backends,
+    local_alignment_stats,
+    overlap_alignment_stats,
+    phase_compatibility,
+    splice_motif_score,
+)
+from .candidate_chain import (
+    DEFAULT_CHAIN_CONFIGURATION,
+    ChainCandidate,
+    ChainPathMembership,
+    ordered_candidate_chain,
+)
 from .coding_correspondence import CodingProjectionIndex
+from .coordinates import (
+    ClosedInterval1,
+    CoordinateBlock,
+    Interval0,
+    format_legacy_blocks,
+    genome_interval_to_local,
+    local_interval_to_genome,
+    parse_legacy_blocks,
+)
 from .io import fasta_record_length, open_text, parse_fasta, read_fasta_interval, read_tsv, to_float, write_tsv
 
 
@@ -37,6 +68,19 @@ SEGMENT_FIELDS = [
     "frame_status",
 ]
 
+
+@dataclass(frozen=True)
+class CorrespondenceCriteria:
+    regular_min_coverage: float = 0.45
+    high_identity_offset: float = 0.15
+    high_identity_min_coverage: float = 0.30
+    short_min_identity: float = 0.70
+    short_min_query_coverage: float = 0.80
+    short_min_aligned_pairs: int = 12
+
+
+DEFAULT_CORRESPONDENCE_CRITERIA = CorrespondenceCriteria()
+
 SEGMENT_OUTPUT_FIELDS = SEGMENT_FIELDS + ["source_label", "copy_role"]
 SEGMENT_OUTPUT_FIELDS += [
     "transcript_order",
@@ -52,6 +96,14 @@ SEGMENT_OUTPUT_FIELDS += [
     "source_parent",
     "source_parents",
     "feature_ownership",
+    "path_roles",
+    "coding_roles",
+    "position_roles",
+    "annotation_source",
+    "original_attributes",
+    "partial_start",
+    "partial_end",
+    "path_role_records",
 ]
 
 TRANSCRIPT_PATH_FIELDS = [
@@ -75,6 +127,16 @@ TRANSCRIPT_PATH_FIELDS = [
     "cds_intervals",
     "utr_intervals",
     "path_status",
+    "canonical_selection_rule",
+    "source_feature_id",
+    "source_feature_type",
+    "path_role",
+    "coding_role",
+    "position_role",
+    "annotation_source",
+    "original_attributes",
+    "partial_start",
+    "partial_end",
 ]
 
 RAW_FEATURE_FIELDS = [
@@ -500,6 +562,7 @@ def _annotate_exon(exon, child_rows):
     utr = [row for row in overlapping if row["type"].lower() in {"utr", "five_prime_utr", "three_prime_utr"}]
     item["cds_intervals"] = [(row["start"], row["end"]) for row in cds]
     item["utr_intervals"] = [(row["start"], row["end"]) for row in utr]
+    item["utr_types"] = [row["type"] for row in utr]
     item["cds_length"] = sum(row["end"] - row["start"] + 1 for row in cds)
     item["cds_start"] = min((row["start"] for row in cds), default=None)
     item["cds_end"] = max((row["end"] for row in cds), default=None)
@@ -526,6 +589,100 @@ def _feature_parents(feature):
 
 def _format_attrs(attrs):
     return ";".join(f"{key}={attrs[key]}" for key in sorted(attrs)) if attrs else "NA"
+
+
+def _partial_boundary(feature, boundary):
+    attrs = feature.get("attrs", {}) or {}
+    keys = (
+        ("partial_start", "start_partial", "partial5")
+        if boundary == "start"
+        else ("partial_end", "end_partial", "partial3")
+    )
+    for key in keys:
+        if key in attrs:
+            return attrs[key]
+    range_value = attrs.get(f"{boundary}_range")
+    if range_value not in {None, "", "."}:
+        return range_value
+    if str(attrs.get("partial", "")).lower() in {"1", "true", "yes"}:
+        return "1"
+    return "0"
+
+
+def _coding_role(feature):
+    if feature_role(feature) == "intron":
+        return "unknown"
+    cds = feature.get("cds_intervals", ())
+    utr_types = {str(value).lower() for value in feature.get("utr_types", ())}
+    if cds and utr_types:
+        return "mixed"
+    if cds:
+        return "CDS"
+    if utr_types == {"five_prime_utr"}:
+        return "five_prime_UTR"
+    if utr_types == {"three_prime_utr"}:
+        return "three_prime_UTR"
+    if utr_types:
+        return "mixed" if len(utr_types) > 1 else "unknown"
+    return "noncoding_exon"
+
+
+def _position_role(path_features, index):
+    feature = path_features[index]
+    if feature_role(feature) == "intron":
+        return "internal"
+    exonic_indices = [
+        item_index
+        for item_index, item in enumerate(path_features)
+        if feature_role(item) != "intron"
+    ]
+    if len(exonic_indices) == 1:
+        return "single"
+    if index == exonic_indices[0]:
+        return "first"
+    if index == exonic_indices[-1]:
+        return "last"
+    return "internal"
+
+
+def _path_role_record(transcript_id, rank, path_features, index, feature, transcript=None):
+    position_role = _position_role(path_features, index)
+    partial_start = _partial_boundary(feature, "start")
+    partial_end = _partial_boundary(feature, "end")
+    if transcript is not None and position_role in {"first", "single"} and partial_start == "0":
+        partial_start = _partial_boundary(transcript, "start")
+    if transcript is not None and position_role in {"last", "single"} and partial_end == "0":
+        partial_end = _partial_boundary(transcript, "end")
+    # A transcript may be wholly contained in its linked gene while its
+    # terminal CDS/exon has no explicit partial attribute.  The uncovered
+    # gene boundary is still evidence of a partial path.
+    if transcript is not None:
+        gene_start = transcript.get("_gene_start")
+        gene_end = transcript.get("_gene_end")
+        strand = transcript.get("strand", "+")
+        if position_role in {"first", "single"} and gene_start is not None and gene_end is not None:
+            if (strand == "+" and int(feature["start"]) > int(gene_start)) or (
+                strand == "-" and int(feature["end"]) < int(gene_end)
+            ):
+                partial_start = "1"
+        if position_role in {"last", "single"} and gene_start is not None and gene_end is not None:
+            if (strand == "+" and int(feature["end"]) < int(gene_end)) or (
+                strand == "-" and int(feature["start"]) > int(gene_start)
+            ):
+                partial_end = "1"
+    return {
+        "transcript_id": transcript_id,
+        "path_rank": rank,
+        "source_feature_id": feature.get("id", "NA") or "NA",
+        "source_feature_type": feature.get("type", "NA") or "NA",
+        "path_role": "intronic" if feature_role(feature) == "intron" else "exonic",
+        "coding_role": _coding_role(feature),
+        "position_role": position_role,
+        "annotation_source": feature.get("source", (transcript or {}).get("source", "NA")) or "NA",
+        "original_attributes": _format_attrs(feature.get("attrs", {})),
+        "partial_start": partial_start,
+        "partial_end": partial_end,
+    }
 
 
 def _interval_union_length(intervals):
@@ -720,6 +877,15 @@ def extract_gene(
     gene_ids = set(gene_ids)
     transcripts = transcript_features(features, annotation_gene, gene_ids)
     features_by_tx = {tx["id"]: child_features_for_transcript(features, annotation_gene, gene_ids, tx) for tx in transcripts}
+    canonical_ids = {
+        tx["id"]
+        for tx in select_transcripts(
+            transcripts,
+            features_by_tx,
+            transcript_policy="canonical",
+            canonical_rule=canonical_rule,
+        )
+    }
     selected = select_transcripts(transcripts, features_by_tx, transcript_policy, canonical_rule)
     if not selected or any(not features_by_tx.get(tx.get("id", "")) for tx in selected):
         raise SystemExit(
@@ -798,6 +964,10 @@ def extract_gene(
         for rank, feat in enumerate(path_features, start=1):
             feat = dict(feat)
             feat["transcript_order"] = rank
+            path_record = _path_role_record(
+                tx_id, rank, path_features, rank - 1, feat,
+                transcript={**tx, "_gene_start": annotation_gene["start"], "_gene_end": annotation_gene["end"]},
+            )
             key = _feature_key(feat)
             unique.setdefault(
                 key,
@@ -809,6 +979,7 @@ def extract_gene(
                     "source_parents": set(),
                     "cds_intervals": set(),
                     "utr_intervals": set(),
+                    "path_records": [],
                 },
             )
             unique[key]["transcripts"].add(tx_id)
@@ -817,7 +988,8 @@ def extract_gene(
             unique[key]["source_parents"].update(_feature_parents(feat))
             unique[key]["cds_intervals"].update(tuple(interval) for interval in feat.get("cds_intervals", []))
             unique[key]["utr_intervals"].update(tuple(interval) for interval in feat.get("utr_intervals", []))
-            tx_paths.append((tx_id, rank, key, feat))
+            unique[key]["path_records"].append(path_record)
+            tx_paths.append((tx_id, rank, key, feat, path_record))
         for intron in introns:
             intron_records.append((tx_id, intron))
 
@@ -830,6 +1002,10 @@ def extract_gene(
             entry = unique[key]
             feat = entry["feature"]
             role = feature_role(feat)
+            path_records = sorted(
+                entry["path_records"],
+                key=lambda item: (item["transcript_id"], int(item["path_rank"])),
+            )
             occ_id = _occurrence_id(species, gene_copy_id, start_index + offset, role)
             key_to_occ[key] = occ_id
             cds_intervals = sorted(entry["cds_intervals"] or feat.get("cds_intervals", []))
@@ -848,7 +1024,7 @@ def extract_gene(
                     "gene_copy_id": gene_copy_id,
                     "transcript_id": ";".join(sorted(entry["transcripts"])),
                     "role": role,
-                    "role_set": role,
+                    "role_set": ";".join(sorted({role, *(item["coding_role"] for item in path_records)})),
                     "presence_status": "present",
                     "contig": feat["seqid"],
                     "start": feat["start"],
@@ -880,11 +1056,22 @@ def extract_gene(
                         if len(entry["transcripts"]) > 1
                         else "transcript_specific"
                     ),
+                    "path_roles": ";".join(sorted({item["path_role"] for item in path_records})) or "unknown",
+                    "coding_roles": ";".join(sorted({item["coding_role"] for item in path_records})) or "unknown",
+                    "position_roles": ";".join(sorted({item["position_role"] for item in path_records})) or "unknown",
+                    "annotation_source": ";".join(sorted({item["annotation_source"] for item in path_records})) or "NA",
+                    "original_attributes": json.dumps(
+                        [item["original_attributes"] for item in path_records],
+                        separators=(",", ":"),
+                    ),
+                    "partial_start": ";".join(sorted({str(item["partial_start"]) for item in path_records})),
+                    "partial_end": ";".join(sorted({str(item["partial_end"]) for item in path_records})),
+                    "path_role_records": json.dumps(path_records, sort_keys=True, separators=(",", ":")),
                 }
             )
             fasta.write(f">{occ_id}\n{seq}\n")
 
-    for tx_id, rank, key, feat in tx_paths:
+    for tx_id, rank, key, feat, path_record in tx_paths:
         tx_path_rows.append(
             {
                 "path_id": f"{species}_{gene_copy_id}_{tx_id}_{rank:03d}",
@@ -906,7 +1093,13 @@ def extract_gene(
                 "cds_phase": feat.get("cds_phase", "."),
                 "cds_intervals": _format_intervals(feat.get("cds_intervals", [])),
                 "utr_intervals": _format_intervals(feat.get("utr_intervals", [])),
-                "path_status": "annotated_transcript_path" if transcript_policy == "all" else "canonical_transcript_path",
+                "path_status": (
+                    "canonical_transcript_path"
+                    if tx_id in canonical_ids
+                    else "annotated_transcript_path"
+                ),
+                "canonical_selection_rule": canonical_rule,
+                **path_record,
             }
         )
     for tx_id, intron in intron_records:
@@ -1288,17 +1481,500 @@ def cheap_match_evidence(left, right, context, alignment_backend="prefilter"):
     }
 
 
-def _alignment_blocks(aln):
+def _coordinate_block0(block):
+    if isinstance(block, CoordinateBlock):
+        return block
+    if isinstance(block, dict):
+        return CoordinateBlock(
+            Interval0(int(block["query_start0"]), int(block["query_end0"])),
+            Interval0(int(block["target_start0"]), int(block["target_end0"])),
+        )
+    query_start, query_end, target_start, target_end = block
+    return CoordinateBlock(
+        ClosedInterval1(int(query_start), int(query_end)).to_interval0(),
+        ClosedInterval1(int(target_start), int(target_end)).to_interval0(),
+    )
+
+
+def _alignment_blocks0(aln):
     blocks = getattr(aln, "aligned_blocks", None)
     if blocks:
-        return [(int(qs), int(qe), int(ts), int(te)) for qs, qe, ts, te in blocks]
-    return []
+        return tuple(_coordinate_block0(block) for block in blocks)
+    return tuple()
+
+
+def _alignment_blocks(aln):
+    """Compatibility view for callers that still consume public 1-based blocks."""
+
+    public = []
+    for block in _alignment_blocks0(aln):
+        query = ClosedInterval1.from_interval0(block.query)
+        target = ClosedInterval1.from_interval0(block.target)
+        public.append((query.start, query.end, target.start, target.end))
+    return public
 
 
 def _format_alignment_blocks(blocks):
     if not blocks:
         return "NA"
-    return ";".join(f"{qs}-{qe}:{ts}-{te}" for qs, qe, ts, te in blocks)
+    return format_legacy_blocks(tuple(_coordinate_block0(block) for block in blocks))
+
+
+def _block_signature(block):
+    block = _coordinate_block0(block)
+    return (
+        block.query.start0, block.query.end0,
+        block.target.start0, block.target.end0,
+    )
+
+
+def _valid_local_boundary_range(row, sequence):
+    try:
+        start = int(row["start"])
+        end = int(row["end"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return (
+        row.get("contig") not in {None, "", "NA"}
+        and row.get("strand") in {"+", "-"}
+        and start <= end
+        and len(sequence) == end - start + 1
+    )
+
+
+def _explicit_bounded_target(row, sequence):
+    explicit = row.get("target_interval_bounded", row.get("search_interval_bounded"))
+    if explicit not in {None, "", "NA"}:
+        return explicit in {True, 1, "1", "true", "True", "yes"} and _valid_local_boundary_range(row, sequence)
+    if str(row.get("boundary_class", "")).lower() in {
+        "whole_locus",
+        "whole_locus_search_interval",
+        "unbounded_locus_search",
+    }:
+        return False
+    return _valid_local_boundary_range(row, sequence) and (
+        row.get("role") in STRUCTURAL_ROLES
+        or row.get("source_feature_id") not in {None, "", "NA"}
+        or row.get("boundary_class") not in {None, "", "NA"}
+    )
+
+
+def _genomic_matched_blocks(row, blocks, side):
+    mapped = []
+    for block in blocks:
+        block = _coordinate_block0(block)
+        local = block.query if side == "query" else block.target
+        try:
+            locus = ClosedInterval1(int(row["start"]), int(row["end"])).to_interval0()
+            genome = local_interval_to_genome(local, locus, row.get("strand"))
+            public = ClosedInterval1.from_interval0(genome)
+        except (KeyError, TypeError, ValueError):
+            continue
+        mapped.append(
+            f"{row.get('contig', 'NA')}:{public.start}-{public.end}:{row.get('strand', 'NA')}"
+        )
+    return ";".join(mapped) if mapped else "NA"
+
+
+def _genomic_blocks0(row, blocks, side):
+    mapped = []
+    try:
+        locus = ClosedInterval1(int(row["start"]), int(row["end"])).to_interval0()
+    except (KeyError, TypeError, ValueError):
+        return tuple()
+    for block in blocks:
+        block = _coordinate_block0(block)
+        local = block.query if side == "query" else block.target
+        try:
+            mapped.append(local_interval_to_genome(local, locus, row.get("strand")))
+        except ValueError:
+            continue
+    return tuple(mapped)
+
+
+def _format_genomic_blocks(contig, strand, intervals):
+    blocks = []
+    for interval in intervals or ():
+        try:
+            public = ClosedInterval1.from_interval0(interval)
+        except ValueError:
+            continue
+        blocks.append(f"{contig}:{public.start}-{public.end}:{strand}")
+    return ";".join(blocks) if blocks else "NA"
+
+
+def _candidate_value(candidate, key, default="NA"):
+    if isinstance(candidate, dict):
+        return candidate.get(key, default)
+    return getattr(candidate, key, default)
+
+
+def _alignment_gap_blocks(candidate):
+    gaps = []
+    for gap in _candidate_value(candidate, "gap_blocks", ()) or ():
+        if isinstance(gap, dict):
+            if gap.get("gap_in") == "query":
+                gaps.append({
+                    "gap_in": "query",
+                    "query_cut0": int(gap.get("query_cut0", gap.get("query_start0", 0))),
+                    "target_start0": int(gap["target_start0"]),
+                    "target_end0": int(gap["target_end0"]),
+                })
+            elif gap.get("gap_in") == "target":
+                gaps.append({
+                    "gap_in": "target",
+                    "query_start0": int(gap["query_start0"]),
+                    "query_end0": int(gap["query_end0"]),
+                    "target_cut0": int(gap.get("target_cut0", gap.get("target_start0", 0))),
+                })
+            continue
+        query = getattr(gap, "query", None)
+        target = getattr(gap, "target", None)
+        if query is None or target is None:
+            continue
+        gaps.append(
+            ({
+                "gap_in": "query",
+                "query_cut0": int(query.start0),
+                "target_start0": int(target.start0),
+                "target_end0": int(target.end0),
+            } if query.length == 0 else {
+                "gap_in": "target",
+                "query_start0": int(query.start0),
+                "query_end0": int(query.end0),
+                "target_cut0": int(target.start0),
+            })
+        )
+    return gaps
+
+
+def _covered_bases(blocks, side):
+    intervals = sorted(
+        (
+            (_coordinate_block0(block).query if side in {"query", 0} else _coordinate_block0(block).target)
+        )
+        for block in blocks
+    )
+    if not intervals:
+        return 0
+    covered = 0
+    start, end = intervals[0].start0, intervals[0].end0
+    for interval in intervals[1:]:
+        if interval.start0 <= end:
+            end = max(end, interval.end0)
+        else:
+            covered += end - start
+            start, end = interval.start0, interval.end0
+    return covered + end - start
+
+
+def _unknown_pair_count(candidate):
+    explicit = _candidate_value(candidate, "unknown_aligned_pairs", None)
+    if explicit not in {None, "", "NA"}:
+        return int(explicit)
+    return sum(
+        int(length)
+        for length, operation in re.findall(r"(\d+)([MIDNSHP=X])", str(_candidate_value(candidate, "cigar", "")))
+        if operation == "M"
+    )
+
+
+def _candidate_record(candidate, rank, fallback_backend, fallback_scheme):
+    if isinstance(candidate, dict):
+        record = dict(candidate)
+        blocks = tuple(_coordinate_block0(block) for block in record.get("aligned_blocks", ()))
+        record["aligned_blocks"] = blocks
+        if blocks:
+            record["query_start0"] = min(block.query.start0 for block in blocks)
+            record["query_end0"] = max(block.query.end0 for block in blocks)
+            record["target_start0"] = min(block.target.start0 for block in blocks)
+            record["target_end0"] = max(block.target.end0 for block in blocks)
+        elif record.get("query_start") not in {None, "", "NA"}:
+            query = ClosedInterval1(
+                int(record["query_start"]), int(record["query_end"]),
+            ).to_interval0()
+            target = ClosedInterval1(
+                int(record["target_start"]), int(record["target_end"]),
+            ).to_interval0()
+            record["query_start0"], record["query_end0"] = query.start0, query.end0
+            record["target_start0"], record["target_end0"] = target.start0, target.end0
+        for field in ("query_start", "query_end", "target_start", "target_end"):
+            record.pop(field, None)
+        record.setdefault("rank", rank)
+        record.setdefault("backend", fallback_backend)
+        record.setdefault("query_coverage", record.get("coverage", "NA"))
+        record.setdefault("target_coverage", record.get("coverage", "NA"))
+        record.setdefault("aligned_pairs", sum(block.query.length for block in blocks))
+        record["gap_blocks"] = _alignment_gap_blocks(record)
+        if record.get("score_scheme") in {None, "", "unspecified"}:
+            record["score_scheme"] = fallback_scheme
+        sequence_kind = record.setdefault("sequence_kind", "nucleotide")
+        record.setdefault("backend_version", "NA")
+        record.setdefault("raw_score", record.get("score", "NA"))
+        record.setdefault("nt_identity", record.get("identity", "NA") if sequence_kind == "nucleotide" else "NA")
+        record.setdefault("aa_identity", record.get("identity", "NA") if sequence_kind == "amino_acid" else "NA")
+        unknown = _unknown_pair_count(record)
+        record.setdefault("unknown_aligned_pairs", unknown)
+        record.setdefault("known_aligned_pairs", int(record.get("aligned_pairs", 0) or 0))
+        record.setdefault("query_covered_bases", _covered_bases(blocks, "query"))
+        record.setdefault("target_covered_bases", _covered_bases(blocks, "target"))
+        record.setdefault("query_length", "NA")
+        record.setdefault("target_length", "NA")
+        record.setdefault("relative_strand", record.get("strand", "+"))
+        record.setdefault("mapq", record.get("mapping_quality", "NA"))
+        if record.get("mapq") is None:
+            record["mapq"] = "NA"
+        record.setdefault("search_interval_side", "target")
+        return record
+    adapter_fields = dict(vars(candidate)) if hasattr(candidate, "__dict__") else {}
+    for field in (
+        "aligned_blocks", "gap_blocks", "alternative_hits",
+        "query_interval", "target_interval",
+    ):
+        adapter_fields.pop(field, None)
+    blocks = _alignment_blocks0(candidate)
+    aligned_pairs = int(_candidate_value(candidate, "aligned_pairs", 0) or 0)
+    unknown_pairs = _unknown_pair_count(candidate)
+    sequence_kind = _candidate_value(candidate, "sequence_kind", "nucleotide")
+    mapq = _candidate_value(
+        candidate, "mapq", _candidate_value(candidate, "mapping_quality", "NA"),
+    )
+    if mapq is None:
+        mapq = "NA"
+    return {
+        **adapter_fields,
+        "candidate_id": _candidate_value(candidate, "candidate_id", "NA"),
+        "rank": rank,
+        "identity": _candidate_value(candidate, "identity", "NA"),
+        "coverage": _candidate_value(candidate, "coverage", "NA"),
+        "query_coverage": _candidate_value(candidate, "query_coverage", "NA"),
+        "target_coverage": _candidate_value(candidate, "target_coverage", "NA"),
+        "aligned_pairs": aligned_pairs,
+        "query_start0": min((block.query.start0 for block in blocks), default="NA"),
+        "query_end0": max((block.query.end0 for block in blocks), default="NA"),
+        "target_start0": min((block.target.start0 for block in blocks), default="NA"),
+        "target_end0": max((block.target.end0 for block in blocks), default="NA"),
+        "strand": _candidate_value(candidate, "strand", "+"),
+        "mapping_quality": _candidate_value(candidate, "mapping_quality", "NA"),
+        "is_secondary": int(bool(_candidate_value(candidate, "is_secondary", rank > 1))),
+        "score": _candidate_value(candidate, "score", "NA"),
+        "cigar": _candidate_value(candidate, "cigar", "NA"),
+        "aligned_blocks": blocks,
+        "gap_blocks": _alignment_gap_blocks(candidate),
+        "sequence_kind": sequence_kind,
+        "backend": _candidate_value(candidate, "backend", fallback_backend),
+        "backend_version": _candidate_value(candidate, "backend_version", "NA"),
+        "score_scheme": _candidate_value(candidate, "score_scheme", fallback_scheme),
+        "raw_score": _candidate_value(candidate, "raw_score", _candidate_value(candidate, "score", "NA")),
+        "nt_identity": _candidate_value(
+            candidate,
+            "nt_identity",
+            _candidate_value(candidate, "identity", "NA") if sequence_kind == "nucleotide" else "NA",
+        ),
+        "aa_identity": _candidate_value(
+            candidate,
+            "aa_identity",
+            _candidate_value(candidate, "identity", "NA") if sequence_kind == "amino_acid" else "NA",
+        ),
+        "known_aligned_pairs": _candidate_value(
+            candidate, "known_aligned_pairs", aligned_pairs,
+        ),
+        "unknown_aligned_pairs": unknown_pairs,
+        "query_covered_bases": _candidate_value(
+            candidate, "query_covered_bases", _covered_bases(blocks, "query"),
+        ),
+        "target_covered_bases": _candidate_value(
+            candidate, "target_covered_bases", _covered_bases(blocks, "target"),
+        ),
+        "query_length": _candidate_value(candidate, "query_length", "NA"),
+        "target_length": _candidate_value(candidate, "target_length", "NA"),
+        "relative_strand": _candidate_value(
+            candidate, "relative_strand", _candidate_value(candidate, "strand", "+"),
+        ),
+        "mapq": mapq,
+        "left_anchor_id": _candidate_value(candidate, "left_anchor_id", "NA"),
+        "right_anchor_id": _candidate_value(candidate, "right_anchor_id", "NA"),
+        "search_interval": _candidate_value(candidate, "search_interval", "NA"),
+        "search_interval_side": "target",
+        "enumeration_complete": _candidate_value(
+            candidate, "enumeration_complete", "NA",
+        ),
+        "incomplete_reason": _candidate_value(candidate, "incomplete_reason", "NA"),
+    }
+
+
+def _public_interval(interval):
+    """The sole adapter for nonempty half-open intervals written to TSV JSON."""
+
+    if not isinstance(interval, dict) or interval.get("start0") in {None, "", "NA"}:
+        return interval
+    internal = Interval0(int(interval["start0"]), int(interval["end0"]))
+    public = ClosedInterval1.from_interval0(internal)
+    return {
+        key: value
+        for key, value in interval.items()
+        if key not in {"coordinate_system", "start0", "end0"}
+    } | {
+        "coordinate_system": "1-based-closed",
+        "start": public.start,
+        "end": public.end,
+    }
+
+
+def _public_gap_blocks(gaps):
+    public = []
+    for gap in gaps or ():
+        if gap.get("gap_in") == "query":
+            interval = ClosedInterval1.from_interval0(Interval0(
+                int(gap["target_start0"]), int(gap["target_end0"]),
+            ))
+            public.append({
+                "gap_in": "query",
+                "query_cut0": int(gap["query_cut0"]),
+                "target_start": interval.start,
+                "target_end": interval.end,
+            })
+        elif gap.get("gap_in") == "target":
+            interval = ClosedInterval1.from_interval0(Interval0(
+                int(gap["query_start0"]), int(gap["query_end0"]),
+            ))
+            public.append({
+                "gap_in": "target",
+                "query_start": interval.start,
+                "query_end": interval.end,
+                "target_cut0": int(gap["target_cut0"]),
+            })
+    return public
+
+
+def _public_candidate_record(record):
+    public = dict(record)
+    blocks = tuple(_coordinate_block0(block) for block in record.get("aligned_blocks", ()))
+    public["aligned_blocks"] = []
+    for block in blocks:
+        query = ClosedInterval1.from_interval0(block.query)
+        target = ClosedInterval1.from_interval0(block.target)
+        public["aligned_blocks"].append(
+            (query.start, query.end, target.start, target.end)
+        )
+    for side in ("query", "target"):
+        start0 = record.get(f"{side}_start0")
+        end0 = record.get(f"{side}_end0")
+        if start0 not in {None, "", "NA"} and int(end0) > int(start0):
+            interval = ClosedInterval1.from_interval0(Interval0(int(start0), int(end0)))
+            public[f"{side}_start"] = interval.start
+            public[f"{side}_end"] = interval.end
+        public.pop(f"{side}_start0", None)
+        public.pop(f"{side}_end0", None)
+    public["gap_blocks"] = _public_gap_blocks(record.get("gap_blocks", ()))
+    public["search_interval"] = _public_interval(record.get("search_interval"))
+    for side in ("query", "target"):
+        genomic = record.get(f"{side}_genomic_blocks0")
+        if genomic:
+            public[f"{side}_genomic_blocks"] = [
+                _public_interval({"start0": interval.start0, "end0": interval.end0})
+                for interval in genomic
+            ]
+        public.pop(f"{side}_genomic_blocks0", None)
+    return public
+
+
+def _nt_column_score(aln):
+    score = (
+        float(getattr(aln, "matches", 0) or 0) * NT_BLASTN_V1_MATCH
+        + float(getattr(aln, "mismatches", 0) or 0) * NT_BLASTN_V1_MISMATCH
+    )
+    for length_text, operation in re.findall(r"(\d+)([ID])", str(getattr(aln, "cigar", ""))):
+        length = int(length_text)
+        score += NT_BLASTN_V1_GAP_OPEN
+        score += max(0, length - 1) * NT_BLASTN_V1_GAP_EXTEND
+    return score
+
+
+def _set_explicit_alignment_score(aln):
+    if getattr(aln, "backend", "") == "mafft_overlap":
+        aln.score = _nt_column_score(aln)
+        aln.score_scheme = "nt_blastn_v1/sum_of_column_scores"
+
+
+def _alignment_candidate_records(aln, candidate_set=None):
+    backend = getattr(aln, "backend", "internal")
+    score_scheme = getattr(aln, "score_scheme", "unspecified")
+    if candidate_set is not None:
+        return [
+            _candidate_record(candidate, rank, backend, candidate_set.score_scheme)
+            for rank, candidate in enumerate(candidate_set.candidates, start=1)
+        ]
+    records = [_candidate_record(aln, 1, backend, score_scheme)] if _alignment_blocks(aln) else []
+    records.extend(
+        _candidate_record(candidate, rank, backend, score_scheme)
+        for rank, candidate in enumerate(getattr(aln, "alternative_hits", ()) or (), start=2)
+    )
+    return records
+
+
+def _transpose_cigar(cigar):
+    return str(cigar).translate(str.maketrans({"I": "D", "D": "I"}))
+
+
+def _transpose_gap_blocks(gaps):
+    transposed = []
+    for gap in gaps or ():
+        if gap.get("gap_in") == "query":
+            transposed.append({
+                "gap_in": "target",
+                "query_start0": int(gap["target_start0"]),
+                "query_end0": int(gap["target_end0"]),
+                "target_cut0": int(gap["query_cut0"]),
+            })
+        elif gap.get("gap_in") == "target":
+            transposed.append({
+                "gap_in": "query",
+                "query_cut0": int(gap["target_cut0"]),
+                "target_start0": int(gap["query_start0"]),
+                "target_end0": int(gap["query_end0"]),
+            })
+    return transposed
+
+
+def _transpose_candidate_record(record):
+    transposed = dict(record)
+    transposed["query_start0"], transposed["target_start0"] = (
+        record.get("target_start0", "NA"), record.get("query_start0", "NA"),
+    )
+    transposed["query_end0"], transposed["target_end0"] = (
+        record.get("target_end0", "NA"), record.get("query_end0", "NA"),
+    )
+    transposed["query_coverage"], transposed["target_coverage"] = (
+        record.get("target_coverage", "NA"), record.get("query_coverage", "NA"),
+    )
+    transposed["query_covered_bases"], transposed["target_covered_bases"] = (
+        record.get("target_covered_bases", "NA"), record.get("query_covered_bases", "NA"),
+    )
+    transposed["query_length"], transposed["target_length"] = (
+        record.get("target_length", "NA"), record.get("query_length", "NA"),
+    )
+    transposed["query_occurrence_id"], transposed["target_occurrence_id"] = (
+        record.get("target_occurrence_id", "NA"),
+        record.get("query_occurrence_id", "NA"),
+    )
+    transposed["query_transcript_id"], transposed["target_transcript_id"] = (
+        record.get("target_transcript_id", "NA"),
+        record.get("query_transcript_id", "NA"),
+    )
+    transposed["aligned_blocks"] = tuple(
+        CoordinateBlock(
+            _coordinate_block0(block).target,
+            _coordinate_block0(block).query,
+        )
+        for block in record.get("aligned_blocks", ())
+    )
+    transposed["gap_blocks"] = _transpose_gap_blocks(record.get("gap_blocks", ()))
+    transposed["cigar"] = _transpose_cigar(record.get("cigar", "NA"))
+    transposed["short_sequence_coverage"] = record.get("query_coverage", "NA")
+    transposed["alignment_input_transposed"] = 1
+    transposed["search_interval_side"] = "query"
+    return transposed
 
 
 def _mapped_genomic_interval(row, rel_start, rel_end):
@@ -1320,28 +1996,191 @@ def _mapped_genomic_interval(row, rel_start, rel_end):
     return genomic_start, genomic_end, genomic_end - genomic_start + 1
 
 
-def match_evidence(left, right, seqs, context, aligner="auto", threads=1, context_aligner="minimap2"):
+def _mapped_genomic_interval0(row, local):
+    if local is None:
+        return "NA", "NA", "NA"
+    try:
+        locus = ClosedInterval1(int(row["start"]), int(row["end"])).to_interval0()
+        genome = local_interval_to_genome(local, locus, row.get("strand"))
+        public = ClosedInterval1.from_interval0(genome)
+    except (KeyError, TypeError, ValueError):
+        return "NA", "NA", "NA"
+    return public.start, public.end, public.length
+
+
+def match_evidence(left, right, seqs, context, aligner="auto", threads=1, context_aligner="minimap2", short_context_max_length=300):
     left_seq = seqs.get(left["occurrence_id"], "")
     right_seq = seqs.get(right["occurrence_id"], "")
     exon_pair = left.get("role") in EXON_LIKE_ROLES and right.get("role") in EXON_LIKE_ROLES
     requested_backend = aligner if exon_pair else context_aligner
+    candidate_set = None
+    left_is_short_query = (
+        len(left_seq) <= int(short_context_max_length)
+        and _valid_local_boundary_range(left, left_seq)
+        and _explicit_bounded_target(right, right_seq)
+    )
+    right_is_short_query = (
+        not left_is_short_query
+        and len(right_seq) <= int(short_context_max_length)
+        and _valid_local_boundary_range(right, right_seq)
+        and _explicit_bounded_target(left, left_seq)
+    )
+    bounded_short_context = left_is_short_query or right_is_short_query
+    alignment_input_transposed = bool(right_is_short_query)
+    bounded_row = left if alignment_input_transposed else right
     # Keep left/query and right/target order for blocks, coverage, and genomic projection.
-    if exon_pair and aligner in {"mafft", "auto"}:
+    if bounded_short_context:
+        adapter_query_row, adapter_target_row = (
+            (right, left) if alignment_input_transposed else (left, right)
+        )
+        adapter_query, adapter_target = (
+            (right_seq, left_seq) if alignment_input_transposed else (left_seq, right_seq)
+        )
+        bounded_interval = {
+            "coordinate_system": "0-based-half-open",
+            "contig": bounded_row.get("contig", "NA"),
+            "start0": int(bounded_row["start"]) - 1,
+            "end0": int(bounded_row["end"]),
+            "strand": bounded_row.get("strand", "NA"),
+        }
+        candidate_set = anchored_short_alignment(
+            adapter_query,
+            adapter_target,
+            mode="local",
+            query_occurrence_id=adapter_query_row.get("occurrence_id"),
+            target_occurrence_id=adapter_target_row.get("occurrence_id"),
+            query_transcript_id=adapter_query_row.get("transcript_id"),
+            target_transcript_id=adapter_target_row.get("transcript_id"),
+            search_interval=bounded_interval,
+        )
+        aln = candidate_set.primary
+        requested_backend = "anchored_short_alignment"
+        if aln is None:
+            aln = AlignmentStats(
+                0.0,
+                0.0,
+                0.0,
+                backend="internal",
+                alignment_mode="local",
+                alignment_meaning="bounded short nucleotide local alignment",
+                score_scheme=candidate_set.score_scheme,
+                enumeration_complete=candidate_set.enumeration_complete,
+                incomplete_reason=candidate_set.incomplete_reason,
+            )
+    elif exon_pair and aligner in {"mafft", "auto"}:
         aln = overlap_alignment_stats(left_seq, right_seq, backend="mafft", threads=threads)
     else:
         if not exon_pair and context_aligner not in {"internal", "minimap2", "lastz"}:
             raise ValueError("context_aligner must be internal, minimap2, or lastz")
         aln = local_alignment_stats(left_seq, right_seq, backend=requested_backend, threads=threads)
+    _set_explicit_alignment_score(aln)
     identity = aln.identity
     aligned_pairs = int(getattr(aln, "aligned_pairs", 0) or 0)
     coverage = aligned_pairs / max(1, min(len(left_seq), len(right_seq)))
-    blocks = _alignment_blocks(aln)
-    qstart = min((block[0] for block in blocks), default="NA")
-    qend = max((block[1] for block in blocks), default="NA")
-    tstart = min((block[2] for block in blocks), default="NA")
-    tend = max((block[3] for block in blocks), default="NA")
-    q_gen_start, q_gen_end, q_gen_len = _mapped_genomic_interval(left, qstart, qend)
-    t_gen_start, t_gen_end, t_gen_len = _mapped_genomic_interval(right, tstart, tend)
+    blocks = _alignment_blocks0(aln)
+    if alignment_input_transposed:
+        blocks = tuple(CoordinateBlock(block.target, block.query) for block in blocks)
+    query_interval = (
+        Interval0(
+            min(block.query.start0 for block in blocks),
+            max(block.query.end0 for block in blocks),
+        ) if blocks else None
+    )
+    target_interval = (
+        Interval0(
+            min(block.target.start0 for block in blocks),
+            max(block.target.end0 for block in blocks),
+        ) if blocks else None
+    )
+    public_query = (
+        ClosedInterval1.from_interval0(query_interval)
+        if query_interval is not None else None
+    )
+    public_target = (
+        ClosedInterval1.from_interval0(target_interval)
+        if target_interval is not None else None
+    )
+    qstart = public_query.start if public_query is not None else "NA"
+    qend = public_query.end if public_query is not None else "NA"
+    tstart = public_target.start if public_target is not None else "NA"
+    tend = public_target.end if public_target is not None else "NA"
+    q_gen_start, q_gen_end, q_gen_len = _mapped_genomic_interval0(left, query_interval)
+    t_gen_start, t_gen_end, t_gen_len = _mapped_genomic_interval0(right, target_interval)
+    score_scheme = getattr(aln, "score_scheme", "unspecified")
+    if score_scheme in {None, "", "unspecified"}:
+        score_scheme = f"{getattr(aln, 'backend', 'unknown')}_{getattr(aln, 'alignment_mode', 'alignment')}_raw_score"
+        aln.score_scheme = score_scheme
+    candidate_records = _alignment_candidate_records(aln, candidate_set)
+    if alignment_input_transposed:
+        candidate_records = [
+            _transpose_candidate_record(record) for record in candidate_records
+        ]
+    for record in candidate_records:
+        record["coverage"] = (
+            int(record.get("aligned_pairs", 0) or 0)
+            / max(1, min(len(left_seq), len(right_seq)))
+        )
+        if record.get("short_sequence_coverage") in {None, "", "NA"}:
+            record["short_sequence_coverage"] = (
+                record.get("query_coverage", "NA") if bounded_short_context else "NA"
+            )
+        record.setdefault("alignment_input_transposed", int(alignment_input_transposed))
+        if record.get("query_length") in {None, "", "NA", 0, "0"}:
+            record["query_length"] = len(left_seq)
+        if record.get("target_length") in {None, "", "NA", 0, "0"}:
+            record["target_length"] = len(right_seq)
+        if record.get("backend_version") in {None, "", "NA"}:
+            record["backend_version"] = getattr(aln, "backend_version", None) or "NA"
+        if record.get("raw_score") in {None, "", "NA"}:
+            record["raw_score"] = getattr(aln, "raw_score", None)
+            if record["raw_score"] is None:
+                record["raw_score"] = getattr(aln, "score", "NA")
+        if (
+            record.get("sequence_kind", "nucleotide") == "nucleotide"
+            and record.get("nt_identity") in {None, "", "NA"}
+        ):
+            record["nt_identity"] = record.get("identity", identity)
+        if (
+            record.get("sequence_kind") == "amino_acid"
+            and record.get("aa_identity") in {None, "", "NA"}
+        ):
+            record["aa_identity"] = record.get("identity", "NA")
+        if record.get("query_covered_bases") in {None, "", "NA", 0, "0"}:
+            record["query_covered_bases"] = _covered_bases(record.get("aligned_blocks", ()), "query")
+        if record.get("target_covered_bases") in {None, "", "NA", 0, "0"}:
+            record["target_covered_bases"] = _covered_bases(record.get("aligned_blocks", ()), "target")
+        search_interval = record.get("search_interval")
+        if not bounded_short_context:
+            record["search_interval"] = "NA"
+        elif search_interval is None or search_interval == "" or search_interval == "NA":
+            record["search_interval"] = bounded_interval
+        record.setdefault(
+            "search_interval_side", "query" if alignment_input_transposed else "target",
+        )
+        if record.get("left_anchor_id") in {None, "", "NA"}:
+            record["left_anchor_id"] = "NA"
+        if record.get("right_anchor_id") in {None, "", "NA"}:
+            record["right_anchor_id"] = "NA"
+    primary_record = candidate_records[0] if candidate_records else {}
+    unknown_pairs = int(
+        getattr(aln, "unknown_aligned_pairs", getattr(aln, "unknown_bases", 0)) or 0
+    )
+    if candidate_set is not None or getattr(aln, "backend", "") == "internal":
+        enumeration_complete = (
+            candidate_set.enumeration_complete
+            if candidate_set is not None
+            else bool(getattr(aln, "enumeration_complete", True))
+        )
+        enumeration_status = "complete" if enumeration_complete else "incomplete"
+        incomplete_reason = (
+            candidate_set.incomplete_reason
+            if candidate_set is not None
+            else getattr(aln, "incomplete_reason", "")
+        )
+    else:
+        enumeration_complete = False
+        enumeration_status = "unassessed"
+        incomplete_reason = "external_backend_candidate_enumeration_unassessed"
     left_ctx = context.get(left["occurrence_id"], {})
     right_ctx = context.get(right["occurrence_id"], {})
     order = 1.0 - abs(to_float(left_ctx.get("scaled_index"), 0.5) - to_float(right_ctx.get("scaled_index"), 0.5))
@@ -1370,9 +2209,34 @@ def match_evidence(left, right, seqs, context, aligner="auto", threads=1, contex
         "coverage_score": coverage,
         "sequence_score": sequence_score,
         "structural_context_score": structural_context_score,
-        "query_coverage": aln.query_coverage,
-        "target_coverage": aln.target_coverage,
+        "query_coverage": aln.target_coverage if alignment_input_transposed else aln.query_coverage,
+        "target_coverage": aln.query_coverage if alignment_input_transposed else aln.target_coverage,
         "aligned_pairs": aligned_pairs,
+        "sequence_kind": primary_record.get("sequence_kind", "nucleotide"),
+        "backend": primary_record.get("backend", getattr(aln, "backend", "NA")),
+        "backend_version": primary_record.get("backend_version", getattr(aln, "backend_version", "NA")),
+        "raw_score": primary_record.get("raw_score", getattr(aln, "score", "NA")),
+        "nt_identity": primary_record.get("nt_identity", identity),
+        "aa_identity": primary_record.get("aa_identity", "NA"),
+        "known_aligned_pairs": primary_record.get(
+            "known_aligned_pairs", getattr(aln, "known_aligned_pairs", aligned_pairs),
+        ),
+        "unknown_aligned_pairs": primary_record.get("unknown_aligned_pairs", unknown_pairs),
+        "query_covered_bases": primary_record.get("query_covered_bases", _covered_bases(blocks, "query")),
+        "target_covered_bases": primary_record.get("target_covered_bases", _covered_bases(blocks, "target")),
+        "query_length": len(left_seq),
+        "target_length": len(right_seq),
+        "relative_strand": primary_record.get("relative_strand", getattr(aln, "strand", "+")),
+        "gap_blocks": primary_record.get("gap_blocks", []),
+        "search_interval": bounded_interval if bounded_short_context else "NA",
+        "search_interval_side": (
+            "query" if alignment_input_transposed else "target"
+        ) if bounded_short_context else "NA",
+        "alignment_input_transposed": int(alignment_input_transposed),
+        "short_sequence_coverage": primary_record.get(
+            "short_sequence_coverage",
+            aln.query_coverage if bounded_short_context else "NA",
+        ),
         "query_alignment_start": qstart,
         "query_alignment_end": qend,
         "target_alignment_start": tstart,
@@ -1392,6 +2256,13 @@ def match_evidence(left, right, seqs, context, aligner="auto", threads=1, contex
         "projected_reference_start": tstart,
         "projected_reference_end": tend,
         "projected_reference_blocks": _format_alignment_blocks(blocks),
+        "matched_blocks": _format_alignment_blocks(blocks),
+        "query_genomic_matched_blocks": _genomic_matched_blocks(left, blocks, "query"),
+        "subject_genomic_matched_blocks": _genomic_matched_blocks(right, blocks, "subject"),
+        "query_parent_feature_ids": left.get("source_feature_id", "NA"),
+        "subject_parent_feature_ids": right.get("source_feature_id", "NA"),
+        "query_transcript_ids": left.get("transcript_id", "NA"),
+        "subject_transcript_ids": right.get("transcript_id", "NA"),
         "left_context_score": left_context,
         "right_context_score": right_context,
         "boundary_score": boundary,
@@ -1400,11 +2271,39 @@ def match_evidence(left, right, seqs, context, aligner="auto", threads=1, contex
         "strand_score": strand,
         "splice_score": splice,
         "size_ratio": min(segment_length(left), segment_length(right)) / max(segment_length(left), segment_length(right)),
-        "alignment_cigar": aln.cigar,
+        "alignment_cigar": _transpose_cigar(aln.cigar) if alignment_input_transposed else aln.cigar,
         "alignment_backend": aln.backend,
-        "alignment_mode": aln.alignment_mode,
-        "alignment_meaning": aln.alignment_meaning,
+        "alignment_mode": getattr(aln, "alignment_mode", "local"),
+        "alignment_meaning": getattr(aln, "alignment_meaning", "bounded short nucleotide local alignment"),
         "alignment_requested_backend": requested_backend,
+        "mapping_quality": (
+            getattr(aln, "mapping_quality", "NA")
+            if getattr(aln, "backend", "internal") not in {"internal", "mafft"}
+            else "NA"
+        ),
+        "hit_count": (
+            len(candidate_set.candidates)
+            if candidate_set is not None
+            else getattr(aln, "hit_count", 0)
+        ),
+        "ambiguous_hit_count": (
+            max(0, len(candidate_set.candidates) - 1)
+            if candidate_set is not None
+            else getattr(aln, "ambiguous_hit_count", 0)
+        ),
+        "alternative_hits": candidate_records[1:],
+        "score_scheme": getattr(aln, "score_scheme", "unspecified"),
+        "raw_alignment_score": getattr(aln, "score", "NA"),
+        "enumeration_complete": enumeration_complete,
+        "candidate_enumeration_status": enumeration_status,
+        "incomplete_reason": incomplete_reason or "NA",
+        "short_context_route": "bounded_local" if bounded_short_context else "not_used",
+        "local_boundary_range": bounded_interval if bounded_short_context else "not_evaluated",
+        "flanking_anchor_status": "not_evaluated_pre_chain",
+        "true_absence_eligible": 0,
+        "true_absence_evidence_status": "insufficient_evidence",
+        "true_absence_reason": "ordered_double_flanks_not_evaluated;anchor_interval_sequence_not_extracted;assembly_continuity_unassessed;ambiguous_base_status_unassessed;query_only_deletion_gap_unassessed;alternative_alignment_concordance_unassessed",
+        "candidate_records": candidate_records,
         "total_score": total,
     }
 
@@ -1429,14 +2328,135 @@ def roles_compatible(left, right):
     return left_role in STRUCTURAL_ROLES and right_role in STRUCTURAL_ROLES
 
 
-def sequence_supported_mapping(evidence, threshold):
+def sequence_supported_mapping(
+    evidence,
+    threshold,
+    criteria=DEFAULT_CORRESPONDENCE_CRITERIA,
+):
     identity = evidence["alignment_score"]
     coverage = evidence["coverage_score"]
-    if identity >= threshold and coverage >= 0.45:
+    if identity >= threshold and coverage >= criteria.regular_min_coverage:
         return True
-    if identity >= threshold + 0.15 and coverage >= 0.30:
+    if (
+        identity >= threshold + criteria.high_identity_offset
+        and coverage >= criteria.high_identity_min_coverage
+    ):
         return True
     return False
+
+
+def _candidate_sequence_accepted(
+    record,
+    threshold,
+    short_context=False,
+    criteria=DEFAULT_CORRESPONDENCE_CRITERIA,
+):
+    identity = to_float(record.get("identity"), 0.0)
+    coverage = to_float(record.get("coverage"), 0.0)
+    accepted = (
+        (identity >= threshold and coverage >= criteria.regular_min_coverage)
+        or (
+            identity >= threshold + criteria.high_identity_offset
+            and coverage >= criteria.high_identity_min_coverage
+        )
+    )
+    if short_context:
+        accepted = bool(
+            accepted
+            and identity >= max(criteria.short_min_identity, threshold)
+            and to_float(
+                record.get("short_sequence_coverage", record.get("query_coverage")),
+                0.0,
+            )
+            >= criteria.short_min_query_coverage
+            and int(to_float(
+                record.get("known_aligned_pairs", record.get("aligned_pairs", 0)),
+                0.0,
+            ))
+            >= criteria.short_min_aligned_pairs
+        )
+    return accepted
+
+
+def assess_short_candidate_thresholds(
+    segment_matches,
+    output_path,
+    short_identity_thresholds=(0.60, 0.70, 0.80),
+    short_query_coverage_thresholds=(0.60, 0.80),
+):
+    identities = sorted({float(value) for value in short_identity_thresholds})
+    coverages = sorted({float(value) for value in short_query_coverage_thresholds})
+    if not identities or not coverages:
+        raise ValueError("at least one identity and coverage threshold is required")
+    if any(value < 0.0 or value > 1.0 for value in identities + coverages):
+        raise ValueError("identity and coverage thresholds must be within [0, 1]")
+
+    rows = []
+    for match in read_tsv(segment_matches):
+        if match.get("short_context_route") not in {
+            "feature_bounded_candidate", "bounded_local", "anchor_bounded_local",
+        }:
+            continue
+        encoded = match.get("dna_candidate_assessments")
+        if encoded in {None, "", "NA"}:
+            continue
+        candidates = json.loads(encoded)
+        if not isinstance(candidates, list):
+            raise ValueError("dna_candidate_assessments must encode a JSON list")
+        for candidate in candidates:
+            source = candidate.get("source", "")
+            score_scheme = candidate.get("score_scheme", "")
+            if source != "nucleotide_alignment" or not str(score_scheme).startswith("nt_"):
+                raise ValueError(
+                    "dna_candidate_assessments contains a non-nucleotide candidate: "
+                    f"source={source!r}, score_scheme={score_scheme!r}"
+                )
+            saved_pair_threshold = to_float(candidate.get("acceptance_threshold"), None)
+            if saved_pair_threshold is None:
+                raise ValueError(
+                    "DNA candidate is missing its saved pair-specific acceptance_threshold"
+                )
+            for identity in identities:
+                for coverage in coverages:
+                    criteria = CorrespondenceCriteria(
+                        short_min_identity=identity,
+                        short_min_query_coverage=coverage,
+                    )
+                    effective_identity_cutoff = max(saved_pair_threshold, identity)
+                    rows.append({
+                        "match_id": match.get("match_id", "NA"),
+                        "query_occurrence_id": match.get("query_occurrence_id", "NA"),
+                        "subject_occurrence_id": match.get("subject_occurrence_id", "NA"),
+                        "candidate_id": candidate.get("candidate_id", "NA"),
+                        "saved_pair_threshold": f"{saved_pair_threshold:.6g}",
+                        "short_identity_threshold": f"{identity:.6g}",
+                        "effective_identity_cutoff": f"{effective_identity_cutoff:.6g}",
+                        "query_coverage_threshold": f"{coverage:.6g}",
+                        "candidate_identity": candidate.get("identity", "NA"),
+                        "candidate_query_coverage": candidate.get(
+                            "short_sequence_coverage", candidate.get("query_coverage", "NA")
+                        ),
+                        "candidate_aligned_pairs": candidate.get("aligned_pairs", "NA"),
+                        "acceptance": int(_candidate_sequence_accepted(
+                            candidate,
+                            saved_pair_threshold,
+                            short_context=True,
+                            criteria=criteria,
+                        )),
+                        "interpretation": "short_DNA_acceptance_rule_sensitivity_only",
+                    })
+    write_tsv(
+        output_path,
+        rows,
+        [
+            "match_id", "query_occurrence_id", "subject_occurrence_id",
+            "candidate_id", "saved_pair_threshold", "short_identity_threshold",
+            "effective_identity_cutoff", "query_coverage_threshold",
+            "candidate_identity", "candidate_query_coverage",
+            "candidate_aligned_pairs", "acceptance", "interpretation",
+        ],
+    )
+    return rows
 
 
 def split_source_labels(value):
@@ -1590,6 +2610,75 @@ MATCH_FIELDS = [
     "projected_reference_start",
     "projected_reference_end",
     "projected_reference_blocks",
+    "matched_blocks",
+    "query_genomic_matched_blocks",
+    "subject_genomic_matched_blocks",
+    "query_parent_feature_ids",
+    "subject_parent_feature_ids",
+    "query_transcript_ids",
+    "subject_transcript_ids",
+    "candidate_id",
+    "alternative_candidate_ids",
+    "aligned_blocks",
+    "gap_blocks",
+    "sequence_kind",
+    "backend",
+    "backend_version",
+    "raw_score",
+    "nt_identity",
+    "aa_identity",
+    "known_aligned_pairs",
+    "unknown_aligned_pairs",
+    "query_covered_bases",
+    "target_covered_bases",
+    "query_length",
+    "target_length",
+    "relative_strand",
+    "is_secondary",
+    "left_anchor_id",
+    "right_anchor_id",
+    "search_interval",
+    "search_interval_side",
+    "short_sequence_coverage",
+    "alignment_input_transposed",
+    "mapq",
+    "mapping_quality",
+    "hit_count",
+    "ambiguous_hit_count",
+    "alternative_hits",
+    "candidate_assessments",
+    "dna_candidate_assessments",
+    "candidate_ids",
+    "score_scheme",
+    "raw_alignment_score",
+    "enumeration_complete",
+    "candidate_enumeration_status",
+    "incomplete_reason",
+    "short_context_route",
+    "local_boundary_range",
+    "candidate_resolution",
+    "retained_candidate_ids",
+    "best_path_candidate_ids",
+    "chain_best_score",
+    "chain_score_delta",
+    "chain_configuration",
+    "chain_delta_rule",
+    "chain_local_mode",
+    "chain_status",
+    "chain_ambiguity",
+    "chain_start_anchor_ids",
+    "chain_end_anchor_ids",
+    "chain_retained_edges",
+    "chain_best_path_count_capped",
+    "chain_near_optimal_path_count_capped",
+    "flanking_anchor_status",
+    "membership_edge_eligible",
+    "membership_edge_reason",
+    "position_edge_eligible",
+    "position_edge_reason",
+    "true_absence_eligible",
+    "true_absence_evidence_status",
+    "true_absence_reason",
     "left_context_score",
     "right_context_score",
     "boundary_score",
@@ -1620,16 +2709,63 @@ MATCH_FIELDS = [
     "protein_best_target_transcript",
     "protein_supporting_transcripts",
     "protein_projected_blocks",
+    "protein_mapping_status",
+    "protein_candidate_evidence_available",
+    "protein_membership_eligible",
+    "protein_position_eligible",
+    "protein_hard_observation_eligible",
+    "protein_known_aa_pairs",
+    "protein_blosum62_score",
+    "protein_gap_fraction",
+    "protein_left_anchor_pairs",
+    "protein_right_anchor_pairs",
+    "protein_left_anchor_score",
+    "protein_right_anchor_score",
+    "protein_left_anchor_supported",
+    "protein_right_anchor_supported",
+    "protein_terminal_side",
+    "protein_msa_column_start0",
+    "protein_msa_column_end0",
+    "protein_msa_column_interval",
+    "protein_msa_mode",
+    "protein_candidate_mapping_count",
+    "protein_candidate_coordinate_consensus",
+    "protein_candidate_details",
+    "protein_competing_occurrences",
+    "protein_query_source_features",
+    "protein_target_source_features",
 ]
 
 
 def _projection_interval(evidence, side):
-    if evidence.get("correspondence_basis") == "annotated_CDS_protein":
-        blocks = evidence.get("protein_projected_blocks", ())
-        offset = 0 if side == "query" else 2
-        if not blocks:
-            return None
-        return min(block[offset] for block in blocks), max(block[offset + 1] for block in blocks)
+    if side not in {"query", "target"}:
+        raise ValueError(f"invalid projection side: {side}")
+    blocks = ()
+    if (
+        "annotated_CDS_protein" in str(evidence.get("correspondence_basis", ""))
+        and evidence.get("protein_hard_observation_eligible") in {1, "1", True}
+    ):
+        blocks = tuple(
+            _coordinate_block0(block)
+            for block in evidence.get("protein_projected_blocks", ())
+        )
+    if not blocks:
+        accepted = [
+            record
+            for record in evidence.get("candidate_records", ())
+            if record.get("accepted", 1) in {1, "1", True}
+        ]
+        if accepted:
+            blocks = tuple(
+                _coordinate_block0(block)
+                for block in accepted[0].get("aligned_blocks", ())
+            )
+    if blocks:
+        intervals = [getattr(block, side) for block in blocks]
+        return Interval0(
+            min(interval.start0 for interval in intervals),
+            max(interval.end0 for interval in intervals),
+        )
     if side == "query":
         start = evidence.get("query_alignment_start", "NA")
         end = evidence.get("query_alignment_end", "NA")
@@ -1641,7 +2777,7 @@ def _projection_interval(evidence, side):
     start, end = int(start), int(end)
     if end < start:
         return None
-    return start, end
+    return ClosedInterval1(start, end).to_interval0()
 
 
 def _projection_record(evidence, side):
@@ -1650,15 +2786,18 @@ def _projection_record(evidence, side):
         return None
     return {
         "interval": interval,
-        "strand": "+" if evidence.get("correspondence_basis") == "annotated_CDS_protein" else evidence.get("alignment_strand", "NA"),
+        "strand": (
+            "+"
+            if "annotated_CDS_protein" in str(evidence.get("correspondence_basis", ""))
+            and evidence.get("protein_position_eligible") in {1, "1", True}
+            else evidence.get("alignment_strand", "NA")
+        ),
     }
 
 
 def _ordered_projection_compatible(left, right, left_ref_interval, right_ref_interval):
     if not left_ref_interval or not right_ref_interval:
         return False
-    left_ref_start, left_ref_end = left_ref_interval
-    right_ref_start, right_ref_end = right_ref_interval
     if not _disjoint_reference_intervals(left_ref_interval, right_ref_interval):
         return False
     if left.get("contig") != right.get("contig") or left.get("strand") != right.get("strand"):
@@ -1668,16 +2807,14 @@ def _ordered_projection_compatible(left, right, left_ref_interval, right_ref_int
     if left.get("strand") == "-":
         left_order, right_order = -left_order, -right_order
     copy_order = -1 if left_order < right_order else 1
-    ref_order = -1 if left_ref_start < right_ref_start else 1
+    ref_order = -1 if left_ref_interval.start0 < right_ref_interval.start0 else 1
     return copy_order == ref_order
 
 
 def _disjoint_reference_intervals(left_ref_interval, right_ref_interval):
     if not left_ref_interval or not right_ref_interval:
         return False
-    left_ref_start, left_ref_end = left_ref_interval
-    right_ref_start, right_ref_end = right_ref_interval
-    return left_ref_end < right_ref_start or right_ref_end < left_ref_start
+    return not left_ref_interval.overlaps(right_ref_interval)
 
 
 def _projection_compatibility(projection_by_occ_ref, occurrence_by_id):
@@ -1710,9 +2847,136 @@ def _projection_compatibility(projection_by_occ_ref, occurrence_by_id):
     return same_copy_compatible, cross_copy_compatible
 
 
+def _candidate_records_for_match(evidence, match_id):
+    records = [dict(record) for record in evidence.get("candidate_records", ())]
+    if not records and evidence.get("projected_reference_blocks") not in {None, "", "NA"}:
+        sequence_kind = (
+            "amino_acid"
+            if str(evidence.get("score_scheme", "")).startswith("blosum")
+            else evidence.get("sequence_kind", "nucleotide")
+        )
+        blocks = list(parse_legacy_blocks(evidence["projected_reference_blocks"]))
+        records.append(
+            {
+                "rank": 1,
+                "identity": evidence.get("alignment_score", "NA"),
+                "coverage": evidence.get("coverage_score", "NA"),
+                "query_start0": min((block.query.start0 for block in blocks), default="NA"),
+                "query_end0": max((block.query.end0 for block in blocks), default="NA"),
+                "target_start0": min((block.target.start0 for block in blocks), default="NA"),
+                "target_end0": max((block.target.end0 for block in blocks), default="NA"),
+                "strand": evidence.get("alignment_strand", "+"),
+                "mapping_quality": evidence.get("mapping_quality", "NA"),
+                "is_secondary": 0,
+                "score": evidence.get("raw_alignment_score", evidence.get("alignment_score", "NA")),
+                "cigar": evidence.get("alignment_cigar", "NA"),
+                "aligned_blocks": blocks,
+                "query_transcript_id": evidence.get(
+                    "protein_best_query_transcript",
+                    evidence.get("query_transcript_ids", "NA"),
+                ),
+                "target_transcript_id": evidence.get(
+                    "protein_best_target_transcript",
+                    evidence.get("subject_transcript_ids", "NA"),
+                ),
+                "backend": evidence.get("alignment_backend", "NA"),
+                "score_scheme": evidence.get("score_scheme", "unspecified"),
+                "source": (
+                    "protein_msa_projection"
+                    if str(evidence.get("score_scheme", "")).startswith("blosum")
+                    else "nucleotide_alignment"
+                ),
+                "query_coverage": evidence.get("query_coverage", "NA"),
+                "target_coverage": evidence.get("target_coverage", "NA"),
+                "aligned_pairs": evidence.get("aligned_pairs", 0),
+                "known_aligned_pairs": evidence.get(
+                    "protein_known_aa_pairs" if sequence_kind == "amino_acid" else "known_aligned_pairs",
+                    evidence.get("aligned_pairs", 0),
+                ),
+                "unknown_aligned_pairs": evidence.get("unknown_aligned_pairs", 0),
+                "query_covered_bases": _covered_bases(blocks, "query"),
+                "target_covered_bases": _covered_bases(blocks, "target"),
+                "query_length": evidence.get("query_length", "NA"),
+                "target_length": evidence.get("target_length", "NA"),
+                "gap_blocks": evidence.get("gap_blocks", []),
+                "sequence_kind": sequence_kind,
+                "backend_version": evidence.get("backend_version", "NA"),
+                "raw_score": evidence.get("raw_score", evidence.get("raw_alignment_score", "NA")),
+                "nt_identity": (
+                    evidence.get("nt_identity", evidence.get("alignment_score", "NA"))
+                    if sequence_kind == "nucleotide" else "NA"
+                ),
+                "aa_identity": (
+                    evidence.get("aa_identity", evidence.get("protein_aa_identity", "NA"))
+                    if sequence_kind == "amino_acid" else "NA"
+                ),
+                "relative_strand": evidence.get("relative_strand", evidence.get("alignment_strand", "+")),
+                "mapq": evidence.get("mapq", evidence.get("mapping_quality", "NA")),
+                "search_interval": evidence.get("search_interval", evidence.get("local_boundary_range", "NA")),
+                "search_interval_side": evidence.get("search_interval_side", "target"),
+                "accepted": int(bool(evidence.get("candidate_accepted", True))),
+            }
+        )
+    for index, record in enumerate(records, start=1):
+        if record.get("candidate_id") in {None, "", "NA"}:
+            record["candidate_id"] = f"{match_id}.candidate_{index:03d}"
+    return records
+
+
+def _format_optional_number(value):
+    if value in {None, "", "NA"}:
+        return "NA"
+    return f"{float(value):.6g}"
+
+
+def _format_contract_value(value):
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return value
+
+
 def _match_row(left, right, evidence, score, threshold, distance_class, status, match_index):
-    return {
-        "match_id": f"match_{match_index:05d}",
+    match_id = f"match_{match_index:05d}"
+    candidate_records = _candidate_records_for_match(evidence, match_id)
+    dna_candidate_records = [
+        dict(record)
+        for record in evidence.get("dna_candidate_assessments", evidence.get("candidate_records", ()))
+    ]
+    for index, record in enumerate(dna_candidate_records, start=1):
+        if record.get("candidate_id") in {None, "", "NA"}:
+            record["candidate_id"] = f"{match_id}.dna_candidate_{index:03d}"
+    for record in candidate_records + dna_candidate_records:
+        blocks = record.get("aligned_blocks", ())
+        record.setdefault("query_genomic_blocks0", _genomic_blocks0(left, blocks, "query"))
+        record.setdefault("target_genomic_blocks0", _genomic_blocks0(right, blocks, "target"))
+        record["query_genomic_matched_blocks"] = _format_genomic_blocks(
+            left.get("contig", "NA"), left.get("strand", "NA"),
+            record["query_genomic_blocks0"],
+        )
+        record["subject_genomic_matched_blocks"] = _format_genomic_blocks(
+            right.get("contig", "NA"), right.get("strand", "NA"),
+            record["target_genomic_blocks0"],
+        )
+        record["query_parent_feature_ids"] = evidence.get(
+            "query_parent_feature_ids", left.get("source_feature_id", "NA"),
+        )
+        record["subject_parent_feature_ids"] = evidence.get(
+            "subject_parent_feature_ids", right.get("source_feature_id", "NA"),
+        )
+        record["query_transcript_ids"] = evidence.get(
+            "query_transcript_ids", left.get("transcript_id", "NA"),
+        )
+        record["subject_transcript_ids"] = evidence.get(
+            "subject_transcript_ids", right.get("transcript_id", "NA"),
+        )
+    primary = candidate_records[0] if candidate_records else {}
+    public_candidates = [_public_candidate_record(record) for record in candidate_records]
+    public_dna_candidates = [
+        _public_candidate_record(record) for record in dna_candidate_records
+    ]
+    public_primary = public_candidates[0] if public_candidates else {}
+    row = {
+        "match_id": match_id,
         "query_occurrence_id": left["occurrence_id"],
         "subject_occurrence_id": right["occurrence_id"],
         "alignment_score": f"{evidence['alignment_score']:.6g}",
@@ -1741,6 +3005,89 @@ def _match_row(left, right, evidence, score, threshold, distance_class, status, 
         "projected_reference_start": evidence.get("projected_reference_start", "NA"),
         "projected_reference_end": evidence.get("projected_reference_end", "NA"),
         "projected_reference_blocks": evidence.get("projected_reference_blocks", "NA"),
+        "matched_blocks": evidence.get("matched_blocks", evidence.get("projected_reference_blocks", "NA")),
+        "query_genomic_matched_blocks": evidence.get("query_genomic_matched_blocks", "NA"),
+        "subject_genomic_matched_blocks": evidence.get("subject_genomic_matched_blocks", "NA"),
+        "query_parent_feature_ids": evidence.get("query_parent_feature_ids", left.get("source_feature_id", "NA")),
+        "subject_parent_feature_ids": evidence.get("subject_parent_feature_ids", right.get("source_feature_id", "NA")),
+        "query_transcript_ids": evidence.get("query_transcript_ids", left.get("transcript_id", "NA")),
+        "subject_transcript_ids": evidence.get("subject_transcript_ids", right.get("transcript_id", "NA")),
+        "candidate_id": primary.get("candidate_id", "NA"),
+        "alternative_candidate_ids": ";".join(
+            record["candidate_id"] for record in public_candidates[1:]
+        ) or "NA",
+        "aligned_blocks": _format_alignment_blocks(primary.get("aligned_blocks", ())),
+        "gap_blocks": json.dumps(public_primary.get("gap_blocks", []), sort_keys=True, separators=(",", ":")),
+        "sequence_kind": primary.get("sequence_kind", evidence.get("sequence_kind", "nucleotide")),
+        "backend": primary.get("backend", evidence.get("backend", evidence.get("alignment_backend", "NA"))),
+        "backend_version": primary.get("backend_version", evidence.get("backend_version", "NA")),
+        "raw_score": _format_optional_number(primary.get("raw_score", primary.get("score", evidence.get("raw_score")))),
+        "nt_identity": _format_optional_number(primary.get("nt_identity", evidence.get("nt_identity"))),
+        "aa_identity": _format_optional_number(primary.get("aa_identity", evidence.get("aa_identity"))),
+        "known_aligned_pairs": primary.get("known_aligned_pairs", evidence.get("known_aligned_pairs", "NA")),
+        "unknown_aligned_pairs": primary.get("unknown_aligned_pairs", evidence.get("unknown_aligned_pairs", "NA")),
+        "query_covered_bases": primary.get("query_covered_bases", evidence.get("query_covered_bases", "NA")),
+        "target_covered_bases": primary.get("target_covered_bases", evidence.get("target_covered_bases", "NA")),
+        "query_length": primary.get("query_length", evidence.get("query_length", "NA")),
+        "target_length": primary.get("target_length", evidence.get("target_length", "NA")),
+        "relative_strand": primary.get("relative_strand", evidence.get("relative_strand", evidence.get("alignment_strand", "NA"))),
+        "is_secondary": primary.get("is_secondary", 0),
+        "left_anchor_id": primary.get("left_anchor_id", "NA"),
+        "right_anchor_id": primary.get("right_anchor_id", "NA"),
+        "search_interval": _format_contract_value(
+            _public_interval(primary.get(
+                "search_interval", evidence.get("search_interval", evidence.get("local_boundary_range", "NA")),
+            ))
+        ),
+        "search_interval_side": primary.get(
+            "search_interval_side", evidence.get("search_interval_side", "NA"),
+        ),
+        "short_sequence_coverage": primary.get("short_sequence_coverage", evidence.get("short_sequence_coverage", "NA")),
+        "alignment_input_transposed": primary.get("alignment_input_transposed", evidence.get("alignment_input_transposed", 0)),
+        "mapq": primary.get("mapq", evidence.get("mapping_quality", "NA")),
+        "mapping_quality": evidence.get("mapping_quality", "NA"),
+        "hit_count": evidence.get("hit_count", len(candidate_records)),
+        "ambiguous_hit_count": evidence.get("ambiguous_hit_count", max(0, len(candidate_records) - 1)),
+        "alternative_hits": json.dumps(public_candidates[1:], sort_keys=True, separators=(",", ":")),
+        "candidate_assessments": json.dumps(public_candidates, sort_keys=True, separators=(",", ":")),
+        "dna_candidate_assessments": json.dumps(
+            public_dna_candidates,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        "candidate_ids": ";".join(record["candidate_id"] for record in candidate_records) or "NA",
+        "score_scheme": evidence.get("score_scheme", "unspecified"),
+        "raw_alignment_score": _format_optional_number(evidence.get("raw_alignment_score")),
+        "enumeration_complete": int(bool(evidence.get("enumeration_complete", False))),
+        "candidate_enumeration_status": evidence.get("candidate_enumeration_status", "unassessed"),
+        "incomplete_reason": evidence.get("incomplete_reason", "NA") or "NA",
+        "short_context_route": evidence.get("short_context_route", "not_used"),
+        "local_boundary_range": _format_contract_value(_public_interval(
+            evidence.get("local_boundary_range", "not_evaluated")
+        )),
+        "candidate_resolution": "unassessed",
+        "retained_candidate_ids": "NA",
+        "best_path_candidate_ids": "NA",
+        "chain_best_score": "NA",
+        "chain_score_delta": "NA",
+        "chain_configuration": DEFAULT_CHAIN_CONFIGURATION.name,
+        "chain_delta_rule": DEFAULT_CHAIN_CONFIGURATION.delta_rule,
+        "chain_local_mode": "NA",
+        "chain_status": "unassessed",
+        "chain_ambiguity": "unassessed",
+        "chain_start_anchor_ids": "NA",
+        "chain_end_anchor_ids": "NA",
+        "chain_retained_edges": "NA",
+        "chain_best_path_count_capped": 0,
+        "chain_near_optimal_path_count_capped": 0,
+        "flanking_anchor_status": evidence.get("flanking_anchor_status", "not_evaluated_pre_chain"),
+        "membership_edge_eligible": 0,
+        "membership_edge_reason": "candidate_chain_not_evaluated",
+        "position_edge_eligible": 0,
+        "position_edge_reason": "candidate_chain_not_evaluated",
+        "true_absence_eligible": 0,
+        "true_absence_evidence_status": evidence.get("true_absence_evidence_status", "insufficient_evidence"),
+        "true_absence_reason": evidence.get("true_absence_reason", "ordered_double_flanks_not_evaluated;anchor_interval_sequence_not_extracted;assembly_continuity_unassessed;ambiguous_base_status_unassessed;query_only_deletion_gap_unassessed;alternative_alignment_concordance_unassessed"),
         "left_context_score": f"{evidence['left_context_score']:.6g}",
         "right_context_score": f"{evidence['right_context_score']:.6g}",
         "boundary_score": f"{evidence['boundary_score']:.6g}",
@@ -1768,11 +3115,1427 @@ def _match_row(left, right, evidence, score, threshold, distance_class, status, 
         "protein_best_target_transcript": evidence.get("protein_best_target_transcript", "NA"),
         "protein_supporting_transcripts": evidence.get("protein_supporting_transcripts", "NA"),
         "protein_projected_blocks": _format_alignment_blocks(evidence.get("protein_projected_blocks", ())),
+        "protein_mapping_status": evidence.get("protein_mapping_status", "uncovered"),
+        "protein_candidate_evidence_available": int(bool(
+            evidence.get("protein_candidate_evidence_available", False)
+        )),
+        "protein_membership_eligible": int(bool(evidence.get("protein_membership_eligible", False))),
+        "protein_position_eligible": int(bool(evidence.get("protein_position_eligible", False))),
+        "protein_hard_observation_eligible": int(bool(evidence.get("protein_hard_observation_eligible", False))),
+        "protein_terminal_side": evidence.get("protein_terminal_side", "NA"),
+        "protein_msa_column_start0": evidence.get("protein_msa_column_start0", "NA"),
+        "protein_msa_column_end0": evidence.get("protein_msa_column_end0", "NA"),
+        "protein_msa_column_interval": evidence.get("protein_msa_column_interval", "NA"),
+        "protein_msa_mode": evidence.get("protein_msa_mode", "NA"),
+        "protein_competing_occurrences": evidence.get("protein_competing_occurrences", "NA"),
+        "protein_candidate_coordinate_consensus": int(bool(evidence.get("protein_candidate_coordinate_consensus", False))),
+        "protein_candidate_details": evidence.get("protein_candidate_details", "NA"),
+        "protein_query_source_features": evidence.get("protein_query_source_features", "NA"),
+        "protein_target_source_features": evidence.get("protein_target_source_features", "NA"),
         **{
             field: f"{evidence[field]:.6g}" if field in evidence else "NA"
-            for field in ("protein_aa_identity", "protein_query_cds_coverage", "protein_target_cds_coverage")
+            for field in (
+                "protein_aa_identity",
+                "protein_query_cds_coverage",
+                "protein_target_cds_coverage",
+                "protein_blosum62_score",
+                "protein_gap_fraction",
+                "protein_left_anchor_score",
+                "protein_right_anchor_score",
+            )
+        },
+        **{
+            field: evidence.get(field, "NA")
+            for field in (
+                "protein_known_aa_pairs",
+                "protein_left_anchor_pairs",
+                "protein_right_anchor_pairs",
+                "protein_left_anchor_supported",
+                "protein_right_anchor_supported",
+                "protein_candidate_mapping_count",
+            )
         },
     }
+    row["_candidate_records"] = candidate_records
+    return row
+
+
+def _copy_transcription_bounds(occurrences):
+    bounds = {}
+    grouped = defaultdict(list)
+    for occurrence in occurrences:
+        grouped[occurrence_copy_key(occurrence)].append(occurrence)
+    for key, rows in grouped.items():
+        bounds[key] = (
+            min(int(row["start"]) for row in rows),
+            max(int(row["end"]) for row in rows),
+        )
+    return bounds
+
+
+def _candidate_copy_interval(occurrence, record, side, copy_bounds):
+    genomic_blocks = tuple(record.get(f"{side}_genomic_blocks0", ()) or ())
+    if genomic_blocks:
+        genomic = Interval0(
+            min(interval.start0 for interval in genomic_blocks),
+            max(interval.end0 for interval in genomic_blocks),
+        )
+    else:
+        start0 = record.get(f"{side}_start0")
+        end0 = record.get(f"{side}_end0")
+        if start0 in {None, "", "NA"} or end0 in {None, "", "NA"}:
+            return None
+        try:
+            locus = ClosedInterval1(
+                int(occurrence["start"]), int(occurrence["end"]),
+            ).to_interval0()
+            genomic = local_interval_to_genome(
+                Interval0(int(start0), int(end0)), locus, occurrence.get("strand"),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+    if genomic.length == 0:
+        return None
+    copy_start, copy_end = copy_bounds[occurrence_copy_key(occurrence)]
+    if occurrence.get("strand") == "-":
+        return Interval0(copy_end - genomic.end0, copy_end - genomic.start0)
+    return Interval0(genomic.start0 - (copy_start - 1), genomic.end0 - (copy_start - 1))
+
+
+def _chain_precedes(left, right):
+    return left.query.end0 <= right.query.start0 and left.target.end0 <= right.target.start0
+
+
+def _candidate_path_memberships(
+    query,
+    subject,
+    transcript_paths,
+    reverse=False,
+    query_transcript_ids=None,
+    subject_transcript_ids=None,
+):
+    def transcript_tokens(value):
+        return {
+            token
+            for token in str(value or "").replace(",", ";").split(";")
+            if token and token != "NA"
+        }
+
+    allowed_query_transcripts = transcript_tokens(query_transcript_ids)
+    allowed_subject_transcripts = transcript_tokens(subject_transcript_ids)
+    by_occurrence = defaultdict(list)
+    for path in transcript_paths or ():
+        by_occurrence[path.get("occurrence_id")].append(path)
+    memberships = []
+    for query_path in by_occurrence.get(query.get("occurrence_id"), ()):
+        if (
+            allowed_query_transcripts
+            and query_path.get("transcript_id") not in allowed_query_transcripts
+        ):
+            continue
+        for subject_path in by_occurrence.get(subject.get("occurrence_id"), ()):
+            if (
+                allowed_subject_transcripts
+                and subject_path.get("transcript_id") not in allowed_subject_transcripts
+            ):
+                continue
+            if query_path.get("transcript_id") in {None, "", "NA"}:
+                continue
+            if subject_path.get("transcript_id") in {None, "", "NA"}:
+                continue
+            try:
+                query_order = int(query_path.get("path_rank", query_path.get("transcript_order")))
+                subject_order = int(subject_path.get("path_rank", subject_path.get("transcript_order")))
+            except (TypeError, ValueError):
+                continue
+            query_membership = {
+                "path_id": "|".join(
+                    str(query_path.get(field, query.get(field, "NA")))
+                    for field in ("family_id", "species", "gene_copy_id", "transcript_id")
+                ),
+                "order": query_order,
+                "contig": query_path.get("contig", query.get("contig", "NA")),
+                "strand": query_path.get("strand", query.get("strand", "NA")),
+            }
+            subject_membership = {
+                "path_id": "|".join(
+                    str(subject_path.get(field, subject.get(field, "NA")))
+                    for field in ("family_id", "species", "gene_copy_id", "transcript_id")
+                ),
+                "order": subject_order,
+                "contig": subject_path.get("contig", subject.get("contig", "NA")),
+                "strand": subject_path.get("strand", subject.get("strand", "NA")),
+            }
+            if reverse:
+                query_membership, subject_membership = subject_membership, query_membership
+            if (
+                query_membership["strand"] not in {"+", "-"}
+                or subject_membership["strand"] not in {"+", "-"}
+                or query_membership["contig"] in {None, "", "NA"}
+                or subject_membership["contig"] in {None, "", "NA"}
+            ):
+                continue
+            memberships.append(
+                ChainPathMembership(
+                    query_path_id=query_membership["path_id"],
+                    target_path_id=subject_membership["path_id"],
+                    query_order=query_membership["order"],
+                    target_order=subject_membership["order"],
+                    query_contig=query_membership["contig"],
+                    target_contig=subject_membership["contig"],
+                    query_strand=query_membership["strand"],
+                    target_strand=subject_membership["strand"],
+                )
+            )
+    return tuple(sorted(set(memberships), key=lambda item: (item.context, item.query_order, item.target_order)))
+
+
+def _apply_ordered_candidate_chains(rows, occurrence_by_id, occurrences, transcript_paths=None):
+    for row in rows:
+        row["membership_edge_eligible"] = 0
+        row["position_edge_eligible"] = 0
+        row["_membership_edge_eligible"] = False
+        row["_position_edge_eligible"] = False
+        row["retained_candidate_ids"] = "NA"
+        row["best_path_candidate_ids"] = "NA"
+        row["chain_best_path_count_capped"] = 0
+        row["chain_near_optimal_path_count_capped"] = 0
+        row["chain_status"] = "unassessed"
+        row["chain_ambiguity"] = "unassessed"
+        row["chain_start_anchor_ids"] = "NA"
+        row["chain_end_anchor_ids"] = "NA"
+        row["chain_retained_edges"] = "NA"
+        row["left_anchor_id"] = "NA"
+        row["right_anchor_id"] = "NA"
+    copy_bounds = _copy_transcription_bounds(occurrences)
+    groups = defaultdict(list)
+    owner_by_candidate = {}
+    candidate_by_id = {}
+    record_by_candidate = {}
+    original_intervals = {}
+    for row in rows:
+        if row.get("match_status") != "mapped":
+            continue
+        query = occurrence_by_id.get(row.get("query_occurrence_id"))
+        subject = occurrence_by_id.get(row.get("subject_occurrence_id"))
+        if not query or not subject:
+            continue
+        query_key = occurrence_copy_key(query)
+        subject_key = occurrence_copy_key(subject)
+        reverse = subject_key < query_key
+        group_copies = tuple(sorted((query_key, subject_key)))
+        for record in row.get("_candidate_records", ()):
+            if record.get("accepted") not in {1, "1", True}:
+                continue
+            query_interval = _candidate_copy_interval(
+                query, record, "query", copy_bounds,
+            )
+            target_interval = _candidate_copy_interval(
+                subject, record, "target", copy_bounds,
+            )
+            if query_interval is None or target_interval is None:
+                continue
+            original_query_interval = query_interval
+            original_target_interval = target_interval
+            if reverse:
+                query_interval, target_interval = target_interval, query_interval
+            try:
+                raw_score = float(record.get("score"))
+            except (TypeError, ValueError):
+                continue
+            score_scheme = str(record.get("score_scheme") or row.get("score_scheme") or "unspecified")
+            alignment_strand = str(record.get("strand") or row.get("alignment_strand") or "+")
+            candidate = ChainCandidate(
+                candidate_id=record["candidate_id"],
+                query=query_interval,
+                target=target_interval,
+                score=raw_score,
+                score_scheme=score_scheme,
+                relative_strand=alignment_strand if alignment_strand in {"+", "-"} else "+",
+                path_memberships=_candidate_path_memberships(
+                    query,
+                    subject,
+                    transcript_paths,
+                    reverse=reverse,
+                    query_transcript_ids=record.get(
+                        "query_transcript_id", row.get("query_transcript_ids"),
+                    ),
+                    subject_transcript_ids=record.get(
+                        "target_transcript_id", row.get("subject_transcript_ids"),
+                    ),
+                ),
+            )
+            owner_by_candidate[candidate.candidate_id] = row
+            candidate_by_id[candidate.candidate_id] = candidate
+            record_by_candidate[candidate.candidate_id] = record
+            original_intervals[candidate.candidate_id] = (
+                original_query_interval, original_target_interval,
+            )
+            groups[(*group_copies, score_scheme)].append(candidate)
+
+    retained_ids = set()
+    best_ids = set()
+    chain_metadata = {}
+    anchor_status_by_candidate = {}
+    left_flank_ids_by_candidate = defaultdict(set)
+    right_flank_ids_by_candidate = defaultdict(set)
+
+    def owner_has_resolved_anchor_position(owner):
+        if owner.get("enumeration_complete") not in {1, "1", True}:
+            return False
+        if owner.get("short_context_route") in {
+            "feature_bounded_candidate", "anchor_bounded_unavailable",
+        }:
+            return False
+        if (
+            "annotated_CDS_protein" in str(owner.get("correspondence_basis", ""))
+            and owner.get("protein_hard_observation_eligible") not in {1, "1", True}
+        ):
+            return False
+        signatures = {
+            (
+                original_intervals[candidate_id][0],
+                original_intervals[candidate_id][1],
+                tuple(
+                    _block_signature(block)
+                    for block in record_by_candidate[candidate_id].get("aligned_blocks", ())
+                ),
+            )
+            for record in owner.get("_candidate_records", ())
+            for candidate_id in (record.get("candidate_id"),)
+            if record.get("accepted") in {1, "1", True}
+            and candidate_id in original_intervals
+        }
+        return len(signatures) == 1
+
+    def fixed_anchor_ids(group):
+        anchors = {}
+        contexts = {
+            membership.context
+            for candidate in group
+            for membership in candidate.path_memberships
+        }
+        for context in contexts:
+            start_ids, end_ids = set(), set()
+            path_candidates = []
+            for candidate in group:
+                membership = next(
+                    (item for item in candidate.path_memberships if item.context == context),
+                    None,
+                )
+                if membership is None or not owner_has_resolved_anchor_position(
+                    owner_by_candidate[candidate.candidate_id]
+                ):
+                    continue
+                path_candidates.append((candidate, membership))
+            if len({
+                (
+                    owner_by_candidate[candidate.candidate_id]["query_occurrence_id"],
+                    owner_by_candidate[candidate.candidate_id]["subject_occurrence_id"],
+                )
+                for candidate, _membership in path_candidates
+            }) < 2:
+                anchors[context] = (start_ids, end_ids)
+                continue
+            ordered = sorted(
+                path_candidates,
+                key=lambda item: (
+                    item[1].query_order,
+                    item[1].target_order,
+                    item[0].query.start0,
+                    item[0].target.start0,
+                    item[0].candidate_id,
+                ),
+            )
+            first_order = (ordered[0][1].query_order, ordered[0][1].target_order)
+            last_order = (ordered[-1][1].query_order, ordered[-1][1].target_order)
+            if first_order == last_order:
+                anchors[context] = (start_ids, end_ids)
+                continue
+            start_ids.update(
+                candidate.candidate_id
+                for candidate, membership in ordered
+                if (membership.query_order, membership.target_order) == first_order
+            )
+            end_ids.update(
+                candidate.candidate_id
+                for candidate, membership in ordered
+                if (membership.query_order, membership.target_order) == last_order
+            )
+            anchors[context] = (start_ids, end_ids)
+        return anchors
+
+    for group in groups.values():
+        collinear = [
+            candidate
+            for candidate in group
+            if candidate.relative_strand == "+"
+            and (not transcript_paths or candidate.path_memberships)
+        ]
+        for candidate in group:
+            if candidate.relative_strand == "-":
+                chain_metadata[candidate.candidate_id] = {
+                    "status": "noncollinear_candidate",
+                    "best_score": "NA",
+                    "score_delta": "NA",
+                    "local_mode": "NA",
+                }
+            elif transcript_paths and not candidate.path_memberships:
+                chain_metadata[candidate.candidate_id] = {
+                    "status": "incompatible_transcript_paths",
+                    "best_score": "NA",
+                    "score_delta": "NA",
+                    "local_mode": "NA",
+                }
+        if not collinear:
+            continue
+        context_anchor_ids = fixed_anchor_ids(collinear)
+        exact = ordered_candidate_chain(
+            collinear,
+            0.0,
+            context_anchor_ids=context_anchor_ids,
+            configuration_name=DEFAULT_CHAIN_CONFIGURATION.name,
+        )
+        scheme = collinear[0].score_scheme
+        delta = DEFAULT_CHAIN_CONFIGURATION.score_delta(
+            exact.best_score, scheme,
+        )
+        result = ordered_candidate_chain(
+            collinear,
+            delta,
+            context_anchor_ids=context_anchor_ids,
+            configuration_name=DEFAULT_CHAIN_CONFIGURATION.name,
+        )
+        retained_ids.update(result.retained_ids)
+        best_ids.update(result.best_path_member_ids)
+        for candidate in collinear:
+            status = "outside_near_optimal_chain"
+            if candidate.candidate_id in result.retained_ids:
+                status = "retained_near_optimal"
+            if candidate.candidate_id in result.best_path_member_ids:
+                status = "best_path_member"
+            chain_metadata[candidate.candidate_id] = {
+                "status": status,
+                "best_score": f"{result.best_score:.6g}",
+                "score_delta": f"{result.score_delta:.6g}",
+                "local_mode": int(result.local_mode),
+                "configuration": result.configuration_name,
+                "ambiguity": result.ambiguity_status,
+                "candidate_ambiguous": candidate.candidate_id in result.ambiguous_ids,
+                "start_anchor_ids": ";".join(sorted(result.start_anchor_ids)) or "NA",
+                "end_anchor_ids": ";".join(sorted(result.end_anchor_ids)) or "NA",
+                "retained_edges": ";".join(
+                    f"{left}>{right}" for left, right in sorted(result.retained_edges)
+                ) or "NA",
+                "best_path_count_capped": result.best_path_count_capped,
+                "near_optimal_path_count_capped": result.near_optimal_path_count_capped,
+            }
+            focus_owner = owner_by_candidate[candidate.candidate_id]
+
+            def independent_structure_unit(peer):
+                peer_owner = owner_by_candidate[peer.candidate_id]
+                return (
+                    peer_owner["query_occurrence_id"] != focus_owner["query_occurrence_id"]
+                    and peer_owner["subject_occurrence_id"] != focus_owner["subject_occurrence_id"]
+                    and owner_has_resolved_anchor_position(peer_owner)
+                    and peer.candidate_id not in result.ambiguous_ids
+                )
+
+            saw_one_sided = False
+            saw_double_sided = False
+            for summary in result.context_summaries:
+                if candidate.candidate_id not in summary.retained_ids:
+                    continue
+                context_candidates = [
+                    candidate_by_id[candidate_id]
+                    for candidate_id in summary.retained_ids
+                ]
+
+                def path_reachable(source_id, target_id):
+                    pending = [source_id]
+                    seen = set()
+                    while pending:
+                        current = pending.pop()
+                        if current == target_id:
+                            return True
+                        if current in seen:
+                            continue
+                        seen.add(current)
+                        pending.extend(
+                            right for left, right in summary.retained_edges
+                            if left == current
+                        )
+                    return False
+
+                left_anchors = [
+                    peer for peer in context_candidates
+                    if peer.candidate_id != candidate.candidate_id
+                    and independent_structure_unit(peer)
+                    and (
+                        path_reachable(peer.candidate_id, candidate.candidate_id)
+                        if summary.retained_edges else _chain_precedes(peer, candidate)
+                    )
+                ]
+                right_anchors = [
+                    peer for peer in context_candidates
+                    if peer.candidate_id != candidate.candidate_id
+                    and independent_structure_unit(peer)
+                    and (
+                        path_reachable(candidate.candidate_id, peer.candidate_id)
+                        if summary.retained_edges else _chain_precedes(candidate, peer)
+                    )
+                ]
+                if left_anchors:
+                    nearest_left = max(
+                        left_anchors,
+                        key=lambda item: (
+                            item.query.end0, item.target.end0, item.candidate_id,
+                        ),
+                    )
+                    left_flank_ids_by_candidate[candidate.candidate_id].add(
+                        nearest_left.candidate_id
+                    )
+                if right_anchors:
+                    nearest_right = min(
+                        right_anchors,
+                        key=lambda item: (
+                            item.query.start0, item.target.start0, item.candidate_id,
+                        ),
+                    )
+                    right_flank_ids_by_candidate[candidate.candidate_id].add(
+                        nearest_right.candidate_id
+                    )
+                saw_one_sided |= bool(left_anchors or right_anchors)
+                saw_double_sided |= bool(left_anchors and right_anchors)
+            if saw_double_sided:
+                anchor_status_by_candidate[candidate.candidate_id] = (
+                    "ordered_double_sided_homologous_flanks_same_path"
+                )
+            elif saw_one_sided:
+                anchor_status_by_candidate[candidate.candidate_id] = (
+                    "ordered_one_sided_independent_homologous_flank"
+                )
+            else:
+                anchor_status_by_candidate[candidate.candidate_id] = (
+                    "no_independent_homologous_flanks_on_same_path"
+                )
+
+    partners_by_query = defaultdict(set)
+    partners_by_subject = defaultdict(set)
+    for row in rows:
+        own_ids = {record["candidate_id"] for record in row.get("_candidate_records", ())}
+        retained = own_ids & retained_ids
+        best = own_ids & best_ids
+        row["retained_candidate_ids"] = ";".join(sorted(retained)) or "NA"
+        row["best_path_candidate_ids"] = ";".join(sorted(best)) or "NA"
+        metadata = [chain_metadata[candidate_id] for candidate_id in retained if candidate_id in chain_metadata]
+        if metadata:
+            row["chain_best_score"] = max(
+                metadata, key=lambda item: to_float(item["best_score"], float("-inf"))
+            )["best_score"]
+            row["chain_score_delta"] = max(
+                metadata, key=lambda item: to_float(item["score_delta"], float("-inf"))
+            )["score_delta"]
+            row["chain_configuration"] = metadata[0]["configuration"]
+            row["chain_delta_rule"] = DEFAULT_CHAIN_CONFIGURATION.delta_rule
+            row["chain_local_mode"] = int(any(item["local_mode"] == 1 for item in metadata))
+            row["chain_ambiguity"] = (
+                "multiple_near_optimal_chains"
+                if any(item["candidate_ambiguous"] for item in metadata)
+                else "unique_within_reported_candidates"
+            )
+            row["chain_best_path_count_capped"] = max(
+                item["best_path_count_capped"] for item in metadata
+            )
+            row["chain_near_optimal_path_count_capped"] = max(
+                item["near_optimal_path_count_capped"] for item in metadata
+            )
+            row["chain_start_anchor_ids"] = ";".join(sorted({
+                token
+                for item in metadata
+                for token in item["start_anchor_ids"].split(";")
+                if token != "NA"
+            })) or "NA"
+            row["chain_end_anchor_ids"] = ";".join(sorted({
+                token
+                for item in metadata
+                for token in item["end_anchor_ids"].split(";")
+                if token != "NA"
+            })) or "NA"
+            row["left_anchor_id"] = ";".join(sorted({
+                anchor_id
+                for candidate_id in retained
+                for anchor_id in left_flank_ids_by_candidate[candidate_id]
+            })) or "NA"
+            row["right_anchor_id"] = ";".join(sorted({
+                anchor_id
+                for candidate_id in retained
+                for anchor_id in right_flank_ids_by_candidate[candidate_id]
+            })) or "NA"
+            row["chain_retained_edges"] = ";".join(sorted({
+                token
+                for item in metadata
+                for token in item["retained_edges"].split(";")
+                if token != "NA"
+            })) or "NA"
+            row["chain_status"] = (
+                "best_path_member" if best else "retained_near_optimal"
+            )
+        elif own_ids & set(chain_metadata):
+            own_statuses = {
+                chain_metadata[candidate_id]["status"]
+                for candidate_id in own_ids
+                if candidate_id in chain_metadata
+            }
+            row["chain_status"] = (
+                "incompatible_transcript_paths"
+                if "incompatible_transcript_paths" in own_statuses
+                else "noncollinear_candidate"
+                if "noncollinear_candidate" in own_statuses
+                else "outside_near_optimal_chain"
+            )
+        anchor_states = {
+            anchor_status_by_candidate[candidate_id]
+            for candidate_id in retained
+            if candidate_id in anchor_status_by_candidate
+        }
+        if "ordered_double_sided_homologous_flanks_same_path" in anchor_states:
+            row["flanking_anchor_status"] = "ordered_double_sided_homologous_flanks_same_path"
+        elif "ordered_one_sided_independent_homologous_flank" in anchor_states:
+            row["flanking_anchor_status"] = "ordered_one_sided_independent_homologous_flank"
+        else:
+            row["flanking_anchor_status"] = "no_independent_homologous_flanks_on_same_path"
+        for record in row.get("_candidate_records", ()):
+            if record.get("candidate_id") not in retained:
+                continue
+            candidate_id = record["candidate_id"]
+            record["left_anchor_id"] = ";".join(sorted(
+                left_flank_ids_by_candidate[candidate_id]
+            )) or "NA"
+            record["right_anchor_id"] = ";".join(sorted(
+                right_flank_ids_by_candidate[candidate_id]
+            )) or "NA"
+            record["chain_configuration"] = row.get("chain_configuration", DEFAULT_CHAIN_CONFIGURATION.name)
+            record["chain_score_delta"] = row.get("chain_score_delta", "NA")
+        public_candidates = [
+            _public_candidate_record(record)
+            for record in row.get("_candidate_records", ())
+        ]
+        row["candidate_assessments"] = json.dumps(
+            public_candidates, sort_keys=True, separators=(",", ":"),
+        )
+        row["alternative_hits"] = json.dumps(
+            public_candidates[1:], sort_keys=True, separators=(",", ":"),
+        )
+        if retained and row.get("match_status") == "mapped":
+            query_id = row["query_occurrence_id"]
+            subject_id = row["subject_occurrence_id"]
+            query_copy = occurrence_copy_key(occurrence_by_id[query_id])
+            subject_copy = occurrence_copy_key(occurrence_by_id[subject_id])
+            partners_by_query[(query_id, subject_copy)].add(subject_id)
+            partners_by_subject[(subject_id, query_copy)].add(query_id)
+
+    def compatible_partner_projections(shared_id, other_copy, shared_side):
+        intervals = []
+        for candidate_id in retained_ids:
+            owner = owner_by_candidate[candidate_id]
+            if candidate_id not in original_intervals:
+                continue
+            query_id = owner["query_occurrence_id"]
+            subject_id = owner["subject_occurrence_id"]
+            if shared_side == "query":
+                if query_id != shared_id or occurrence_copy_key(occurrence_by_id[subject_id]) != other_copy:
+                    continue
+                intervals.append(original_intervals[candidate_id][0])
+            else:
+                if subject_id != shared_id or occurrence_copy_key(occurrence_by_id[query_id]) != other_copy:
+                    continue
+                intervals.append(original_intervals[candidate_id][1])
+        intervals.sort()
+        return all(left.end0 <= right.start0 for left, right in zip(intervals, intervals[1:]))
+
+    for row in rows:
+        retained = set(str(row.get("retained_candidate_ids", "NA")).split(";")) - {"NA", ""}
+        # Direct callers and legacy rows may provide accepted candidate
+        # records without the chain annotation pass.  Their membership still
+        # carries evidence; coordinate eligibility is decided below from the
+        # number and identity of placements.
+        if not retained:
+            retained = {
+                record.get("candidate_id")
+                for record in row.get("_candidate_records", ())
+                if record.get("candidate_id") and record.get("accepted") in {1, "1", True}
+            }
+        query_id = row["query_occurrence_id"]
+        subject_id = row["subject_occurrence_id"]
+        query_copy = occurrence_copy_key(occurrence_by_id[query_id])
+        subject_copy = occurrence_copy_key(occurrence_by_id[subject_id])
+        query_partners = partners_by_query[(query_id, subject_copy)]
+        subject_partners = partners_by_subject[(subject_id, query_copy)]
+        query_partner_compatible = (
+            len(query_partners) <= 1
+            or compatible_partner_projections(query_id, subject_copy, "query")
+        )
+        subject_partner_compatible = (
+            len(subject_partners) <= 1
+            or compatible_partner_projections(subject_id, query_copy, "subject")
+        )
+        placement_signatures = {
+            (
+                original_intervals[candidate_id][0],
+                original_intervals[candidate_id][1],
+                tuple(
+                    _block_signature(block)
+                    for block in record_by_candidate[candidate_id].get("aligned_blocks", ())
+                ),
+            )
+            for candidate_id in retained
+            if candidate_id in record_by_candidate and candidate_id in original_intervals
+        }
+        unique_position = len(placement_signatures) == 1
+        enumeration_complete = row.get("enumeration_complete") in {1, "1", True}
+        chain_unambiguous = (
+            row.get("chain_ambiguity", "unique_within_reported_candidates")
+            == "unique_within_reported_candidates"
+        )
+        double_flanks = (
+            row.get("flanking_anchor_status")
+            == "ordered_double_sided_homologous_flanks_same_path"
+        )
+        protein_hard = row.get("protein_hard_observation_eligible") in {1, "1", True}
+        protein_position = row.get("protein_position_eligible") in {1, "1", True}
+        short_route = row.get("short_context_route")
+        short_context_supported = short_route not in {
+            "feature_bounded_candidate", "bounded_local", "anchor_bounded_local",
+            "anchor_bounded_unavailable",
+        } or (
+            short_route == "anchor_bounded_local" and double_flanks
+        )
+        chain_membership = bool(
+            retained
+            and query_partner_compatible
+            and subject_partner_compatible
+            and short_context_supported
+        )
+        protein_basis = (
+            "annotated_CDS_protein"
+            in str(row.get("correspondence_basis", ""))
+        )
+        membership_eligible = bool(
+            row.get("match_status") == "mapped"
+            and (chain_membership or protein_hard)
+            and (not protein_basis or protein_hard)
+        )
+        if row.get("match_status") != "mapped":
+            membership_reason = "sequence_correspondence_not_accepted"
+        elif protein_basis and not protein_hard:
+            membership_reason = "protein_candidate_without_hard_coordinates"
+        elif protein_hard and not chain_membership:
+            membership_reason = "resolved_annotated_CDS_protein_membership"
+        elif not retained:
+            membership_reason = "no_retained_accepted_candidate"
+        elif not unique_position:
+            membership_reason = "multiple_accepted_retained_coordinate_placements"
+        elif not chain_unambiguous:
+            membership_reason = "multiple_near_optimal_candidate_chains"
+        elif not query_partner_compatible or not subject_partner_compatible:
+            membership_reason = "overlapping_partner_projections"
+        elif not short_context_supported:
+            membership_reason = "short_context_without_same_path_independent_double_flanks"
+        else:
+            membership_reason = "retained_sequence_membership"
+
+        position_eligible = bool(
+            membership_eligible
+            and enumeration_complete
+            and unique_position
+            and (len(retained) >= 1 or (protein_basis and protein_position))
+            and (
+                not protein_basis
+                or protein_position
+            )
+        )
+        if not membership_eligible:
+            position_reason = membership_reason
+        elif not enumeration_complete:
+            position_reason = "candidate_enumeration_unassessed_or_incomplete"
+        elif not unique_position:
+            position_reason = "multiple_accepted_retained_coordinate_placements"
+        elif (
+            protein_basis
+            and not protein_position
+        ):
+            position_reason = "protein_membership_without_resolved_coordinates"
+        else:
+            position_reason = "unique_resolved_actual_coordinates"
+
+        row["membership_edge_eligible"] = int(membership_eligible)
+        row["membership_edge_reason"] = membership_reason
+        row["position_edge_eligible"] = int(position_eligible)
+        row["position_edge_reason"] = position_reason
+        if row.get("match_status") != "mapped":
+            row["candidate_resolution"] = "candidate"
+        elif protein_hard and not retained:
+            row["candidate_resolution"] = "ambiguous"
+        elif not retained:
+            row["candidate_resolution"] = "excluded"
+        elif not position_eligible:
+            row["candidate_resolution"] = "ambiguous"
+        else:
+            row["candidate_resolution"] = "resolved"
+        row["_membership_edge_eligible"] = membership_eligible
+        row["_position_edge_eligible"] = position_eligible
+        if row.get("match_status") == "mapped" and not membership_eligible:
+            if not retained:
+                row["match_status"] = "candidate_chain_excluded"
+            elif not short_context_supported:
+                row["match_status"] = "candidate_unanchored"
+            else:
+                row["match_status"] = "candidate_ambiguous"
+            row["candidate_resolution"] = "candidate"
+        elif row.get("match_status") == "mapped" and not enumeration_complete:
+            row["match_status"] = "candidate_search_incomplete"
+            row["candidate_resolution"] = "ambiguous"
+
+        row["true_absence_eligible"] = 0
+        if row.get("alignment_backend") == "genomic_overlap":
+            row["true_absence_evidence_status"] = "not_applicable"
+            row["true_absence_reason"] = "same_locus_annotation_overlap_is_not_deletion_evidence"
+            continue
+        absence_reasons = []
+        if not double_flanks:
+            absence_reasons.append("same_path_independent_double_flanks_not_established")
+        if not enumeration_complete:
+            absence_reasons.append("acceptable_alternative_alignment_set_unassessed_or_incomplete")
+        if not unique_position:
+            absence_reasons.append("acceptable_alternatives_do_not_define_one_position")
+        absence_reasons.extend(
+            [
+                "anchor_interval_sequence_not_extracted",
+                "assembly_continuity_unassessed",
+                "ambiguous_base_status_unassessed",
+                "query_only_deletion_gap_unassessed",
+                "alternative_alignment_concordance_unassessed",
+            ]
+        )
+        row["true_absence_evidence_status"] = (
+            "evidence_candidate" if double_flanks else "insufficient_evidence"
+        )
+        row["true_absence_reason"] = ";".join(absence_reasons)
+
+
+def _gene_locus_records(input_dir):
+    input_dir = Path(input_dir)
+    sequences = parse_fasta(input_dir / "gene_loci.fasta")
+    metadata = {
+        (row.get("species"), row.get("gene_copy_id")): row
+        for row in read_tsv(input_dir / "gene_loci.tsv", optional=True)
+    }
+    records = {}
+    for header, sequence in sequences.items():
+        try:
+            species, gene_copy_id, geometry = header.split("|", 2)
+            contig, bounds, strand = geometry.rsplit(":", 2)
+            start, end = (int(value) for value in bounds.split("-", 1))
+            interval = ClosedInterval1(start, end).to_interval0()
+        except (TypeError, ValueError):
+            continue
+        if strand not in {"+", "-"} or interval.length != len(sequence):
+            continue
+        row = metadata.get((species, gene_copy_id), {})
+        records[(species, gene_copy_id)] = {
+            "header": header,
+            "sequence": sequence,
+            "contig": contig,
+            "strand": strand,
+            "interval": interval,
+            "range_status": row.get("range_status", "NA"),
+        }
+    return records
+
+
+def _value_tokens(value):
+    return {
+        token
+        for token in str(value or "").replace(",", ";").split(";")
+        if token and token != "NA"
+    }
+
+
+def _candidate_blocks_for_copy(record, owner, copy_key, occurrence_by_id):
+    query = occurrence_by_id.get(owner.get("query_occurrence_id"), {})
+    subject = occurrence_by_id.get(owner.get("subject_occurrence_id"), {})
+    if occurrence_copy_key(query) == copy_key:
+        return tuple(record.get("query_genomic_blocks0", ()) or ())
+    if occurrence_copy_key(subject) == copy_key:
+        return tuple(record.get("target_genomic_blocks0", ()) or ())
+    return tuple()
+
+
+def _owner_occurrence_for_copy(owner, copy_key, occurrence_by_id):
+    query = occurrence_by_id.get(owner.get("query_occurrence_id"), {})
+    subject = occurrence_by_id.get(owner.get("subject_occurrence_id"), {})
+    if occurrence_copy_key(query) == copy_key:
+        return query
+    if occurrence_copy_key(subject) == copy_key:
+        return subject
+    return None
+
+
+def _interval_between_transcript_flanks(left_blocks, right_blocks, strand):
+    if not left_blocks or not right_blocks:
+        return None
+    left = Interval0(
+        min(block.start0 for block in left_blocks),
+        max(block.end0 for block in left_blocks),
+    )
+    right = Interval0(
+        min(block.start0 for block in right_blocks),
+        max(block.end0 for block in right_blocks),
+    )
+    if strand == "+" and left.end0 <= right.start0:
+        return Interval0(left.end0, right.start0)
+    if strand == "-" and right.end0 <= left.start0:
+        return Interval0(right.end0, left.start0)
+    return None
+
+
+def _cut0_between_loci(cut0, inner_locus, outer_locus, strand):
+    cut0 = int(cut0)
+    if cut0 < 0 or cut0 > inner_locus.length:
+        raise ValueError("cut lies outside the inner locus")
+    genome_cut0 = (
+        inner_locus.start0 + cut0
+        if strand == "+"
+        else inner_locus.end0 - cut0
+    )
+    if genome_cut0 < outer_locus.start0 or genome_cut0 > outer_locus.end0:
+        raise ValueError("cut lies outside the parent feature")
+    return (
+        genome_cut0 - outer_locus.start0
+        if strand == "+"
+        else outer_locus.end0 - genome_cut0
+    )
+
+
+def _anchor_bounded_gap_blocks(gaps, search_interval, parent_interval, strand):
+    projected = []
+    for gap in gaps or ():
+        if gap.get("gap_in") == "query":
+            target = genome_interval_to_local(
+                local_interval_to_genome(
+                    Interval0(
+                        int(gap["target_start0"]), int(gap["target_end0"]),
+                    ),
+                    search_interval,
+                    strand,
+                ),
+                parent_interval,
+                strand,
+            )
+            projected.append({
+                "gap_in": "query",
+                "query_cut0": int(gap["query_cut0"]),
+                "target_start0": target.start0,
+                "target_end0": target.end0,
+            })
+        elif gap.get("gap_in") == "target":
+            projected.append({
+                "gap_in": "target",
+                "query_start0": int(gap["query_start0"]),
+                "query_end0": int(gap["query_end0"]),
+                "target_cut0": _cut0_between_loci(
+                    gap["target_cut0"], search_interval, parent_interval, strand,
+                ),
+            })
+    return projected
+
+
+def _context_flank_pairs(
+    focus_row,
+    source,
+    bounded,
+    candidate_owner,
+    candidate_record,
+    occurrence_by_id,
+    transcript_paths,
+):
+    if not transcript_paths:
+        return set()
+    if (
+        source.get("contig") in {None, "", "NA"}
+        or bounded.get("contig") in {None, "", "NA"}
+        or source.get("strand") not in {"+", "-"}
+        or bounded.get("strand") not in {"+", "-"}
+    ):
+        return set()
+    focal_memberships = _candidate_path_memberships(
+        source, bounded, transcript_paths,
+    )
+    if not focal_memberships:
+        return set()
+    source_copy = occurrence_copy_key(source)
+    bounded_copy = occurrence_copy_key(bounded)
+
+    def distinct_placement_ids(candidate_ids):
+        by_placement = defaultdict(list)
+        for candidate_id in candidate_ids:
+            owner = candidate_owner[candidate_id]
+            record = candidate_record[candidate_id]
+            source_blocks = _candidate_blocks_for_copy(
+                record, owner, source_copy, occurrence_by_id,
+            )
+            bounded_blocks = _candidate_blocks_for_copy(
+                record, owner, bounded_copy, occurrence_by_id,
+            )
+            signature = (
+                tuple((block.start0, block.end0) for block in source_blocks),
+                tuple((block.start0, block.end0) for block in bounded_blocks),
+            )
+            by_placement[signature].append(candidate_id)
+        return tuple(
+            min(candidate_ids)
+            for _signature, candidate_ids in sorted(by_placement.items())
+        )
+
+    anchors_by_context = defaultdict(list)
+    for candidate_id, record in candidate_record.items():
+        owner = candidate_owner[candidate_id]
+        if owner is focus_row or not owner.get("_position_edge_eligible"):
+            continue
+        if candidate_id not in _value_tokens(owner.get("retained_candidate_ids")):
+            continue
+        query = occurrence_by_id.get(owner.get("query_occurrence_id"), {})
+        subject = occurrence_by_id.get(owner.get("subject_occurrence_id"), {})
+        query_copy = occurrence_copy_key(query)
+        subject_copy = occurrence_copy_key(subject)
+        if query_copy == source_copy and subject_copy == bounded_copy:
+            anchor_source, anchor_bounded = query, subject
+            source_transcript = record.get("query_transcript_id")
+            bounded_transcript = record.get("target_transcript_id")
+        elif subject_copy == source_copy and query_copy == bounded_copy:
+            anchor_source, anchor_bounded = subject, query
+            source_transcript = record.get("target_transcript_id")
+            bounded_transcript = record.get("query_transcript_id")
+        else:
+            continue
+        if (
+            anchor_source.get("occurrence_id") == source.get("occurrence_id")
+            or anchor_bounded.get("occurrence_id") == bounded.get("occurrence_id")
+        ):
+            continue
+        if (
+            anchor_source.get("contig") != source.get("contig")
+            or anchor_source.get("strand") != source.get("strand")
+            or anchor_bounded.get("contig") != bounded.get("contig")
+            or anchor_bounded.get("strand") != bounded.get("strand")
+        ):
+            continue
+        for membership in _candidate_path_memberships(
+            anchor_source,
+            anchor_bounded,
+            transcript_paths,
+            query_transcript_ids=source_transcript,
+            subject_transcript_ids=bounded_transcript,
+        ):
+            anchors_by_context[membership.context].append((candidate_id, membership))
+
+    flank_pairs = set()
+    for focal in focal_memberships:
+        contextual = anchors_by_context.get(focal.context, ())
+        left = [
+            (candidate_id, membership)
+            for candidate_id, membership in contextual
+            if membership.query_order < focal.query_order
+            and membership.target_order < focal.target_order
+        ]
+        right = [
+            (candidate_id, membership)
+            for candidate_id, membership in contextual
+            if membership.query_order > focal.query_order
+            and membership.target_order > focal.target_order
+        ]
+        nearest_left = {
+            candidate_id
+            for candidate_id, membership in left
+            if not any(
+                (other.query_order >= membership.query_order)
+                and (other.target_order >= membership.target_order)
+                and (
+                    other.query_order > membership.query_order
+                    or other.target_order > membership.target_order
+                )
+                for _other_id, other in left
+            )
+        }
+        nearest_right = {
+            candidate_id
+            for candidate_id, membership in right
+            if not any(
+                (other.query_order <= membership.query_order)
+                and (other.target_order <= membership.target_order)
+                and (
+                    other.query_order < membership.query_order
+                    or other.target_order < membership.target_order
+                )
+                for _other_id, other in right
+            )
+        }
+        if nearest_left and nearest_right:
+            flank_pairs.add((
+                distinct_placement_ids(nearest_left),
+                distinct_placement_ids(nearest_right),
+            ))
+    return flank_pairs
+
+
+def _rerun_anchor_bounded_short_candidates(
+    rows,
+    occurrence_by_id,
+    seqs,
+    gene_loci,
+    transcript_paths=None,
+):
+    candidate_owner = {}
+    candidate_record = {}
+    for owner in rows:
+        for record in owner.get("_candidate_records", ()):
+            candidate_id = record.get("candidate_id")
+            if candidate_id not in {None, "", "NA"}:
+                candidate_owner[candidate_id] = owner
+                candidate_record[candidate_id] = record
+
+    changed = False
+    for row in rows:
+        if row.get("short_context_route") != "feature_bounded_candidate":
+            continue
+        row["membership_edge_eligible"] = 0
+        row["position_edge_eligible"] = 0
+        row["_membership_edge_eligible"] = False
+        row["_position_edge_eligible"] = False
+        input_transposed = row.get("alignment_input_transposed") in {1, "1", True}
+        bounded_side = "query" if input_transposed else "target"
+        source_side = "target" if input_transposed else "query"
+        bounded_id = (
+            row["query_occurrence_id"] if bounded_side == "query"
+            else row["subject_occurrence_id"]
+        )
+        source_id = (
+            row["query_occurrence_id"] if source_side == "query"
+            else row["subject_occurrence_id"]
+        )
+        bounded = occurrence_by_id.get(bounded_id, {})
+        source = occurrence_by_id.get(source_id, {})
+        retained = [
+            record for record in row.get("_candidate_records", ())
+            if record.get("candidate_id") in _value_tokens(row.get("retained_candidate_ids"))
+        ]
+        flank_pairs = {
+            (
+                tuple(sorted(_value_tokens(record.get("left_anchor_id")))),
+                tuple(sorted(_value_tokens(record.get("right_anchor_id")))),
+            )
+            for record in retained
+        }
+        flank_pairs.discard((tuple(), tuple()))
+        inferred_pairs = _context_flank_pairs(
+            row,
+            source=source,
+            bounded=bounded,
+            candidate_owner=candidate_owner,
+            candidate_record=candidate_record,
+            occurrence_by_id=occurrence_by_id,
+            transcript_paths=transcript_paths,
+        )
+        if transcript_paths:
+            flank_pairs = inferred_pairs
+        if len(flank_pairs) != 1:
+            row["match_status"] = "candidate_unanchored"
+            row["candidate_resolution"] = "candidate"
+            row["incomplete_reason"] = "unique_same_context_flank_pair_unavailable"
+            continue
+        left_ids, right_ids = next(iter(flank_pairs))
+        if len(left_ids) != 1 or len(right_ids) != 1:
+            row["match_status"] = "candidate_ambiguous"
+            row["candidate_resolution"] = "candidate"
+            row["incomplete_reason"] = "competing_same_context_flank_pairs"
+            continue
+
+        bounded_copy = occurrence_copy_key(bounded)
+        locus = gene_loci.get((bounded.get("species"), bounded.get("gene_copy_id")))
+        if (
+            locus is None
+            or locus.get("contig") != bounded.get("contig")
+            or locus.get("strand") != bounded.get("strand")
+        ):
+            row["match_status"] = "candidate_unanchored"
+            row["candidate_resolution"] = "candidate"
+            row["incomplete_reason"] = "target_gene_locus_sequence_unavailable"
+            continue
+
+        left_id, right_id = left_ids[0], right_ids[0]
+        left_record = candidate_record.get(left_id)
+        right_record = candidate_record.get(right_id)
+        left_owner = candidate_owner.get(left_id)
+        right_owner = candidate_owner.get(right_id)
+        if not left_record or not right_record or not left_owner or not right_owner:
+            row["match_status"] = "candidate_unanchored"
+            row["candidate_resolution"] = "candidate"
+            row["incomplete_reason"] = "flank_candidate_coordinates_unavailable"
+            continue
+        flank_occurrences = (
+            _owner_occurrence_for_copy(
+                left_owner, occurrence_copy_key(source), occurrence_by_id,
+            ),
+            _owner_occurrence_for_copy(
+                right_owner, occurrence_copy_key(source), occurrence_by_id,
+            ),
+            _owner_occurrence_for_copy(
+                left_owner, bounded_copy, occurrence_by_id,
+            ),
+            _owner_occurrence_for_copy(
+                right_owner, bounded_copy, occurrence_by_id,
+            ),
+        )
+        expected_geometry = (
+            (source.get("contig"), source.get("strand")),
+            (source.get("contig"), source.get("strand")),
+            (bounded.get("contig"), bounded.get("strand")),
+            (bounded.get("contig"), bounded.get("strand")),
+        )
+        if any(
+            occurrence is None
+            or (occurrence.get("contig"), occurrence.get("strand")) != expected
+            for occurrence, expected in zip(flank_occurrences, expected_geometry)
+        ):
+            row["match_status"] = "candidate_ambiguous"
+            row["candidate_resolution"] = "candidate"
+            row["incomplete_reason"] = "flanks_are_not_on_matching_contigs_and_gene_strands"
+            continue
+        left_blocks = _candidate_blocks_for_copy(
+            left_record, left_owner, bounded_copy, occurrence_by_id,
+        )
+        right_blocks = _candidate_blocks_for_copy(
+            right_record, right_owner, bounded_copy, occurrence_by_id,
+        )
+        search_interval = _interval_between_transcript_flanks(
+            left_blocks, right_blocks, bounded.get("strand"),
+        )
+        if (
+            search_interval is None
+            or search_interval.length == 0
+            or search_interval.start0 < locus["interval"].start0
+            or search_interval.end0 > locus["interval"].end0
+        ):
+            row["match_status"] = "candidate_ambiguous"
+            row["candidate_resolution"] = "candidate"
+            row["incomplete_reason"] = "flanks_do_not_define_one_contained_genome_interval"
+            continue
+        local_search = genome_interval_to_local(
+            search_interval, locus["interval"], locus["strand"],
+        )
+        target_sequence = locus["sequence"][local_search.start0:local_search.end0]
+        query_sequence = seqs.get(source_id, "")
+        search_metadata = {
+            "coordinate_system": "0-based-half-open",
+            "contig": locus["contig"],
+            "start0": search_interval.start0,
+            "end0": search_interval.end0,
+            "strand": locus["strand"],
+        }
+        try:
+            candidate_set = anchored_short_alignment(
+                query_sequence,
+                target_sequence,
+                mode="local",
+                query_occurrence_id=source_id,
+                target_occurrence_id=bounded_id,
+                query_transcript_id=source.get("transcript_id"),
+                target_transcript_id=bounded.get("transcript_id"),
+                left_anchor_id=left_id,
+                right_anchor_id=right_id,
+                search_interval=search_metadata,
+            )
+        except AlignmentBackendError as error:
+            row["match_status"] = "candidate_unanchored"
+            row["candidate_resolution"] = "candidate"
+            row["short_context_route"] = "anchor_bounded_unavailable"
+            row["incomplete_reason"] = str(error)
+            continue
+
+        records = []
+        try:
+            bounded_locus = ClosedInterval1(
+                int(bounded["start"]), int(bounded["end"]),
+            ).to_interval0()
+        except (KeyError, TypeError, ValueError):
+            bounded_locus = None
+        for rank, candidate in enumerate(candidate_set.candidates, start=1):
+            record = _candidate_record(
+                candidate, rank, candidate.backend, candidate.score_scheme,
+            )
+            source_genomic = _genomic_blocks0(
+                source, record["aligned_blocks"], "query",
+            )
+            bounded_genomic = tuple(
+                local_interval_to_genome(
+                    block.target, search_interval, locus["strand"],
+                )
+                for block in record["aligned_blocks"]
+            )
+            try:
+                if bounded_locus is None:
+                    raise ValueError("bounded parent feature is unavailable")
+                bounded_local = tuple(
+                    genome_interval_to_local(block, bounded_locus, bounded.get("strand"))
+                    for block in bounded_genomic
+                )
+                parent_gap_blocks = _anchor_bounded_gap_blocks(
+                    record.get("gap_blocks", ()),
+                    search_interval,
+                    bounded_locus,
+                    bounded.get("strand"),
+                )
+            except (KeyError, TypeError, ValueError):
+                bounded_local = tuple()
+                parent_gap_blocks = []
+            if (
+                len(source_genomic) == len(record["aligned_blocks"])
+                and len(bounded_local) == len(record["aligned_blocks"])
+            ):
+                row_blocks = tuple(
+                    CoordinateBlock(source_block.query, target_local)
+                    for source_block, target_local in zip(
+                        record["aligned_blocks"], bounded_local,
+                    )
+                )
+                if input_transposed:
+                    row_blocks = tuple(
+                        CoordinateBlock(block.target, block.query) for block in row_blocks
+                    )
+                    parent_gap_blocks = _transpose_gap_blocks(parent_gap_blocks)
+            else:
+                row_blocks = tuple()
+                parent_gap_blocks = []
+            if input_transposed:
+                record = _transpose_candidate_record(record)
+                record["query_genomic_blocks0"] = bounded_genomic
+                record["target_genomic_blocks0"] = source_genomic
+            else:
+                record["query_genomic_blocks0"] = source_genomic
+                record["target_genomic_blocks0"] = bounded_genomic
+            record["aligned_blocks"] = row_blocks
+            record["gap_blocks"] = parent_gap_blocks
+            if row_blocks:
+                record["query_start0"] = min(block.query.start0 for block in row_blocks)
+                record["query_end0"] = max(block.query.end0 for block in row_blocks)
+                record["target_start0"] = min(block.target.start0 for block in row_blocks)
+                record["target_end0"] = max(block.target.end0 for block in row_blocks)
+            record["candidate_id"] = (
+                f"{row['match_id']}.anchor_bounded_candidate_{rank:03d}"
+            )
+            record["left_anchor_id"] = left_id
+            record["right_anchor_id"] = right_id
+            record["search_interval"] = search_metadata
+            record["search_interval_side"] = bounded_side
+            record["source"] = "nucleotide_alignment"
+            record["short_sequence_coverage"] = candidate.query_coverage
+            record["accepted"] = int(bool(
+                row_blocks
+                and _candidate_sequence_accepted(
+                    record, to_float(row.get("threshold"), 0.0), short_context=True,
+                )
+            ))
+            record["acceptance_threshold"] = row.get("threshold", "NA")
+            records.append(record)
+
+        final_candidate_ids = [record["candidate_id"] for record in records]
+        for record in records:
+            record["hit_count"] = len(records)
+            record["alternative_candidate_ids"] = tuple(
+                candidate_id for candidate_id in final_candidate_ids
+                if candidate_id != record["candidate_id"]
+            )
+
+        row["_candidate_records"] = records
+        row["short_context_route"] = "anchor_bounded_local"
+        row["flanking_anchor_status"] = "ordered_double_sided_homologous_flanks_same_path"
+        row["left_anchor_id"] = left_id
+        row["right_anchor_id"] = right_id
+        row["search_interval"] = _format_contract_value(_public_interval(search_metadata))
+        row["search_interval_side"] = bounded_side
+        row["local_boundary_range"] = row["search_interval"]
+        row["enumeration_complete"] = int(candidate_set.enumeration_complete)
+        row["candidate_enumeration_status"] = (
+            "complete" if candidate_set.enumeration_complete else "incomplete"
+        )
+        row["incomplete_reason"] = candidate_set.incomplete_reason or "NA"
+        row["hit_count"] = len(records)
+        row["ambiguous_hit_count"] = max(0, len(records) - 1)
+        accepted = [record for record in records if record.get("accepted") == 1]
+        row["match_status"] = "mapped" if accepted else "candidate_low_similarity"
+        row["candidate_resolution"] = "unassessed"
+        primary = records[0] if records else None
+        if primary is not None:
+            row["alignment_score"] = f"{to_float(primary.get('identity'), 0.0):.6g}"
+            row["coverage_score"] = f"{to_float(primary.get('coverage'), 0.0):.6g}"
+            row["sequence_score"] = f"{(0.70 * to_float(primary.get('identity'), 0.0) + 0.30 * to_float(primary.get('coverage'), 0.0)):.6g}"
+            row["correspondence_score"] = row["sequence_score"]
+            row["candidate_id"] = primary["candidate_id"]
+            row["candidate_ids"] = ";".join(record["candidate_id"] for record in records)
+            row["alternative_candidate_ids"] = ";".join(
+                record["candidate_id"] for record in records[1:]
+            ) or "NA"
+            row["matched_blocks"] = _format_alignment_blocks(primary["aligned_blocks"])
+            row["aligned_blocks"] = row["matched_blocks"]
+            row["projected_reference_blocks"] = row["matched_blocks"]
+            query_blocks = tuple(
+                _coordinate_block0(block).query for block in primary["aligned_blocks"]
+            )
+            target_blocks = tuple(
+                _coordinate_block0(block).target for block in primary["aligned_blocks"]
+            )
+            if query_blocks:
+                public_query = ClosedInterval1.from_interval0(Interval0(
+                    min(block.start0 for block in query_blocks),
+                    max(block.end0 for block in query_blocks),
+                ))
+                public_target = ClosedInterval1.from_interval0(Interval0(
+                    min(block.start0 for block in target_blocks),
+                    max(block.end0 for block in target_blocks),
+                ))
+                row["query_alignment_start"] = public_query.start
+                row["query_alignment_end"] = public_query.end
+                row["target_alignment_start"] = public_target.start
+                row["target_alignment_end"] = public_target.end
+            row["query_genomic_matched_blocks"] = _format_genomic_blocks(
+                occurrence_by_id[row["query_occurrence_id"]].get("contig", "NA"),
+                occurrence_by_id[row["query_occurrence_id"]].get("strand", "NA"),
+                primary.get("query_genomic_blocks0", ()),
+            )
+            row["subject_genomic_matched_blocks"] = _format_genomic_blocks(
+                occurrence_by_id[row["subject_occurrence_id"]].get("contig", "NA"),
+                occurrence_by_id[row["subject_occurrence_id"]].get("strand", "NA"),
+                primary.get("target_genomic_blocks0", ()),
+            )
+            row["gap_blocks"] = json.dumps(
+                _public_gap_blocks(primary.get("gap_blocks", ())),
+                sort_keys=True, separators=(",", ":"),
+            )
+            row["alignment_cigar"] = primary.get("cigar", "NA")
+            row["raw_alignment_score"] = _format_optional_number(primary.get("score"))
+            row["raw_score"] = row["raw_alignment_score"]
+            row["short_sequence_coverage"] = primary.get("short_sequence_coverage", "NA")
+        public_records = [_public_candidate_record(record) for record in records]
+        row["candidate_assessments"] = json.dumps(
+            public_records, sort_keys=True, separators=(",", ":"),
+        )
+        row["dna_candidate_assessments"] = row["candidate_assessments"]
+        row["alternative_hits"] = json.dumps(
+            public_records[1:], sort_keys=True, separators=(",", ":"),
+        )
+        changed = True
+    return changed
 
 
 def _transcript_id_set(row):
@@ -1861,6 +4624,13 @@ def alternative_overlap_evidence(left, right, context):
         "projected_reference_start": target_start,
         "projected_reference_end": target_end,
         "projected_reference_blocks": f"{query_start}-{query_end}:{target_start}-{target_end}",
+        "matched_blocks": f"{query_start}-{query_end}:{target_start}-{target_end}",
+        "query_genomic_matched_blocks": f"{left.get('contig', 'NA')}:{overlap_start}-{overlap_end}:{left.get('strand', 'NA')}",
+        "subject_genomic_matched_blocks": f"{right.get('contig', 'NA')}:{overlap_start}-{overlap_end}:{right.get('strand', 'NA')}",
+        "query_parent_feature_ids": left.get("source_feature_id", "NA"),
+        "subject_parent_feature_ids": right.get("source_feature_id", "NA"),
+        "query_transcript_ids": left.get("transcript_id", "NA"),
+        "subject_transcript_ids": right.get("transcript_id", "NA"),
         "left_context_score": left_context,
         "right_context_score": right_context,
         "boundary_score": boundary,
@@ -1874,15 +4644,31 @@ def alternative_overlap_evidence(left, right, context):
         "alignment_mode": "coordinate_overlap",
         "alignment_meaning": "same-copy alternative isoform shared genomic interval",
         "alignment_requested_backend": "genomic_overlap",
+        "mapping_quality": "NA",
+        "hit_count": 1,
+        "ambiguous_hit_count": 0,
+        "alternative_hits": [],
+        "score_scheme": "genomic_coordinate_overlap",
+        "raw_alignment_score": overlap_len,
+        "enumeration_complete": True,
+        "candidate_enumeration_status": "complete",
+        "incomplete_reason": "NA",
+        "short_context_route": "not_used",
+        "local_boundary_range": "available",
+        "flanking_anchor_status": "same_locus_annotation_overlap",
+        "true_absence_eligible": 0,
+        "true_absence_evidence_status": "not_applicable",
+        "true_absence_reason": "same_locus_annotation_overlap_is_not_deletion_evidence",
         "total_score": total,
     }
 
 
-def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=None, aligner="mafft", threads=1, min_size_ratio=0.25, species_distances=None, match_writer=None, context_aligner="minimap2", transcript_paths=None, raw_features=None):
+def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=None, aligner="mafft", threads=1, min_size_ratio=0.25, species_distances=None, match_writer=None, context_aligner="minimap2", transcript_paths=None, raw_features=None, coding_msa_mode="linsi", short_context_max_length=300, gene_loci=None):
     context = copy_order_context(occurrences, transcript_paths)
     distance_lookup = load_distance_table(distance_table)
     occurrence_by_id = {row["occurrence_id"]: row for row in occurrences}
     matches = []
+    pending_match_rows = []
     accepted_edges = []
     projection_by_occ_ref = {}
     score_by_occ = defaultdict(list)
@@ -1894,15 +4680,17 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
             {**row, "attrs": parse_attributes(row["attrs"]) if isinstance(row.get("attrs"), str) else row.get("attrs", {})}
             for row in raw_features or []
         ]
-        protein_index = CodingProjectionIndex(occurrences, seqs, transcript_paths, parsed_features)
+        protein_index = CodingProjectionIndex(
+            occurrences,
+            seqs,
+            transcript_paths,
+            parsed_features,
+            threads=threads,
+            msa_mode=coding_msa_mode,
+        )
 
     def emit_match(row):
-        if match_writer is not None:
-            match_writer(row)
-            if row.get("match_status") == "mapped":
-                matches.append(row)
-        else:
-            matches.append(row)
+        pending_match_rows.append(row)
 
     def iter_pairs():
         index = 0
@@ -1929,7 +4717,7 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
                 evidence = alternative_overlap_evidence(left, right, context)
                 if evidence is None:
                     continue
-                score = evidence["total_score"]
+                score = evidence["sequence_score"]
                 accepted_edges.append((left["occurrence_id"], right["occurrence_id"], score))
                 pair = frozenset((left["occurrence_id"], right["occurrence_id"]))
                 genomic_overlap_compatible.add(pair)
@@ -1944,7 +4732,16 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
         idx, left, right = item
         should_align, prefilter_status = should_align_pair(left, right, seqs, min_size_ratio)
         if should_align:
-            evidence = match_evidence(left, right, seqs, context, aligner=aligner, threads=1, context_aligner=context_aligner)
+            evidence = match_evidence(
+                left,
+                right,
+                seqs,
+                context,
+                aligner=aligner,
+                threads=1,
+                context_aligner=context_aligner,
+                short_context_max_length=short_context_max_length,
+            )
         else:
             evidence = cheap_match_evidence(left, right, context, alignment_backend=prefilter_status)
         return idx, left, right, evidence, prefilter_status
@@ -1970,28 +4767,96 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
     try:
         for _idx, left, right, evidence, prefilter_status in scored_pairs:
             threshold, distance_class = pair_threshold(left, right, identity_threshold, distance_lookup)
-            score = evidence["total_score"]
+            score = evidence["sequence_score"]
             compatible = roles_compatible(left, right)
-            sequence_ok = sequence_supported_mapping(evidence, threshold)
-            mapped = compatible and sequence_ok and score >= threshold
+            candidate_records = evidence.get("candidate_records", ())
+            short_context = evidence.get("short_context_route") in {
+                "feature_bounded_candidate", "anchor_bounded_local",
+            }
+            for record in candidate_records:
+                if record.get("source") not in {None, "", "NA"}:
+                    record.setdefault("alignment_source", record["source"])
+                record["source"] = "nucleotide_alignment"
+                record.setdefault("score_scheme", evidence.get("score_scheme", "unspecified"))
+                record["accepted"] = int(
+                    _candidate_sequence_accepted(record, threshold, short_context)
+                )
+                record["acceptance_threshold"] = f"{threshold:.6g}"
+            sequence_ok = any(record.get("accepted") == 1 for record in candidate_records)
+            if not candidate_records:
+                sequence_ok = sequence_supported_mapping(evidence, threshold)
+            mapped = compatible and sequence_ok
             evidence["dna_match_status"] = "mapped" if mapped else prefilter_status if prefilter_status != "aligned_candidate" else "low_similarity"
             exon_pair = left.get("role") in EXON_LIKE_ROLES and right.get("role") in EXON_LIKE_ROLES
-            if not mapped and exon_pair:
-                if protein_index is not None:
-                    evidence.update(protein_index.evidence(left["occurrence_id"], right["occurrence_id"]))
-                    if evidence.get("protein_status") == "supported":
-                        # Keep the original weights and raw DNA statistics. These
-                        # sequence components use annotated CDS evidence only.
-                        coding_score = (
-                            score - 0.34 * evidence["alignment_score"] - 0.14 * evidence["coverage_score"]
-                            + 0.34 * evidence["protein_aa_identity"]
-                            + 0.14 * max(evidence["protein_query_cds_coverage"], evidence["protein_target_cds_coverage"])
+            # Sensitivity analysis evaluates the original nucleotide evidence,
+            # even when a protein projection later supplies the final position.
+            evidence["dna_candidate_assessments"] = [
+                dict(record) for record in candidate_records
+            ]
+            if exon_pair and protein_index is not None:
+                evidence.update(protein_index.evidence(left["occurrence_id"], right["occurrence_id"]))
+                protein_hard = bool(evidence.get("protein_hard_observation_eligible"))
+                protein_position = bool(evidence.get("protein_position_eligible"))
+                if mapped and protein_hard:
+                    evidence["correspondence_basis"] = "DNA_and_annotated_CDS_protein"
+                elif compatible and protein_hard:
+                    mapped = True
+                    score = (
+                        0.70 * float(evidence["protein_aa_identity"])
+                        + 0.30 * min(
+                            float(evidence["protein_query_cds_coverage"]),
+                            float(evidence["protein_target_cds_coverage"]),
                         )
-                        if compatible and coding_score >= threshold:
-                            mapped = True
-                            score = coding_score
-                            evidence["correspondence_basis"] = "annotated_CDS_protein"
-                else:
+                    )
+                    evidence["correspondence_basis"] = "annotated_CDS_protein"
+                if mapped and protein_position:
+                    protein_blocks = tuple(
+                        _coordinate_block0(block)
+                        for block in evidence.get("protein_projected_blocks", ())
+                    )
+                    evidence["projected_reference_blocks"] = _format_alignment_blocks(protein_blocks)
+                    evidence["matched_blocks"] = evidence["projected_reference_blocks"]
+                    if protein_blocks:
+                        query_interval = Interval0(
+                            min(block.query.start0 for block in protein_blocks),
+                            max(block.query.end0 for block in protein_blocks),
+                        )
+                        target_interval = Interval0(
+                            min(block.target.start0 for block in protein_blocks),
+                            max(block.target.end0 for block in protein_blocks),
+                        )
+                        public_query = ClosedInterval1.from_interval0(query_interval)
+                        public_target = ClosedInterval1.from_interval0(target_interval)
+                        evidence["query_alignment_start"] = public_query.start
+                        evidence["query_alignment_end"] = public_query.end
+                        evidence["target_alignment_start"] = public_target.start
+                        evidence["target_alignment_end"] = public_target.end
+                        evidence["query_genomic_matched_blocks"] = _genomic_matched_blocks(left, protein_blocks, "query")
+                        evidence["subject_genomic_matched_blocks"] = _genomic_matched_blocks(right, protein_blocks, "subject")
+                    evidence["score_scheme"] = "blosum62_cds_projection"
+                    evidence["raw_alignment_score"] = evidence.get("protein_blosum62_score", "NA")
+                    evidence["alignment_backend"] = "family_protein_msa_projection"
+                    evidence["alignment_mode"] = "coding_projection"
+                    evidence["alignment_meaning"] = (
+                        "family protein MSA projected through transcript codons to CDS bases"
+                    )
+                    evidence["alignment_strand"] = "+"
+                    evidence["candidate_records"] = []
+                    evidence["candidate_accepted"] = True
+                    evidence["enumeration_complete"] = (
+                        evidence.get("protein_candidate_details") not in {None, "", "NA"}
+                    )
+                    evidence["candidate_enumeration_status"] = (
+                        "complete" if evidence["enumeration_complete"] else "incomplete"
+                    )
+                    evidence["incomplete_reason"] = (
+                        "NA" if evidence["enumeration_complete"]
+                        else "protein_candidate_set_unavailable"
+                    )
+                elif evidence.get("protein_candidate_evidence_available"):
+                    evidence["incomplete_reason"] = "protein_candidate_without_hard_coordinates"
+            elif not mapped and exon_pair:
+                if protein_index is None:
                     evidence["protein_status"] = "unavailable" if aligner in {"mafft", "auto"} else "disabled_backend"
                     evidence["protein_unavailable_reason"] = "no_CDS_transcript_path" if aligner in {"mafft", "auto"} else "MAFFT_exon_backend_required"
             if mapped:
@@ -2016,6 +4881,141 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
     finally:
         if pool is not None:
             pool.shutdown(wait=True)
+
+    # A split transcript can map to the two terminal portions of one short,
+    # unsplit coding occurrence.  Each member then lacks enough independent
+    # amino-acid columns for the ordinary per-pair anchor threshold, while the
+    # complementary left/right terminal partition resolves the mapping jointly.
+    terminal_groups = defaultdict(list)
+    for row in pending_match_rows:
+        if (
+            row.get("protein_mapping_status") == "supported_unanchored"
+            and row.get("protein_candidate_coordinate_consensus") in {1, "1", True}
+            and row.get("protein_terminal_side") in {"left", "right"}
+            and row.get("protein_projected_blocks") not in {None, "", "NA"}
+        ):
+            query = occurrence_by_id.get(row.get("query_occurrence_id"), {})
+            subject = occurrence_by_id.get(row.get("subject_occurrence_id"), {})
+            key = (
+                tuple(sorted((occurrence_copy_key(query), occurrence_copy_key(subject)))),
+                row.get("protein_best_query_transcript", "NA"),
+                row.get("protein_best_target_transcript", "NA"),
+            )
+            terminal_groups[key].append(row)
+    for group in terminal_groups.values():
+        if {row.get("protein_terminal_side") for row in group} != {"left", "right"}:
+            continue
+        shared_occurrences = set.intersection(*(
+            {row.get("query_occurrence_id"), row.get("subject_occurrence_id")}
+            for row in group
+        ))
+        if len(shared_occurrences) != 1:
+            continue
+        reference_id = next(iter(shared_occurrences))
+        reference_intervals = []
+        parsed_by_row = {}
+        for row in group:
+            try:
+                blocks = tuple(parse_legacy_blocks(row["protein_projected_blocks"]))
+            except (TypeError, ValueError):
+                blocks = tuple()
+            if not blocks:
+                break
+            parsed_by_row[id(row)] = blocks
+            reference_intervals.extend(
+                block.query if row.get("query_occurrence_id") == reference_id else block.target
+                for block in blocks
+            )
+        else:
+            ordered = sorted(reference_intervals)
+            if any(left.overlaps(right) for left, right in zip(ordered, ordered[1:])):
+                continue
+            for row in group:
+                row["protein_mapping_status"] = "resolved_joint_terminal_partition"
+                row["protein_membership_eligible"] = 1
+                row["protein_position_eligible"] = 1
+                row["protein_hard_observation_eligible"] = 1
+                row["match_status"] = "mapped"
+                row["correspondence_basis"] = "annotated_CDS_protein"
+                blocks = parsed_by_row[id(row)]
+                evidence = dict(row, protein_projected_blocks=blocks)
+                left_id = row["query_occurrence_id"]
+                right_id = row["subject_occurrence_id"]
+                projection_by_occ_ref[(left_id, right_id)] = _projection_record(evidence, "target")
+                projection_by_occ_ref[(right_id, left_id)] = _projection_record(evidence, "query")
+    _apply_ordered_candidate_chains(
+        pending_match_rows,
+        occurrence_by_id,
+        occurrences,
+        transcript_paths=transcript_paths,
+    )
+    if gene_loci and _rerun_anchor_bounded_short_candidates(
+        pending_match_rows,
+        occurrence_by_id,
+        seqs,
+        gene_loci,
+        transcript_paths=transcript_paths,
+    ):
+        _apply_ordered_candidate_chains(
+            pending_match_rows,
+            occurrence_by_id,
+            occurrences,
+            transcript_paths=transcript_paths,
+        )
+    position_pairs = {
+        frozenset((row["query_occurrence_id"], row["subject_occurrence_id"]))
+        for row in pending_match_rows
+        if row.get("_position_edge_eligible") or (
+            "annotated_CDS_protein" in str(row.get("correspondence_basis", ""))
+            and row.get("match_status") == "mapped"
+            and row.get("protein_mapping_status") in {
+                "resolved_local", "resolved_joint_terminal_partition",
+            }
+        )
+    }
+    accepted_edges = []
+    score_by_occ = defaultdict(list)
+    source_support = defaultdict(lambda: defaultdict(float))
+    for row in pending_match_rows:
+        protein_hard = (
+            "annotated_CDS_protein" in str(row.get("correspondence_basis", ""))
+            and row.get("match_status") == "mapped"
+            and row.get("protein_mapping_status") in {
+                "resolved_local", "resolved_joint_terminal_partition",
+            }
+        )
+        if protein_hard:
+            row["match_status"] = "mapped"
+            row["membership_edge_eligible"] = 1
+            row["membership_edge_reason"] = "resolved_annotated_CDS_protein_membership"
+            row["_membership_edge_eligible"] = True
+        if not row.get("_membership_edge_eligible"):
+            continue
+        left_id = row["query_occurrence_id"]
+        right_id = row["subject_occurrence_id"]
+        edge_score = to_float(row.get("correspondence_score"), 0.0)
+        accepted_edges.append((left_id, right_id, edge_score))
+        score_by_occ[left_id].append(edge_score)
+        score_by_occ[right_id].append(edge_score)
+        left_sources = known_source_labels(occurrence_by_id.get(left_id, {}))
+        right_sources = known_source_labels(occurrence_by_id.get(right_id, {}))
+        if left_sources and not right_sources:
+            for source in left_sources:
+                source_support[right_id][source] += edge_score
+        if right_sources and not left_sources:
+            for source in right_sources:
+                source_support[left_id][source] += edge_score
+    projection_by_occ_ref = {
+        key: value
+        for key, value in projection_by_occ_ref.items()
+        if frozenset(key) in position_pairs
+    }
+    for row in pending_match_rows:
+        public_row = {key: value for key, value in row.items() if not key.startswith("_")}
+        if match_writer is not None:
+            match_writer(public_row)
+        if public_row.get("match_status") == "mapped":
+            matches.append(public_row)
     nodes = [row["occurrence_id"] for row in occurrences]
     same_copy_compatible, cross_copy_compatible = _projection_compatibility(projection_by_occ_ref, occurrence_by_id)
     same_copy_compatible |= genomic_overlap_compatible
@@ -2037,7 +5037,7 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
                 {
                     "homology_id": component_id,
                     "occurrence_id": occ_id,
-                    "support_type": "sequence_boundary_context_graph",
+                    "support_type": "ordered_sequence_correspondence_graph",
                     "confidence": f"{confidence:.6g}",
                     "source_label": inferred_source_label(occurrence_by_id.get(occ_id, {}), source_support.get(occ_id, {})),
                 }
@@ -2045,7 +5045,7 @@ def cluster_segments(occurrences, seqs, identity_threshold=0.7, distance_table=N
     return homology, matches
 
 
-def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_table=None, aligner="mafft", threads=1, min_size_ratio=0.25, context_aligner="minimap2"):
+def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_table=None, aligner="mafft", threads=1, min_size_ratio=0.25, context_aligner="minimap2", coding_msa_mode="linsi", short_context_max_length=300):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir or input_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -2053,6 +5053,7 @@ def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_t
     transcript_paths = read_tsv(input_dir / "transcript_paths.tsv", optional=True)
     raw_features = read_tsv(input_dir / "raw_gene_features.tsv", optional=True)
     seqs = parse_fasta(input_dir / "segment_sequences.fasta")
+    gene_loci = _gene_locus_records(input_dir)
     species_distances = _species_tree_distances(input_dir / "species_tree.tsv")
     match_path = output_dir / "segment_matches.tsv"
     with match_path.open("w", newline="") as handle:
@@ -2065,6 +5066,9 @@ def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_t
             context_aligner=context_aligner,
             transcript_paths=transcript_paths,
             raw_features=raw_features,
+            coding_msa_mode=coding_msa_mode,
+            short_context_max_length=short_context_max_length,
+            gene_loci=gene_loci,
         )
     write_tsv(output_dir / "segment_homology.tsv", homology, ["homology_id", "occurrence_id", "support_type", "confidence", "source_label"])
     backend_rows = []
@@ -2083,6 +5087,8 @@ def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_t
                 ),
                 "threads": threads,
                 "min_size_ratio": f"{min_size_ratio:.6g}",
+                "short_context_max_length": int(short_context_max_length),
+                "coding_msa_mode": coding_msa_mode,
                 "notes": (
                     f"{row['notes']}; min_size_ratio is restricted to non-exon-like prefiltering"
                     if selected_exon or selected_context
@@ -2090,7 +5096,23 @@ def derive_tables(input_dir, output_dir=None, identity_threshold=0.7, distance_t
                 ),
             }
         )
-    write_tsv(output_dir / "alignment_backend_report.tsv", backend_rows, ["aligner", "available", "selected", "threads", "min_size_ratio", "notes", "selected_exon", "selected_context", "alignment_mode"])
+    write_tsv(
+        output_dir / "alignment_backend_report.tsv",
+        backend_rows,
+        [
+            "aligner",
+            "available",
+            "selected",
+            "threads",
+            "min_size_ratio",
+            "short_context_max_length",
+            "coding_msa_mode",
+            "notes",
+            "selected_exon",
+            "selected_context",
+            "alignment_mode",
+        ],
+    )
     write_tsv(output_dir / "physical_adjacencies.tsv", make_adjacencies(occurrences), ["adjacency_id", "family_id", "species", "gene_copy_id", "left_occurrence_id", "right_occurrence_id", "adjacency_status"])
     write_tsv(output_dir / "copy_context.tsv", make_copy_context(occurrences), ["family_id", "species", "gene_copy_id", "copy_class", "copy_subclass", "copy_span"])
     write_tsv(output_dir / "copy_relationships.tsv", make_copy_relationships(occurrences), ["family_id", "species", "query_copy_id", "subject_copy_id", "relationship_class", "synteny_score", "distance_bp", "evidence"])

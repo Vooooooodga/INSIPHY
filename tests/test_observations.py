@@ -1,17 +1,130 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from insiphy.correspondence import infer_correspondence, match_total, tree_distances
+from insiphy.correspondence import _membership_match_details, infer_correspondence, match_total, tree_distances
+from insiphy.coordinates import parse_legacy_blocks
 from insiphy.elements import collect_element_profiles
-from insiphy.io import read_tsv
-from insiphy.preprocess import _species_tree_distances, cheap_match_evidence, cluster_segments, copy_order_context, extract_gene, graph_components, introns_from_path, read_annotation_for_gene, transcript_cds_length
-from insiphy.alignment import phase_compatibility
-from insiphy.structural_sites import _element_site_rows, _genomically_contiguous, _junction_site_rows
+from insiphy.io import read_tsv, write_tsv
+from insiphy.cli import main as cli_main
+from insiphy.preprocess import MATCH_FIELDS, _apply_ordered_candidate_chains, _species_tree_distances, assess_short_candidate_thresholds, cheap_match_evidence, cluster_segments, copy_order_context, extract_gene, graph_components, introns_from_path, match_evidence, read_annotation_for_gene, transcript_cds_length
+from insiphy.alignment import AlignmentStats, phase_compatibility
+from insiphy.structural_sites import (
+    _completion_presence,
+    _element_site_rows,
+    _genomically_contiguous,
+    _junction_site_rows,
+)
 
 
 class ObservationSemanticsTests(unittest.TestCase):
+    def test_protein_rescued_short_exon_does_not_enter_dna_sensitivity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            segment_matches = root / "segment_matches.tsv"
+            output = root / "candidate_sensitivity.tsv"
+            protein_candidate = {
+                "candidate_id": "match_00001.candidate_001",
+                "source": "protein_msa_projection",
+                "score_scheme": "blosum62_cds_projection",
+                "identity": 0.99,
+                "query_coverage": 1.0,
+                "aligned_pairs": 20,
+                "acceptance_threshold": 0.7,
+            }
+            dna_candidate = {
+                "candidate_id": "match_00001.dna_candidate_001",
+                "source": "nucleotide_alignment",
+                "score_scheme": "nt_blastn_v1",
+                "identity": 0.72,
+                "coverage": 0.90,
+                "query_coverage": 0.85,
+                "aligned_pairs": 20,
+                "accepted": 1,
+                "acceptance_threshold": 0.70,
+            }
+            segment_matches.write_text(
+                "match_id\tquery_occurrence_id\tsubject_occurrence_id\tshort_context_route\t"
+                "candidate_assessments\tdna_candidate_assessments\n"
+                "match_00001\tq\ts\tbounded_local\t"
+                f"{json.dumps([protein_candidate], separators=(',', ':'))}\t"
+                f"{json.dumps([dna_candidate], separators=(',', ':'))}\n"
+            )
+
+            rows = assess_short_candidate_thresholds(
+                segment_matches,
+                output,
+                short_identity_thresholds=(0.70,),
+                short_query_coverage_thresholds=(0.80,),
+            )
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["candidate_id"], "match_00001.dna_candidate_001")
+            self.assertEqual(rows[0]["acceptance"], 1)
+            self.assertNotIn("blosum62", output.read_text())
+
+    def test_short_dna_sensitivity_retains_saved_pair_threshold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            segment_matches = root / "segment_matches.tsv"
+            output = root / "candidate_sensitivity.tsv"
+
+            def candidate(candidate_id, threshold):
+                return {
+                    "candidate_id": candidate_id,
+                    "source": "nucleotide_alignment",
+                    "score_scheme": "nt_blastn_v1",
+                    "identity": 0.75,
+                    "coverage": 0.90,
+                    "query_coverage": 0.90,
+                    "aligned_pairs": 25,
+                    "accepted": int(threshold <= 0.75),
+                    "acceptance_threshold": threshold,
+                }
+
+            segment_matches.write_text(
+                "match_id\tquery_occurrence_id\tsubject_occurrence_id\tshort_context_route\t"
+                "dna_candidate_assessments\n"
+                f"m1\tq1\ts1\tbounded_local\t{json.dumps([candidate('m1.dna_candidate_001', 0.70)], separators=(',', ':'))}\n"
+                f"m2\tq2\ts2\tbounded_local\t{json.dumps([candidate('m2.dna_candidate_001', 0.80)], separators=(',', ':'))}\n"
+            )
+
+            rows = assess_short_candidate_thresholds(
+                segment_matches,
+                output,
+                short_identity_thresholds=(0.60,),
+                short_query_coverage_thresholds=(0.80,),
+            )
+            by_match = {row["match_id"]: row for row in rows}
+
+            self.assertEqual(by_match["m1"]["saved_pair_threshold"], "0.7")
+            self.assertEqual(by_match["m1"]["effective_identity_cutoff"], "0.7")
+            self.assertEqual(by_match["m1"]["acceptance"], 1)
+            self.assertEqual(by_match["m2"]["saved_pair_threshold"], "0.8")
+            self.assertEqual(by_match["m2"]["effective_identity_cutoff"], "0.8")
+            self.assertEqual(by_match["m2"]["acceptance"], 0)
+
+    def test_candidate_sensitivity_cli_keeps_public_flags(self):
+        with patch("insiphy.cli.assess_short_candidate_thresholds") as assess:
+            cli_main([
+                "candidate-sensitivity",
+                "--segment-matches", "segment_matches.tsv",
+                "--output", "candidate_sensitivity.tsv",
+                "--identity", "0.65",
+                "--identity", "0.75",
+                "--coverage", "0.60",
+                "--coverage", "0.80",
+            ])
+
+        assess.assert_called_once_with(
+            "segment_matches.tsv",
+            "candidate_sensitivity.tsv",
+            [0.65, 0.75],
+            [0.60, 0.80],
+        )
+
     def test_negative_strand_intron_phase_uses_transcriptional_upstream_cds(self):
         gene = {"seqid": "chr", "strand": "-"}
         exons = [
@@ -108,7 +221,7 @@ class ObservationSemanticsTests(unittest.TestCase):
             fasta.write_text(">chr1\n" + "A" * 120 + "\n")
             gff.write_text(
                 "chr1\ttest\tgene\t10\t90\t.\t+\t.\tID=g1;Name=g1\n"
-                "chr1\ttest\tmRNA\t10\t90\t.\t+\t.\tID=tx1;Parent=g1\n"
+                "chr1\ttest\tmRNA\t10\t90\t.\t+\t.\tID=tx1;Parent=g1;partial=true\n"
                 "chr1\ttest\texon\t10\t30\t.\t+\t.\tID=ex1;Parent=tx1\n"
                 "chr1\ttest\tCDS\t10\t30\t.\t+\t0\tID=cds1;Parent=tx1\n"
                 "chr1\ttest\tregulatory\t40\t45\t.\t+\t.\tID=reg1;Parent=g1\n"
@@ -229,6 +342,9 @@ class ObservationSemanticsTests(unittest.TestCase):
                 "family_id": "fam",
                 "species": "B",
                 "gene_copy_id": "gB",
+                "homologous_dna_presence": "present",
+                "homologous_dna_evidence": "resolved_nucleotide_alignment",
+                "candidate_resolution_status": "resolved",
                 "completion_call": "predicted_exon_candidate",
                 "inferred_role": "predicted_CDS",
                 "predicted_role": "CDS",
@@ -264,8 +380,8 @@ class ObservationSemanticsTests(unittest.TestCase):
             },
         ]
         elements = [
-            {"element_id": "EG_0029", "homology_id": "HC_0029", "occurrence_id": "Bign_exon", "element_class": "exon_like", "membership_call": "core_member"},
-            {"element_id": "EG_0029", "homology_id": "HC_0029", "occurrence_id": "Bter_intron", "element_class": "candidate_source", "membership_call": "core_member"},
+            {"element_id": "EG_0029", "homology_id": "HC_0029", "occurrence_id": "Bign_exon", "element_class": "exon_like", "membership_call": "core_member", "genomic_matched_blocks": "LG5:1947147-1947446:-"},
+            {"element_id": "EG_0029", "homology_id": "HC_0029", "occurrence_id": "Bter_intron", "element_class": "candidate_source", "membership_call": "core_member", "genomic_matched_blocks": "NC_063273.1:2472297-2507265:-"},
         ]
         candidate = {
             "family_id": "OG0006454", "homology_id": "HC_0029",
@@ -276,6 +392,9 @@ class ObservationSemanticsTests(unittest.TestCase):
             "annotation_status": "protein_projection_supports_missing_cds",
             "inferred_event": "protein_cds_projection", "inferred_role": "predicted_CDS",
             "predicted_role": "CDS", "support_score": "0.8667",
+            "homologous_dna_presence": "present",
+            "homologous_dna_evidence": "resolved_protein_coding_projection",
+            "candidate_resolution_status": "resolved",
             "primary_mapping_status": "protein_projection", "correspondence_status": "resolved",
             "interval_scope": "projected_cds_container", "confidence_flag": "high",
         }
@@ -382,7 +501,13 @@ class ObservationSemanticsTests(unittest.TestCase):
 
     def test_exon_prediction_preserves_contradictory_sequence_absence_as_unknown(self):
         occurrences, elements, candidate = self._intronic_cds_prediction_case()
-        absence = {**candidate, "completion_call": "supports_true_absence"}
+        absence = {
+            **candidate,
+            "completion_call": "supports_true_absence",
+            "homologous_dna_presence": "absent",
+            "homologous_dna_evidence": "ordered_flank_deletion",
+            "absence_evidence": "ordered_flank_deletion",
+        }
         rows = _element_site_rows(
             occurrences, elements, [candidate, absence], {"OG0006454"},
             {"OG0006454": {"Bombus_ignitus", "Bombus_terrestris"}},
@@ -417,7 +542,7 @@ class ObservationSemanticsTests(unittest.TestCase):
                 completion = dict(candidate)
                 if status is not None:
                     completion["correspondence_status"] = status
-                unresolved = status in {"unknown", "ambiguous"}
+                unresolved = status != "resolved"
                 if unresolved:
                     completion["primary_mapping_status"] = "ambiguous_repeated_mapping"
                     completion["interval_candidates"] = '[{"target_start":10,"target_end":30},{"target_start":50,"target_end":70}]'
@@ -425,7 +550,7 @@ class ObservationSemanticsTests(unittest.TestCase):
                 by_key = {(row["layer"], row["species"]): row for row in rows}
                 presence = by_key[("exon_presence", "B")]
                 role = by_key[("exon_role", "B")]
-                self.assertEqual(presence["state"], "unknown" if unresolved else "present")
+                self.assertEqual(presence["state"], "unknown")
                 self.assertEqual(role["state"], "unknown")
                 self.assertEqual(by_key[("exon_presence", "A")]["state"], "present")
                 if unresolved:
@@ -434,6 +559,54 @@ class ObservationSemanticsTests(unittest.TestCase):
                     self.assertEqual(presence["confidence_flag"], "low")
                 else:
                     self.assertNotIn("completion_correspondence_unresolved", presence["evidence"])
+
+    def test_candidate_label_without_resolved_presence_evidence_stays_unknown(self):
+        occurrences = [{
+            "occurrence_id": "A_ex", "family_id": "fam", "species": "A",
+            "gene_copy_id": "gA", "role": "CDS", "presence_status": "present",
+        }]
+        elements = [{
+            "element_id": "EG_1", "homology_id": "H1", "occurrence_id": "A_ex",
+            "element_class": "exon_like", "membership_call": "core_member",
+        }]
+        candidate = {
+            "homology_id": "H1", "family_id": "fam", "species": "B",
+            "gene_copy_id": "gB", "completion_call": "hidden_segment_candidate",
+            "evidence_status": "supports_hidden_segment",
+            "candidate_resolution_status": "resolved",
+            "correspondence_status": "resolved",
+        }
+        rows = _element_site_rows(
+            occurrences, elements, [candidate], {"fam"}, {"fam": {"A", "B"}},
+        )
+        by_layer = {
+            row["layer"]: row for row in rows if row["species"] == "B"
+        }
+        self.assertEqual(by_layer["exon_presence"]["state"], "unknown")
+        self.assertEqual(by_layer["exon_role"]["state"], "unknown")
+
+    def test_legacy_true_absence_requires_resolved_ordered_flank_evidence(self):
+        accepted = {
+            "completion_call": "supports_true_absence",
+            "candidate_resolution_status": "resolved",
+            "absence_evidence": "ordered_flank_deletion",
+        }
+        self.assertEqual(_completion_presence(accepted)[0], "absent")
+        self.assertIsNone(
+            _completion_presence({
+                **accepted,
+                "candidate_resolution_status": "ambiguous",
+            })[0]
+        )
+        self.assertIsNone(
+            _completion_presence({
+                **accepted,
+                "correspondence_status": "unknown",
+            })[0]
+        )
+        self.assertIsNone(
+            _completion_presence({**accepted, "absence_evidence": "no_sequence_hit"})[0]
+        )
 
     def test_transcript_paths_and_raw_features_preserve_each_cds_phase(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -457,6 +630,13 @@ class ObservationSemanticsTests(unittest.TestCase):
             self.assertEqual(paths["tx1"]["cds_length"], "30")
             self.assertEqual(paths["tx2"]["cds_length"], "27")
             self.assertEqual(paths["tx3"]["cds_length"], "0")
+            self.assertEqual(paths["tx1"]["path_role"], "exonic")
+            self.assertEqual(paths["tx1"]["coding_role"], "CDS")
+            self.assertEqual(paths["tx1"]["position_role"], "single")
+            self.assertEqual(paths["tx1"]["annotation_source"], "test")
+            self.assertIn("ID=ex", paths["tx1"]["original_attributes"])
+            self.assertEqual((paths["tx1"]["partial_start"], paths["tx1"]["partial_end"]), ("0", "1"))
+            self.assertEqual(paths["tx3"]["coding_role"], "noncoding_exon")
             raw = {row["id"]: row for row in read_tsv(out / "raw_gene_features.tsv")}
             self.assertEqual((raw["c1"]["parent"], raw["c1"]["phase"]), ("tx1", "0"))
             self.assertEqual((raw["c2"]["parent"], raw["c2"]["phase"]), ("tx2", "1"))
@@ -759,6 +939,377 @@ class ObservationSemanticsTests(unittest.TestCase):
 
         self.assertNotEqual(by_occ["left"], by_occ["right"])
         self.assertFalse(matches)
+
+    def test_bounded_short_context_retains_candidates_without_claiming_absence(self):
+        common = {
+            "family_id": "fam",
+            "presence_status": "present",
+            "contig": "chr1",
+            "strand": "+",
+            "phase": ".",
+            "splice_motif_score": "0.5",
+        }
+        left = {
+            **common,
+            "occurrence_id": "left",
+            "species": "A",
+            "gene_copy_id": "gA",
+            "transcript_id": "txA",
+            "source_feature_id": "featureA",
+            "role": "CDS",
+            "start": "101",
+            "end": "124",
+        }
+        right = {
+            **common,
+            "occurrence_id": "right",
+            "species": "B",
+            "gene_copy_id": "gB",
+            "transcript_id": "txB",
+            "source_feature_id": "featureB",
+            "role": "intron",
+            "start": "501",
+            "end": "524",
+        }
+        sequence = "ACGTTGCAAGTCCTGATCGTACGA"
+        evidence = match_evidence(
+            left,
+            right,
+            {"left": sequence, "right": sequence},
+            {"left": {}, "right": {}},
+            context_aligner="minimap2",
+        )
+
+        self.assertEqual(evidence["alignment_requested_backend"], "anchored_short_alignment")
+        self.assertEqual(evidence["score_scheme"], "nt_blastn_v1")
+        self.assertEqual(evidence["short_context_route"], "bounded_local")
+        self.assertTrue(evidence["candidate_records"])
+        self.assertNotEqual(evidence["matched_blocks"], "NA")
+        self.assertEqual(evidence["query_parent_feature_ids"], "featureA")
+        self.assertEqual(evidence["subject_transcript_ids"], "txB")
+        self.assertEqual(evidence["true_absence_eligible"], 0)
+
+    def test_candidate_chain_fields_keep_structural_scores_diagnostic(self):
+        sequence = "ACGTTGCAAGTCCTGATCGTACGA"
+        occurrences = [
+            {
+                "occurrence_id": "left",
+                "family_id": "fam",
+                "species": "A",
+                "gene_copy_id": "gA",
+                "transcript_id": "txA",
+                "source_feature_id": "featureA",
+                "role": "CDS",
+                "presence_status": "present",
+                "contig": "chrA",
+                "start": "101",
+                "end": "124",
+                "strand": "+",
+                "phase": "0",
+                "splice_motif_score": "0.5",
+            },
+            {
+                "occurrence_id": "right",
+                "family_id": "fam",
+                "species": "B",
+                "gene_copy_id": "gB",
+                "transcript_id": "txB",
+                "source_feature_id": "featureB",
+                "role": "intron",
+                "presence_status": "present",
+                "contig": "chrB",
+                "start": "501",
+                "end": "524",
+                "strand": "+",
+                "phase": ".",
+                "splice_motif_score": "0.5",
+            },
+        ]
+        emitted = []
+        _homology, matches = cluster_segments(
+            occurrences,
+            {"left": sequence, "right": sequence},
+            context_aligner="minimap2",
+            threads=1,
+            match_writer=emitted.append,
+        )
+
+        self.assertFalse(matches)
+        self.assertEqual(len(emitted), 1)
+        match = emitted[0]
+        self.assertEqual(match["match_status"], "candidate_unanchored")
+        self.assertEqual(match["candidate_resolution"], "candidate")
+        self.assertEqual(match["score_scheme"], "nt_blastn_v1")
+        self.assertEqual(match["correspondence_score"], match["sequence_score"])
+        self.assertNotEqual(match["candidate_ids"], "NA")
+        self.assertNotEqual(match["query_genomic_matched_blocks"], "NA")
+        self.assertEqual(match["flanking_anchor_status"], "no_independent_homologous_flanks_on_same_path")
+        self.assertEqual(match["membership_edge_eligible"], 0)
+        self.assertEqual(match["position_edge_eligible"], 0)
+        self.assertEqual(match["true_absence_eligible"], 0)
+
+    def test_short_query_uses_explicit_long_target_but_skips_unbounded_locus(self):
+        query_sequence = "ACGTTGCAAGTCCTGATCGTACGA"
+        target_sequence = "T" * 180 + query_sequence + "T" * 196
+        query = {
+            "occurrence_id": "query", "role": "CDS", "contig": "chrQ",
+            "start": "1", "end": str(len(query_sequence)), "strand": "+",
+            "source_feature_id": "query_feature",
+        }
+        bounded = {
+            "occurrence_id": "bounded", "role": "intron", "contig": "chrT",
+            "start": "1001", "end": str(1000 + len(target_sequence)), "strand": "+",
+            "boundary_class": "annotated_segment",
+        }
+        bounded_evidence = match_evidence(
+            query,
+            bounded,
+            {"query": query_sequence, "bounded": target_sequence},
+            {"query": {}, "bounded": {}},
+            context_aligner="internal",
+        )
+        right_short = match_evidence(
+            {**bounded, "occurrence_id": "bounded_left"},
+            {**query, "occurrence_id": "short_right"},
+            {"bounded_left": target_sequence, "short_right": query_sequence},
+            {"bounded_left": {}, "short_right": {}},
+            context_aligner="internal",
+        )
+        unbounded = {**bounded, "occurrence_id": "locus", "boundary_class": "whole_locus_search_interval"}
+        unbounded_evidence = match_evidence(
+            query,
+            unbounded,
+            {"query": query_sequence, "locus": target_sequence},
+            {"query": {}, "locus": {}},
+            context_aligner="internal",
+        )
+
+        self.assertEqual(bounded_evidence["alignment_requested_backend"], "anchored_short_alignment")
+        self.assertEqual(bounded_evidence["short_context_route"], "bounded_local")
+        self.assertEqual(bounded_evidence["query_length"], len(query_sequence))
+        self.assertEqual(bounded_evidence["target_length"], len(target_sequence))
+        self.assertEqual(right_short["alignment_requested_backend"], "anchored_short_alignment")
+        self.assertEqual(right_short["alignment_input_transposed"], 1)
+        self.assertEqual(right_short["query_length"], len(target_sequence))
+        self.assertEqual(right_short["target_length"], len(query_sequence))
+        self.assertEqual(right_short["query_mapped_contig"], "chrT")
+        self.assertEqual(right_short["subject_mapped_contig"], "chrQ")
+        right_candidate = right_short["candidate_records"][0]
+        self.assertEqual(right_candidate["query_length"], len(target_sequence))
+        self.assertEqual(right_candidate["target_length"], len(query_sequence))
+        self.assertEqual(right_candidate["query_occurrence_id"], "bounded_left")
+        self.assertEqual(right_candidate["target_occurrence_id"], "short_right")
+        self.assertEqual(right_candidate["short_sequence_coverage"], 1.0)
+        self.assertEqual(unbounded_evidence["alignment_requested_backend"], "internal")
+        self.assertEqual(unbounded_evidence["short_context_route"], "not_used")
+        self.assertEqual(unbounded_evidence["search_interval"], "NA")
+        self.assertEqual(unbounded_evidence["candidate_records"][0]["search_interval"], "NA")
+
+    def test_match_evidence_contract_survives_primary_and_candidate_rows(self):
+        sequence = "ACGTTGCAAGTCCTGATCGTACGA"
+        common = {
+            "family_id": "fam", "role": "CDS", "presence_status": "present",
+            "strand": "+", "phase": "0", "splice_motif_score": "0.5",
+        }
+        occurrences = [
+            {**common, "occurrence_id": "q", "species": "A", "gene_copy_id": "gA",
+             "transcript_id": "qtx", "source_feature_id": "qf", "contig": "chrQ",
+             "start": "1", "end": str(len(sequence))},
+            {**common, "occurrence_id": "t", "species": "B", "gene_copy_id": "gB",
+             "transcript_id": "ttx", "source_feature_id": "tf", "contig": "chrT",
+             "start": "101", "end": str(100 + len(sequence))},
+        ]
+        emitted = []
+        cluster_segments(
+            occurrences,
+            {"q": sequence, "t": sequence},
+            context_aligner="internal",
+            match_writer=emitted.append,
+        )
+        row = emitted[0]
+        candidate = json.loads(row["candidate_assessments"])[0]
+
+        for field in (
+            "candidate_id", "alternative_candidate_ids", "aligned_blocks", "gap_blocks",
+            "sequence_kind", "backend", "backend_version", "raw_score", "nt_identity",
+            "aa_identity", "known_aligned_pairs", "unknown_aligned_pairs",
+            "query_covered_bases", "target_covered_bases", "query_length", "target_length",
+            "relative_strand", "mapq", "left_anchor_id", "right_anchor_id",
+            "search_interval", "enumeration_complete", "incomplete_reason",
+            "chain_configuration", "chain_score_delta",
+        ):
+            self.assertIn(field, MATCH_FIELDS)
+            self.assertIn(field, row)
+        self.assertEqual(row["candidate_id"], candidate["candidate_id"])
+        self.assertEqual(candidate["sequence_kind"], "nucleotide")
+        self.assertEqual(candidate["query_length"], len(sequence))
+        self.assertEqual(candidate["target_length"], len(sequence))
+        self.assertEqual(candidate["known_aligned_pairs"] + candidate["unknown_aligned_pairs"], candidate["aligned_pairs"])
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "segment_matches.tsv"
+            write_tsv(path, [row], MATCH_FIELDS)
+            round_tripped = read_tsv(path)[0]
+        for field in (
+            "candidate_id", "alternative_candidate_ids", "aligned_blocks", "gap_blocks",
+            "sequence_kind", "backend", "backend_version", "score_scheme", "raw_score",
+            "nt_identity", "aa_identity", "known_aligned_pairs", "unknown_aligned_pairs",
+            "query_covered_bases", "target_covered_bases", "query_length", "target_length",
+            "relative_strand", "mapq", "left_anchor_id", "right_anchor_id",
+            "search_interval", "enumeration_complete", "incomplete_reason",
+            "chain_configuration", "chain_score_delta",
+        ):
+            self.assertEqual(round_tripped[field], str(row[field]))
+
+    def test_multiple_retained_positions_keep_membership_without_hard_coordinates(self):
+        occurrences = [
+            {"occurrence_id": "query", "family_id": "fam", "species": "A", "gene_copy_id": "gA", "contig": "chrA", "start": "1", "end": "100", "strand": "+"},
+            {"occurrence_id": "subject", "family_id": "fam", "species": "B", "gene_copy_id": "gB", "contig": "chrB", "start": "1", "end": "200", "strand": "+"},
+        ]
+        row = {
+            "match_id": "match_00001",
+            "query_occurrence_id": "query",
+            "subject_occurrence_id": "subject",
+            "match_status": "mapped",
+            "enumeration_complete": 1,
+            "candidate_enumeration_status": "complete",
+            "short_context_route": "not_used",
+            "protein_hard_observation_eligible": 0,
+            "_candidate_records": [
+                {"candidate_id": "match_00001.candidate_001", "accepted": 1, "query_start": 1, "query_end": 40, "target_start": 1, "target_end": 40, "score": 80, "score_scheme": "nt_blastn_v1", "strand": "+", "aligned_blocks": [(1, 40, 1, 40)]},
+                {"candidate_id": "match_00001.candidate_002", "accepted": 1, "query_start": 1, "query_end": 40, "target_start": 101, "target_end": 140, "score": 80, "score_scheme": "nt_blastn_v1", "strand": "+", "aligned_blocks": [(1, 40, 101, 140)]},
+            ],
+        }
+
+        _apply_ordered_candidate_chains([row], {item["occurrence_id"]: item for item in occurrences}, occurrences)
+
+        self.assertEqual(row["membership_edge_eligible"], 1)
+        self.assertEqual(row["position_edge_eligible"], 0)
+        self.assertEqual(row["candidate_resolution"], "ambiguous")
+        self.assertEqual(row["position_edge_reason"], "multiple_accepted_retained_coordinate_placements")
+        self.assertEqual(row["true_absence_eligible"], 0)
+
+    def test_external_overlap_score_and_candidate_enumeration_are_explicit(self):
+        sequence = "A" * 301
+        left = {"occurrence_id": "left", "family_id": "fam", "species": "A", "gene_copy_id": "gA", "role": "CDS", "contig": "chrA", "start": "1", "end": "301", "strand": "+"}
+        right = {"occurrence_id": "right", "family_id": "fam", "species": "B", "gene_copy_id": "gB", "role": "CDS", "contig": "chrB", "start": "1", "end": "301", "strand": "+"}
+        stats = AlignmentStats(
+            identity=1.0,
+            coverage=1.0,
+            score=0.0,
+            query_start=1,
+            query_end=301,
+            target_start=1,
+            target_end=301,
+            cigar="301=",
+            backend="mafft_overlap",
+            query_coverage=1.0,
+            target_coverage=1.0,
+            aligned_pairs=301,
+            aligned_blocks=[(1, 301, 1, 301)],
+            matches=301,
+            alignment_mode="overlap_projection",
+        )
+        with patch("insiphy.preprocess.overlap_alignment_stats", return_value=stats):
+            evidence = match_evidence(left, right, {"left": sequence, "right": sequence}, {"left": {}, "right": {}})
+
+        self.assertEqual(evidence["raw_alignment_score"], 602.0)
+        self.assertEqual(evidence["score_scheme"], "nt_blastn_v1/sum_of_column_scores")
+        self.assertFalse(evidence["enumeration_complete"])
+        self.assertEqual(evidence["candidate_enumeration_status"], "unassessed")
+
+    def test_ambiguous_membership_does_not_publish_element_coordinates(self):
+        occurrences = [
+            {"occurrence_id": "query", "family_id": "fam", "species": "A", "gene_copy_id": "gA", "source_feature_id": "qf", "transcript_id": "qt", "start": "1", "end": "40"},
+            {"occurrence_id": "subject", "family_id": "fam", "species": "B", "gene_copy_id": "gB", "source_feature_id": "sf", "transcript_id": "st", "start": "1", "end": "100"},
+        ]
+        element_rows = [
+            {"element_id": "EG1", "occurrence_id": row["occurrence_id"], "species": row["species"], "gene_copy_id": row["gene_copy_id"]}
+            for row in occurrences
+        ]
+        scored = [{
+            "match_id": "match_00001",
+            "query_occurrence_id": "query",
+            "subject_occurrence_id": "subject",
+            "match_status": "mapped",
+            "candidate_resolution": "ambiguous",
+            "membership_edge_eligible": 1,
+            "membership_edge_reason": "retained_sequence_membership",
+            "position_edge_eligible": 0,
+            "position_edge_reason": "multiple_accepted_retained_coordinate_placements",
+            "candidate_ids": "match_00001.candidate_001;match_00001.candidate_002",
+            "retained_candidate_ids": "match_00001.candidate_001;match_00001.candidate_002",
+            "matched_blocks": "1-40:1-40",
+            "query_genomic_matched_blocks": "chrA:1-40:+",
+            "subject_genomic_matched_blocks": "chrB:1-40:+",
+        }]
+
+        _membership_match_details(element_rows, occurrences, scored)
+        query_row = next(row for row in element_rows if row["occurrence_id"] == "query")
+
+        self.assertEqual(query_row["membership_edge_eligible"], 1)
+        self.assertEqual(query_row["position_edge_eligible"], 0)
+        self.assertEqual(query_row["matched_blocks"], "NA")
+        self.assertEqual(query_row["genomic_matched_blocks"], "NA")
+        self.assertEqual(query_row["correspondence_status"], "ambiguous")
+
+    def test_membership_coverage_distinguishes_complementary_repeat_and_partial(self):
+        occurrences = [
+            {"occurrence_id": "ref", "family_id": "fam", "species": "A", "gene_copy_id": "gA", "transcript_id": "txA", "source_feature_id": "ref_feature", "start": "1", "end": "100"},
+            {"occurrence_id": "b1", "family_id": "fam", "species": "B", "gene_copy_id": "gB", "transcript_id": "txB", "source_feature_id": "b1_feature", "start": "1", "end": "30", "path_roles": "exonic", "coding_roles": "CDS", "position_roles": "first", "annotation_source": "fixture", "original_attributes": "ID=b1", "partial_start": "0", "partial_end": "0", "path_role_records": '[{"transcript_id":"txB","path_role":"exonic"}]'},
+            {"occurrence_id": "b2", "family_id": "fam", "species": "B", "gene_copy_id": "gB", "transcript_id": "txB", "source_feature_id": "b2_feature", "start": "31", "end": "60"},
+            {"occurrence_id": "b3", "family_id": "fam", "species": "B", "gene_copy_id": "gB", "transcript_id": "txB", "source_feature_id": "b3_feature", "start": "61", "end": "100"},
+            {"occurrence_id": "c1", "family_id": "fam", "species": "C", "gene_copy_id": "gC", "transcript_id": "txC", "source_feature_id": "c1_feature", "start": "1", "end": "40"},
+            {"occurrence_id": "c2", "family_id": "fam", "species": "C", "gene_copy_id": "gC", "transcript_id": "txC", "source_feature_id": "c2_feature", "start": "101", "end": "140"},
+            {"occurrence_id": "d1", "family_id": "fam", "species": "D", "gene_copy_id": "gD", "transcript_id": "txD", "source_feature_id": "d1_feature", "start": "1", "end": "40"},
+        ]
+        element_rows = [
+            {"element_id": "EG1", "occurrence_id": row["occurrence_id"], "species": row["species"], "gene_copy_id": row["gene_copy_id"]}
+            for row in occurrences
+        ]
+
+        def match(match_id, query, blocks):
+            parsed_blocks = parse_legacy_blocks(blocks)
+            return {
+                "match_id": match_id,
+                "query_occurrence_id": query,
+                "subject_occurrence_id": "ref",
+                "match_status": "mapped",
+                "candidate_resolution": "resolved",
+                "candidate_ids": f"{match_id}.candidate_001",
+                "retained_candidate_ids": f"{match_id}.candidate_001",
+                "matched_blocks": blocks,
+                "query_genomic_matched_blocks": "chr:1-40:+",
+                "subject_genomic_matched_blocks": "chr:1-40:+",
+                "query_length": max(block.query.end0 for block in parsed_blocks),
+                "target_length": 100,
+            }
+
+        scored = [
+            match("m_b1", "b1", "1-30:1-30"),
+            match("m_b2", "b2", "1-30:31-60"),
+            match("m_b3", "b3", "1-40:61-100"),
+            match("m_c1", "c1", "1-40:1-40"),
+            match("m_c2", "c2", "1-40:1-40"),
+            match("m_d1", "d1", "1-40:1-40"),
+        ]
+        _membership_match_details(element_rows, occurrences, scored)
+        by_occurrence = {row["occurrence_id"]: row for row in element_rows}
+
+        self.assertEqual(by_occurrence["b1"]["reference_coverage_relation"], "complementary_complete")
+        self.assertEqual(by_occurrence["b2"]["reference_uncovered_bases"], 0)
+        self.assertEqual(by_occurrence["b3"]["reference_covered_bases"], 100)
+        self.assertEqual(by_occurrence["b1"]["reference_length"], 100)
+        self.assertEqual(by_occurrence["b1"]["reference_length_source"], "alignment_sequence_length")
+        self.assertEqual(by_occurrence["c1"]["reference_coverage_relation"], "repeated_overlap")
+        self.assertNotEqual(by_occurrence["c1"]["repeat_instance_id"], "NA")
+        self.assertEqual(by_occurrence["d1"]["reference_coverage_relation"], "single_partial")
+        self.assertEqual(by_occurrence["d1"]["reference_uncovered_bases"], 60)
+        self.assertEqual(by_occurrence["b1"]["parent_feature_ids"], "b1_feature")
+        self.assertEqual(by_occurrence["b1"]["transcript_ids"], "txB")
+        self.assertEqual(by_occurrence["b1"]["path_roles"], "exonic")
+        self.assertEqual(by_occurrence["b1"]["coding_roles"], "CDS")
+        self.assertEqual(by_occurrence["b1"]["position_roles"], "first")
+        self.assertEqual(json.loads(by_occurrence["b1"]["path_role_records"])[0]["transcript_id"], "txB")
 
 
 if __name__ == "__main__":

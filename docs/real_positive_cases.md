@@ -5,7 +5,18 @@ real-data evaluation. Published event expectations are external scoring metadata
 documented here and in the separate `truth_events.tsv` files linked below.
 Analysis receives the resource manifest and tree, without those scoring files.
 
-## Ready Metadata: 2026-09-18
+## v0.15 status: pending
+
+The v0.15 formal run has not been performed. spo5, rec8, and Hdac3 are positive
+observable benchmarks for focal gene-internal structural contrasts. Their
+published expectations remain external scoring records and do not enter site
+construction or phylogenetic inference. The existing manifests contain curated
+gene choices; none of the three has an independent genome-wide single-copy
+qualification from OrthoFinder or a documented equivalent. Results produced
+from them therefore remain conditional on the supplied upstream grouping until
+that qualification is added.
+
+## Input Metadata: 2026-09-18
 
 The parent workflow reports completed direct downloads of the four yeast
 assemblies and D. ananassae. The three other HDAC3 species use existing project
@@ -19,9 +30,10 @@ versions come from their headers. Original database files were only read.
 | spog_00055 | [manifest](../examples/real_cases/spog_00055/manifest.tsv) | [tree](../examples/real_cases/spog_00055/species_tree.tsv) | [scoring](../examples/real_cases/spog_00055/truth_events.tsv) | Four exact GFF GeneIDs; all resource paths supplied |
 | hdac3 | [manifest](../examples/real_cases/hdac3/manifest.tsv) | [tree](../examples/real_cases/hdac3/species_tree.tsv) | [scoring](../examples/real_cases/hdac3/truth_events.tsv) | Four exact GFF GeneIDs; all required genome/GFF paths supplied |
 
-These files can now be passed to `build-case`. This metadata task did not run
-case construction, inference, tests or additional downloads. Parent analyses
-can proceed independently of the deferred Bap170 and BCKDK preparation.
+These files can be passed to `build-case` as candidate benchmark inputs. This
+metadata task did not run case construction, inference, tests or additional
+downloads. A v0.15 formal benchmark also records the upstream single-copy
+qualification. Bap170 and BCKDK preparation remains deferred.
 
 The manifests supply curated gene choices and neutral resource metadata.
 No upstream OrthoFinder run or independent single-copy membership analysis was
@@ -242,7 +254,7 @@ located using the displayed sequences and flanking anchors:
 The separate 48 bp first intron in S. pombe is outside this figure-specific
 positive label; no additional historical claim is assigned to it here.
 
-### Recovery Status
+### Historical v0.14 Recovery Status
 
 In the first iteration, `20260916_214900_insiphy`, all three published events
 remained automatically unrecovered despite completed jobs. The manual
@@ -272,16 +284,15 @@ intronic DNA remains unresolved in the automatic output, and the corresponding
 exon/intron role contrast has not been recovered. The accepted result is
 therefore partial recovery of the published structural difference.
 
-All three positive cases completed with both 1 and 16 threads. Six core tables
-agree within each pair in the completed baseline and the final inference-only
-run `20260918_121100_insiphy`. That final run repairs a dsx role conflict using
-unchanged sequence/correspondence evidence; these three focal outcomes persist.
-The comparison does not establish equality of every output or validate the
-biological accuracy of unresolved observations.
-See [Real-Data Demonstration](real_data_benchmark.md) for the current automatic
-results and execution status. Published truth remains separate from analysis
-inputs, and no significant model comparison or unique historical direction is
-claimed from these observations.
+All three positive cases completed with both 1 and 16 threads under v0.14. Six
+core tables agreed within each pair in the historical baseline and the v0.14
+inference-only run `20260918_121100_insiphy`. These outcomes document the older
+implementation and do not predict v0.15 behavior. The comparison did not
+establish equality of every output or validate the biological accuracy of
+unresolved observations. See [Real-Data Demonstration](real_data_benchmark.md)
+for the historical tables and the v0.15 pending section. Published truth
+remains separate from analysis inputs, and no significant model comparison or
+unique historical direction is claimed from these observations.
 
 ## Tree Rationale
 
@@ -303,11 +314,12 @@ qualitative parsimony. The units are not calibrated ages or substitutions;
 any likelihood analysis on these lengths would be conditional on the arbitrary
 unit-length assumption. No rate estimation or significance result is claimed.
 
-## Current Limits
+## v0.14 historical limits and v0.15 acceptance conditions
 
-The three active cases have complete resource and gene metadata and confirmed
-manual correspondence for the focal published intervals above. All three were
-unrecovered in `20260916_214900_insiphy`. In `20260918_111929_insiphy`, Hdac3 has
+Under v0.14, the three active cases had complete resource and gene metadata and
+confirmed manual correspondence for the focal published intervals above. All
+three were unrecovered in `20260916_214900_insiphy`. In
+`20260918_111929_insiphy`, Hdac3 has
 a complete focal junction contrast but two equally parsimonious directions;
 rec8 has a two-species focal junction contrast, two unknown species, and no
 automatic homologous-intronic-DNA or exon/intron role contrast; spo5 remains
@@ -316,8 +328,10 @@ observed state coverage, role recovery and directional branch placement.
 No overall accuracy estimate, significant P value or uniquely resolved event
 direction is established by this audit. The six-table 1-thread versus 16-thread
 comparisons passed. Bap170 and BCKDK modern positive-site correspondence
-remains deferred. Current automatic results are tracked in
-[Real-Data Demonstration](real_data_benchmark.md).
+remains deferred. These automatic results are historical and are tracked in
+[Real-Data Demonstration](real_data_benchmark.md). The v0.15 section remains
+pending until a fresh run uses schema-v3 frozen matrices and the current
+correspondence rules.
 
 The supplied gene grouping has not undergone an independent genome-wide
 single-copy assessment in this task. Retain all equally supported histories
@@ -325,3 +339,222 @@ when limited sampling leaves event direction uncertain. Original annotation
 flags remain part of the input evidence, and published expectations must not
 be used to repair or relabel it. No new data, RNA inputs or analysis jobs were
 introduced during the figure-to-sequence audit.
+
+## T6 Mammalian Case Dossiers: 2026-09-18
+
+These are literature-led candidates for the next real-data benchmark. This
+update records first-party paper claims and official resource pointers only.
+No genome, annotation, transcript or protein file was downloaded for these
+cases. The current assembly accessions and RefSeq annotation releases below
+identify usable NCBI resource families; they do not certify that the focal
+event has already been remapped to that assembly. Gene IDs and event-site
+coordinates must be matched in the selected GFF before any run. Exact event
+accession.version and coordinates are explicitly listed as unresolved where
+the cited paper does not provide them.
+
+### FDPS: Rat Intron Loss / 3-to-1 Exon Joining
+
+**Direct literature evidence.** Sharma, Schwede and Hiller (2017), Fig. 1E
+and the final paragraph of Results, show human FDPS exons 5-7 aligned to one
+larger rat exon. The text states that the two intervening introns are deleted
+in rat and that mouse does not show this joined structure. The figure is an
+example used to explain CESAR 2.0 gene mode, so its annotation prediction must
+be checked against the underlying alignments and independent comparative
+records before scoring the software. The earlier comparative study by
+Coulombe-Huntington and Majewski (2007) is cited as the event source. The
+Exalign comparative paper's event table lists human `NM_002004`, mouse
+`NM_134469` and rat `NM_031840` for FDPS; that table numbers the lost introns
+as 4-5, while CESAR 2.0 describes the joined human exon interval as exons 5-7
+and the intervening boundaries as introns 5 and 6. Use the flanking exon
+sequence and exact aligned cuts as identifiers; do not equate the differing
+intron-number conventions. [CESAR 2.0, Fig. 1E and Results](https://academic.oup.com/bioinformatics/article/33/24/3985/4095639),
+[Coulombe-Huntington & Majewski 2007](https://doi.org/10.1101/gr.5703406),
+[Exalign, event table](https://academic.oup.com/nar/article/36/8/e47/2410452).
+
+**Species and names.** The focal comparison is human (*Homo sapiens*), mouse
+(*Mus musculus*) and rat (*Rattus norvegicus*). Dog (*Canis lupus familiaris*)
+is a useful additional mammalian outgroup: it was included in the four-genome
+human/mouse/rat/dog comparative framework of the intron-loss literature, but
+its FDPS site has not been checked here. Human official symbol `FDPS`; aliases
+include `FPS` and `FPPS`. Rat is `Fdps`; the gene is also called farnesyl
+pyrophosphate synthase. NCBI Gene anchors: human GeneID 2224, mouse 110196,
+rat 83791, dog 480129. The historical RefSeq transcript labels above lack a
+version suffix in the cited table; current accession.version values remain to
+be confirmed.
+
+**Genome and annotation candidates.** Human GRCh38.p14
+(`GCF_000001405.40`, RefSeq Annotation `RS_2025_08`), mouse GRCm39
+(`GCF_000001635.27`, `RS_2024_02`), rat GRCr8 (`GCF_036323735.1`,
+`RS_2024_02`) and dog ROS_Cfam_1.0 (`GCF_014441545.1`, RefSeq Annotation
+Release 106) have official NCBI RefSeq genome/annotation records. Official
+Gene and assembly links are indexed in [data_sources.md](data_sources.md).
+The published focal transcript-to-assembly mappings, genomic accession.version,
+and exact exon/intron coordinates in these releases have not been remapped or
+verified. Human FDPS has reported pseudogenes; count and classify full-length
+coding loci, processed pseudogenes and other hits separately during the
+single-copy screen.
+
+**Single-copy qualification.** Not yet established for any selected
+OrthoFinder proteome set. Confirm one protein-coding FDPS locus per species,
+inspect all FDPS-like loci and pseudogenes in the genome, and review the
+single-copy orthogroup and gene tree before supplying a species tree. Multiple
+transcripts at one locus do not by themselves mean gene-level duplication.
+
+**Question INSIPHY can test.** Given verified single-copy gene orthology and
+genome/annotation inputs, do the coding sequence blocks corresponding to human
+exons 5, 6 and 7 map in order and with complementary coverage to one continuous
+rat exon? Are both homologous internal splice boundaries absent from the rat
+structure, and are the corresponding boundaries retained in mouse and any
+outgroup? On a sufficiently sampled, supplied tree, which branch histories
+remain compatible with the observed boundary states? Keep two adjacent
+boundary losses as two structural characters unless the inference model
+explicitly represents their dependence.
+
+**Evidence use and limits.** This is the strongest of these three candidates
+for a historical intron-loss / exon-joining test because the literature names
+the sequence interval and compares multiple mammals. The predicted
+processed-transcript recombination in the CESAR caption is a proposed
+mechanism, not a structural observation; INSIPHY can score sequence
+correspondence and boundary states, not establish that mechanism. A
+single-species difference alone cannot fix direction; human, mouse and rat
+plus suitable outgroups are needed. No event coordinate or branch is frozen
+as truth until current assemblies, orthology and flanking sequences are
+checked independently of inference.
+
+### MAMSTR: Cow Acceptor-Site Shift
+
+**Direct literature evidence.** Sharma et al. (2017), Fig. 1D and its caption,
+show exon 3 of MAMSTR with a reported GG acceptor mutation and a 30 bp
+acceptor shift in cow. The caption says CESAR 2.0, unlike its predecessor,
+identifies the shifted splice site and the cow exon start. The main text
+describes this as a real 30 bp splice-site-shift example. The paper does not
+give a genomic accession.version or base coordinate in the caption or main
+text. The textual description identifies cow as the query; freeze the
+reference-row species only after checking the high-resolution panel and its
+methods rather than inferring it from the example's general human-to-mouse
+workflow. [CESAR 2.0, Fig. 1D and Results](https://academic.oup.com/bioinformatics/article/33/24/3985/4095639).
+
+**Species and names.** The directly named focal species is cow (*Bos taurus*).
+The likely cross-species reference set should include human
+(*Homo sapiens*) and suitable mammalian outgroups. Mouse and horse are
+candidate additions with official annotated gene records. Human symbol
+`MAMSTR`; synonym `MASTR`; the full name is MEF2 activating motif and SAP
+domain containing transcriptional regulator. NCBI Gene anchors: cow 505540,
+human 284358, mouse `Mamstr` 74490 and horse 100054356.
+
+**Genome and annotation candidates.** Cow ARS-UCD2.0
+(`GCF_002263795.3`, `RS_2024_12`), human GRCh38.p14
+(`GCF_000001405.40`, `RS_2025_08`), mouse GRCm39
+(`GCF_000001635.27`, `RS_2024_02`) and horse TB-T2T
+(`GCF_041296265.1`, `RS_2024_12`) have official NCBI RefSeq annotation
+records. Current NCBI Gene records place cow MAMSTR at
+`NC_037345.1:55352451-55358218:-` and human MAMSTR at
+`NC_000019.10:48705718-48719725:-`; these are whole-gene intervals, not
+the published exon-3 splice-site coordinates. No event boundary has been
+lifted or checked against the paper's sequence panel. The current cow RefSeq
+record includes model transcripts, so the annotation is a candidate structure
+observation, not independent transcript validation.
+
+**Single-copy qualification.** Not yet established for a chosen proteome set.
+NCBI/Ensembl ortholog labels are useful discovery evidence, but the test input
+must still be checked in OrthoFinder for exactly one protein-coding locus per
+taxon, then reviewed for additional MAMSTR-like copies and gene-tree
+consistency. The number of isoforms in each annotation is not the gene copy
+number.
+
+**Question INSIPHY can test.** Does the exon-3 coding sequence align across
+species while the cow acceptor coordinate differs by approximately 30 bp?
+Can the alignment distinguish a shifted boundary from loss of the entire
+homologous exon, and does a broader tree localize the observed boundary state
+to a supported branch or leave several branches possible? Preserve both exact
+cut positions and their aligned interval; do not merge them solely because
+they are nearby.
+
+**Evidence use and limits.** This is a focused splice-boundary recovery
+challenge and a useful test of exact cut alignment. Its independent truth is
+weaker than a transcript-supported event: the cited figure is a comparative
+gene-annotation example and the paper does not report RNA validation,
+accession.version or exact genomic cut coordinates for the cow transcript.
+The literature supports the reported alignment/boundary interpretation; it
+does not by itself provide a uniquely polarized phylogenetic event. Do not
+score the 30 bp as an evolutionary event until the source panel, modern
+sequence alignment, gene orthology and annotation evidence are reconciled.
+
+### PKM: Homologous Mutually Exclusive Exons 9 and 10
+
+**Direct literature evidence.** Wang et al. (2012; published online 2011),
+Fig. 1A, aligns the human PK-M exon-9 and exon-10 nucleotide and amino-acid
+sequences and reports their identity. Fig. 1B describes a human genomic
+minigene containing both exons and flanking introns; Fig. 1C uses RT-PCR and
+restriction digestion to distinguish exon-9-containing M1 and exon-10-
+containing M2 products in HEK-293 cells. These data establish an extant
+within-gene homologous exon pair and alternative transcript paths in human.
+They do not date the duplication or show a species-tree branch where it
+occurred. [Wang et al. 2012, Figs. 1A-C](https://doi.org/10.1093/jmcb/mjr030).
+Independent equine work explicitly characterized and measured M1/M2
+pyruvate-kinase transcripts in horse; it is external validation for the
+existence of the alternative forms in that species, not an INSIPHY input.
+[Echigoya et al. 2008, PubMed record](https://pubmed.ncbi.nlm.nih.gov/18602015/).
+
+**Species and names.** Human (*Homo sapiens*), mouse (*Mus musculus*), rat
+(*Rattus norvegicus*), cow (*Bos taurus*) and horse (*Equus caballus*) are
+candidate genome panel members with official NCBI PKM/Pkm gene records.
+Human symbol `PKM`, also called `PK-M`; the protein products are commonly
+called PKM1 and PKM2. Mouse and rat use `Pkm`. NCBI Gene anchors: human 5315,
+mouse 18746, rat 25630, cow 512571 and horse 100063687. PKM1 and PKM2 are
+transcript/protein isoform names from the same gene, not separate orthologous
+gene tips.
+
+**Genome and annotation candidates.** Human GRCh38.p14
+(`GCF_000001405.40`, `RS_2025_08`), mouse GRCm39
+(`GCF_000001635.27`, `RS_2024_02`), rat GRCr8 (`GCF_036323735.1`,
+`RS_2024_02`), cow ARS-UCD2.0 (`GCF_002263795.3`, `RS_2024_12`) and horse
+TB-T2T (`GCF_041296265.1`, `RS_2024_12`) have official NCBI RefSeq
+genome/annotation records. The exact exon-9/exon-10 accession.version and
+coordinates in the selected GFFs have not been recorded here. The Wang paper
+uses a human PK-M sequence/minigene; its annotation context cites Ensembl 83
+and GENCODE 24 in later transcript-structure work. Current gene models have
+different transcript inventories and total exon counts across releases, so
+the two focal repeated exons must be matched by local sequence and flanking
+exon context, not exon number alone.
+
+**Single-copy qualification.** Not yet established for the chosen proteomes.
+Confirm one protein-coding PKM locus per species with OrthoFinder and inspect
+gene-tree consistency. Within each locus, retain the distinct exon-9 and
+exon-10 instances even though their sequences are homologous. Transcript
+isoforms are separate paths through these repeated units; collapsing them to
+one canonical protein would erase the case's defining structure.
+
+**Question INSIPHY can test.** Can the two internally homologous exon units
+be detected as two distinct ordered genomic instances, and can the observed
+transcript annotations retain exon-9 and exon-10 paths as mutually exclusive
+alternatives? Across orthologous species, are both units and their flanking
+splice junctions represented, or are some species/path states unknown because
+the annotation does not contain them? If broader taxon data support an
+ancestral reconstruction, report the possible histories of each exon unit
+separately and avoid treating exon 9 and exon 10 as interchangeable copies.
+
+**Evidence use and limits.** PKM is a positive control for within-gene
+repeated-exon homology and alternative-path handling. It is a difficult
+single-copy-gene case because single-copy status applies to the gene locus,
+while the two homologous exon copies are internal paralogous units. The cited
+human experiments establish current alternative use, not the ancient origin,
+direction or timing of the exon duplication. Annotation-only species inputs
+can test structural correspondence and annotated path availability; they
+cannot estimate tissue-specific isoform abundance or assert that every
+annotated path is expressed. Do not count the two exons as two gene copies or
+score alternative isoform choice as a species-level gain/loss without an
+explicit path-aware character definition.
+
+### Resource and Truth Status
+
+The official NCBI Gene and RefSeq assembly records are listed in
+[data_sources.md](data_sources.md). They confirm candidate gene records and
+assembly/annotation entry points. No FASTA/GFF files, gene-level sequence
+packages, OrthoFinder proteomes or source-paper alignments have been staged in
+this task. The single-copy screen, current protein-coding locus counts,
+accession.version crosswalks, local sequence extraction, splice-site
+coordinates, transcript-evidence review and tree curation are outstanding.
+The exact variants and intervals must be written to the case manifest only
+after that review; literature event labels must remain separate scoring
+metadata.

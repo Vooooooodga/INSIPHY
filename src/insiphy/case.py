@@ -203,6 +203,8 @@ def build_case(
     flank=1000,
     max_extension=10000,
     context_aligner="minimap2",
+    coding_msa_mode="linsi",
+    short_context_max_length=300,
 ):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -250,7 +252,17 @@ def build_case(
     copy_optional_tree(copy_tree, output_dir, "copy_tree.tsv")
     copy_optional_tree(gene_tree, output_dir, "gene_tree.tsv")
     if appended:
-        derive_tables(output_dir, output_dir, identity_threshold, aligner=aligner, threads=threads, min_size_ratio=min_size_ratio, context_aligner=context_aligner)
+        derive_tables(
+            output_dir,
+            output_dir,
+            identity_threshold,
+            aligner=aligner,
+            threads=threads,
+            min_size_ratio=min_size_ratio,
+            context_aligner=context_aligner,
+            coding_msa_mode=coding_msa_mode,
+            short_context_max_length=short_context_max_length,
+        )
     write_tsv(output_dir / "case_build_report.tsv", report, ["case_id", "species", "gene_id", "gene_copy_id", "status", "segment_count", "message"])
     return report
 

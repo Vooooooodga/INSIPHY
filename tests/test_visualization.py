@@ -15,7 +15,15 @@ class VisualizationSemanticTests(unittest.TestCase):
             rows,
             ["match_id", "query_occurrence_id", "subject_occurrence_id", "match_status",
              "alignment_strand", "projected_reference_blocks", "alignment_backend",
-             "correspondence_basis", "protein_projected_blocks"],
+             "correspondence_basis", "protein_projected_blocks", "matched_blocks"],
+        )
+
+    def write_branch_events(self, directory, rows):
+        write_tsv(
+            directory / "branch_structural_events.tsv",
+            rows,
+            ["family_id", "layer", "site_id", "branch_scope", "event_type",
+             "placement_status", "call_scope"],
         )
 
     def write_case(self, root):
@@ -70,7 +78,7 @@ class VisualizationSemanticTests(unittest.TestCase):
                 "match_id": f"m{i}", "query_occurrence_id": f"A_e{i}",
                 "subject_occurrence_id": target, "match_status": "mapped",
                 "alignment_strand": "+", "projected_reference_blocks": f"1-{length}:1-{length}",
-                "alignment_backend": "mafft_overlap",
+                "alignment_backend": "mafft_overlap", "matched_blocks": f"1-{length}:1-{length}",
             }
             for i, target, length in ((1, "B_e1", 51), (2, "B_cand", 41), (3, "B_pred", 41), (4, "B_unknown", 41))
         ])
@@ -149,7 +157,7 @@ class VisualizationSemanticTests(unittest.TestCase):
                 "subject_occurrence_id": "A_e1", "match_status": "mapped",
                 "alignment_strand": "-", "projected_reference_blocks": "1-51:1-51",
                 "alignment_backend": "mafft_overlap", "correspondence_basis": "annotated_CDS_protein",
-                "protein_projected_blocks": "10-39:7-36",
+                "protein_projected_blocks": "10-39:7-36", "matched_blocks": "10-39:7-36",
             }])
             for strand in ("+", "-"):
                 for table in ("segment_occurrences.tsv", "transcript_paths.tsv"):
@@ -171,6 +179,8 @@ class VisualizationSemanticTests(unittest.TestCase):
                         self.assertEqual(ribbon.get("data-match-id"), "protein_partial")
                         self.assertEqual(ribbon.get("data-correspondence-basis"), "annotated_CDS_protein")
                         self.assertEqual(ribbon.get("data-projection-field"), "protein_projected_blocks")
+                        self.assertEqual(ribbon.get("data-block-source"), "matched_blocks")
+                        self.assertEqual(ribbon.get("data-block-field"), "matched_blocks")
                         coords = [float(value) for value in re.findall(r"-?\d+(?:\.\d+)?", ribbon.get("d"))]
                         for occurrence, lane, start, left, right in (
                             ("A_e1", "A_tx2", 7, coords[0], coords[14]),
@@ -210,11 +220,11 @@ class VisualizationSemanticTests(unittest.TestCase):
                 {"match_id": "split_left", "query_occurrence_id": "left", "subject_occurrence_id": "reference",
                  "match_status": "mapped", "alignment_strand": "+", "projected_reference_blocks": "1-60:1-60",
                  "alignment_backend": "mafft_overlap", "correspondence_basis": "annotated_CDS_protein",
-                 "protein_projected_blocks": "1-40:21-60"},
+                 "protein_projected_blocks": "1-40:21-60", "matched_blocks": "1-40:21-60"},
                 {"match_id": "split_right", "query_occurrence_id": "reference", "subject_occurrence_id": "right",
                  "match_status": "mapped", "alignment_strand": "+", "projected_reference_blocks": "1-60:1-60",
                  "alignment_backend": "mafft_overlap", "correspondence_basis": "annotated_CDS_protein",
-                 "protein_projected_blocks": "61-100:1-40"},
+                 "protein_projected_blocks": "61-100:1-40", "matched_blocks": "61-100:1-40"},
             ])
             for renderer in (draw_synteny, draw_integrated_phylo_synteny):
                 with self.subTest(renderer=renderer.__name__):
@@ -267,6 +277,174 @@ class VisualizationSemanticTests(unittest.TestCase):
                     svg = ElementTree.parse(renderer(input_dir, result_dir, output_dir)).getroot()
                     self.assertFalse(any(node.get("data-connector") for node in svg.iter()))
                     self.assertTrue(any(node.get("data-element-id") == "EG_1" for node in svg.iter()))
+
+    def test_legacy_projection_is_labeled_and_never_used_as_ribbon_geometry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir, output_dir = self.write_case(Path(tmp))
+            write_tsv(input_dir / "segment_matches.tsv", [{
+                "match_id": "legacy", "query_occurrence_id": "A_e1", "subject_occurrence_id": "B_e1",
+                "match_status": "mapped", "alignment_strand": "+", "projected_reference_blocks": "1-51:1-51",
+                "alignment_backend": "old_backend",
+            }], ["match_id", "query_occurrence_id", "subject_occurrence_id", "match_status",
+                "alignment_strand", "projected_reference_blocks", "alignment_backend"])
+            svg = ElementTree.parse(draw_synteny(input_dir, result_dir, output_dir)).getroot()
+            self.assertFalse(any(node.get("data-connector") == "exon_correspondence" for node in svg.iter()))
+            self.assertTrue(any(node.get("data-match-state") == "actual_blocks_missing" for node in svg.iter()))
+            self.assertIn("legacy projection fields were not used as ribbon geometry", "".join(svg.itertext()))
+
+    def test_matched_alignment_blocks_show_both_sides_of_an_indel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir, output_dir = self.write_case(Path(tmp))
+            self.write_matches(result_dir, [{
+                "match_id": "indel",
+                "query_occurrence_id": "A_e1",
+                "subject_occurrence_id": "B_e1",
+                "match_status": "mapped",
+                "alignment_strand": "+",
+                "projected_reference_blocks": "7-20:10-23;21-36:25-40",
+                "matched_blocks": "7-20:10-23;21-36:25-40",
+                "alignment_backend": "mafft_overlap",
+            }])
+            svg = ElementTree.parse(draw_synteny(input_dir, result_dir, output_dir)).getroot()
+            ribbons = [node for node in svg.iter() if node.get("data-connector") == "exon_correspondence"]
+            self.assertEqual(len(ribbons), 2)
+            self.assertEqual(
+                {(node.get("data-source-start"), node.get("data-target-start")) for node in ribbons},
+                {("7", "10"), ("21", "25")},
+            )
+
+    def test_membership_blocks_can_draw_when_pairwise_table_is_legacy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir, output_dir = self.write_case(Path(tmp))
+            membership_rows = read_tsv(result_dir / "element_correspondence.tsv")
+            for row in membership_rows:
+                if row["occurrence_id"] == "A_e1":
+                    row["matched_blocks"] = "legacy:query:7-20:10-23;30-36:30-36"
+                elif row["occurrence_id"] == "B_e1":
+                    row["matched_blocks"] = "legacy:subject:7-20:10-23;30-36:30-36"
+                else:
+                    row["matched_blocks"] = ""
+            write_tsv(result_dir / "element_correspondence.tsv", membership_rows, list(membership_rows[0]))
+            write_tsv(input_dir / "segment_matches.tsv", [{
+                "match_id": "legacy", "query_occurrence_id": "A_e1", "subject_occurrence_id": "B_e1",
+                "match_status": "mapped", "alignment_strand": "+", "projected_reference_blocks": "1-51:1-51",
+                "alignment_backend": "old_backend",
+            }], ["match_id", "query_occurrence_id", "subject_occurrence_id", "match_status",
+                "alignment_strand", "projected_reference_blocks", "alignment_backend"])
+            svg = ElementTree.parse(draw_synteny(input_dir, result_dir, output_dir)).getroot()
+            ribbons = [node for node in svg.iter() if node.get("data-connector") == "membership_correspondence"]
+            self.assertEqual(len(ribbons), 2)
+            self.assertTrue(all(node.get("data-block-source") == "membership_blocks" for node in ribbons))
+            self.assertEqual(
+                {(node.get("data-source-start"), node.get("data-target-start")) for node in ribbons},
+                {("7", "10"), ("30", "30")},
+            )
+
+    def test_tree_is_left_of_species_tracks_and_candidates_have_a_separate_lane(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir, output_dir = self.write_case(Path(tmp))
+            svg = ElementTree.parse(draw_synteny(input_dir, result_dir, output_dir)).getroot()
+            tree_x = [float(node.get("x1")) for node in svg.iter()
+                      if node.get("data-tree-edge") == "horizontal"]
+            track_groups = [node for node in svg.iter()
+                            if node.get("data-lane-id") == "A_tx1" and node.tag.endswith("g")]
+            track_x = [float(line.get("x1")) for group in track_groups for line in group.iter()
+                       if line.get("y1") == line.get("y2")]
+            self.assertTrue(tree_x)
+            self.assertTrue(track_x)
+            self.assertLess(max(tree_x), min(track_x))
+            candidate = next(node for node in svg.iter()
+                             if node.get("data-occurrence-id") == "B_cand" and node.tag.endswith("rect"))
+            self.assertEqual(candidate.get("data-lane-id"), "candidate evidence")
+            self.assertEqual(candidate.get("data-visual-status"), "sequence_candidate")
+
+    def test_cds_utr_and_noncoding_features_have_distinct_shapes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir, output_dir = self.write_case(Path(tmp))
+            rows = read_tsv(input_dir / "segment_occurrences.tsv")
+            utr = dict(rows[0], occurrence_id="A_utr", transcript_id="A_tx1", start="170", end="185", role="three_prime_UTR")
+            noncoding = dict(rows[0], occurrence_id="A_nc", transcript_id="A_tx1", start="190", end="205", role="noncoding_exon")
+            rows.extend((utr, noncoding))
+            write_tsv(input_dir / "segment_occurrences.tsv", rows, list(rows[0]))
+            svg = ElementTree.parse(draw_synteny(input_dir, result_dir, output_dir)).getroot()
+            shapes = {node.get("data-occurrence-id"): node.get("data-feature-shape") for node in svg.iter()
+                      if node.tag.endswith("rect") and node.get("data-occurrence-id")}
+            self.assertEqual(shapes["A_e1"], "cds")
+            self.assertEqual(shapes["A_utr"], "utr")
+            self.assertEqual(shapes["A_nc"], "noncoding")
+
+    def test_short_feature_gets_a_labeled_local_zoom_panel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir, output_dir = self.write_case(Path(tmp))
+            rows = read_tsv(input_dir / "segment_occurrences.tsv")
+            micro = dict(rows[0], occurrence_id="A_micro", transcript_id="A_tx_micro", start="50000", end="50029", role="CDS")
+            rows.append(micro)
+            write_tsv(input_dir / "segment_occurrences.tsv", rows, list(rows[0]))
+            svg = ElementTree.parse(draw_synteny(input_dir, result_dir, output_dir)).getroot()
+            panels = [node for node in svg.iter() if node.get("data-zoom-panel")]
+            self.assertTrue(panels)
+            self.assertIn("Local detail, magnified", "".join(svg.itertext()))
+            self.assertTrue(any(node.get("data-zoom-start") and node.get("data-zoom-end") for node in panels))
+
+    def test_each_event_branch_has_counts_in_both_phylogenetic_views(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir, output_dir = self.write_case(Path(tmp))
+            self.write_branch_events(result_dir, [
+                {"family_id": "fam", "layer": "exon_role", "site_id": "EG_A1",
+                 "branch_scope": "root->A", "event_type": "exon_role_gain",
+                 "placement_status": "required", "call_scope": "core_structural_event"},
+                {"family_id": "fam", "layer": "exon_role", "site_id": "EG_A2",
+                 "branch_scope": "root->A", "event_type": "exon_role_loss",
+                 "placement_status": "required", "call_scope": "core_structural_event"},
+                {"family_id": "fam", "layer": "splice_junction", "site_id": "J_A3",
+                 "branch_scope": "root->A", "event_type": "intron_gain",
+                 "placement_status": "possible", "call_scope": "core_structural_event"},
+                {"family_id": "fam", "layer": "splice_junction", "site_id": "J_B1",
+                 "branch_scope": "root->B", "event_type": "intron_loss",
+                 "placement_status": "possible", "call_scope": "core_structural_event"},
+            ])
+            expected_a = (
+                'data-branch-scope="root-&gt;A" data-event-total="3" '
+                'data-event-required="2" data-event-possible="1"'
+            )
+            expected_b = (
+                'data-branch-scope="root-&gt;B" data-event-total="1" '
+                'data-event-required="0" data-event-possible="1"'
+            )
+            for renderer in (draw_phylogeny, draw_integrated_phylo_synteny):
+                with self.subTest(renderer=renderer.__name__):
+                    svg = renderer(input_dir, result_dir, output_dir).read_text()
+                    self.assertIn(expected_a, svg)
+                    self.assertIn(expected_b, svg)
+                    self.assertIn("3 total (R2/P1)", svg)
+                    self.assertIn("1 total (R0/P1)", svg)
+                    self.assertIn("EG_A1", svg)
+                    self.assertIn("J_B1", svg)
+
+    def test_event_sidebar_reports_exact_overflow_from_parsimony_table(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir, output_dir = self.write_case(Path(tmp))
+            self.write_branch_events(result_dir, [
+                {"family_id": "fam", "layer": "exon_role", "site_id": f"EG_{index:02d}",
+                 "branch_scope": "root->A", "event_type": "exon_role_gain",
+                 "placement_status": "required", "call_scope": "core_structural_event"}
+                for index in range(14)
+            ])
+            svg = draw_phylogeny(input_dir, result_dir, output_dir).read_text()
+            self.assertIn(
+                'data-event-sidebar-total="14" data-event-sidebar-shown="12" '
+                'data-event-sidebar-additional="2" data-event-source="branch_structural_events.tsv"',
+                svg,
+            )
+            self.assertIn(
+                "Valid events: total=14; shown=12; additional=2.",
+                svg,
+            )
+            self.assertIn(
+                "Additional events remaining in branch_structural_events.tsv: 2.",
+                svg,
+            )
+            self.assertIn("bounded preview", svg)
 
     def test_invalid_statistical_fit_does_not_draw_probability_event(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -335,6 +513,15 @@ class VisualizationSemanticTests(unittest.TestCase):
             self.assertIn("#0072B2", synteny)
             self.assertIn('data-lane-id="B_tx2"', integrated)
             self.assertIn("No valid branch event display", integrated)
+
+    def test_pattern_encoding_is_an_alternative_to_color(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            input_dir, result_dir, output_dir = self.write_case(Path(tmp))
+            draw_synteny(input_dir, result_dir, output_dir, correspondence_encoding="pattern")
+            svg = (output_dir / "intragenic_synteny.svg").read_text()
+            self.assertIn('data-encoding="pattern"', svg)
+            self.assertIn('fill="url(#eg_', svg)
+            self.assertNotIn("Color: homologous exon membership", svg)
 
     def test_tree_drawings_use_units_for_missing_lengths_and_preserve_known_lengths(self):
         cases = (

@@ -15,8 +15,20 @@ from scipy.optimize import brentq, minimize
 from scipy.special import logsumexp
 from scipy.stats import chi2
 
-from .io import read_tsv, write_tsv
-from .structural_sites import build_structural_site_matrix, _single_copy_families
+from .io import (
+    STRUCTURAL_SITE_SCHEMA_VERSION,
+    read_structural_site_matrix,
+    read_tsv,
+    structural_site_observed_state,
+    validate_structural_site_tip_rows,
+    write_structural_site_matrix,
+    write_tsv,
+)
+from .structural_sites import (
+    _single_copy_families,
+    build_structural_site_matrix,
+    structural_matrix_annotation_view,
+)
 from .tree import SpeciesTree
 
 
@@ -25,6 +37,8 @@ RATE_MAX = 100.0
 MULTIPLIER_MIN = 1e-3
 MULTIPLIER_MAX = 1e3
 PROFILE_DROP_95 = 0.5 * float(chi2.ppf(0.95, 1))
+COMPLETE_UNIVERSE_RULES = {"independent_catalogue", "curated_complete_universe"}
+GENERATED_ALL_ZERO_MASKS = {"generated_all_zero", "explicit_all_zero"}
 
 
 def _fmt(value):
@@ -59,14 +73,44 @@ def _validated_tree_rows(path, branch_length_mode):
     return out
 
 
+def _posterior_unavailable_reason(fit):
+    if fit.get("inference_status") == "no_observed_states":
+        return "no_observed_states"
+    if fit.get("inference_status") == "no_observed_contrast":
+        return "no_observed_contrast"
+    if not bool(fit.get("converged")):
+        return "optimizer_failed"
+    if bool(fit.get("boundary")):
+        return "parameter_at_boundary"
+    if not bool(fit.get("identifiable")):
+        return "parameters_not_identifiable"
+    if fit.get("fit_status") != "success":
+        return str(fit.get("fit_status") or "fit_not_successful")
+    return "NA"
+
+
 def _fit_valid_for_posterior(fit):
-    return (
-        bool(fit.get("converged"))
-        and fit.get("fit_status") == "success"
-        and fit.get("inference_status") != "no_observed_contrast"
-        and bool(fit.get("identifiable"))
-        and not bool(fit.get("boundary"))
+    return _posterior_unavailable_reason(fit) == "NA"
+
+
+def _posterior_sensitivity_status(fit):
+    statuses = {interval.get("status", "") for interval in fit.get("intervals", [])}
+    if any("range_limited" in status for status in statuses):
+        return "unavailable_open_profile_interval"
+    if any(status in {"profile_optimization_failed", "profile_root_failed", "optimizer_failed"}
+           or status.startswith("profile_optimization_failed;")
+           or status.startswith("profile_root_failed;")
+           for status in statuses):
+        return "unavailable_profile_failure"
+    endpoints_complete = bool(fit.get("intervals")) and all(
+        interval.get("theta_low") is not None and interval.get("theta_high") is not None
+        for interval in fit.get("intervals", [])
     )
+    if statuses and statuses == {"two_sided"} and endpoints_complete:
+        return "finite_profile_envelope"
+    if statuses and statuses == {"two_sided"}:
+        return "unavailable_profile_endpoints_missing"
+    return "sensitivity_not_estimated"
 
 
 @lru_cache(maxsize=32768)
@@ -120,12 +164,91 @@ def _site_key(row):
     return (row.get("family_id", "NA"), row.get("layer", "NA"), row.get("site_id", "NA"))
 
 
-def _load_structural_site_universe(input_dir):
-    path = Path(input_dir) / "structural_site_universe.tsv"
-    rows = read_tsv(path, ["family_id", "layer", "site_id"], optional=True)
-    if not rows:
-        return None
-    return {_site_key(row) for row in rows}
+def _transition_event_type(layer, source_index, target_index):
+    if source_index == target_index:
+        return "no_change"
+    if layer == "splice_junction":
+        return "intron_gain" if (source_index, target_index) == (0, 1) else "intron_loss"
+    if layer == "exon_presence":
+        return "sequence_gain" if (source_index, target_index) == (0, 1) else "sequence_loss"
+    if layer == "exon_role":
+        return "exon_role_gain" if (source_index, target_index) == (0, 1) else "exon_role_loss"
+    return "state_gain" if (source_index, target_index) == (0, 1) else "state_loss"
+
+
+def _transition_structural_relation(layer, site_kind, source_index, target_index):
+    if layer != "splice_junction" or site_kind not in {
+        "within_element_junction",
+        "within_exon_boundary",
+    }:
+        return "NA"
+    if (source_index, target_index) == (0, 1):
+        return "exon_split"
+    if (source_index, target_index) == (1, 0):
+        return "exon_fusion"
+    return "NA"
+
+
+def _load_site_matrix(
+    input_dir,
+    output_dir,
+    structural_site_matrix_path,
+    annotation_view,
+):
+    if structural_site_matrix_path is not None:
+        source = Path(structural_site_matrix_path)
+        site_rows = read_structural_site_matrix(source)
+        excluded_rows = read_tsv(source.parent / "excluded_families.tsv", optional=True)
+        output_matrix = Path(output_dir) / "structural_site_matrix.tsv"
+        if source.resolve() != output_matrix.resolve():
+            write_structural_site_matrix(output_matrix, site_rows)
+        return site_rows, excluded_rows, source, "frozen_matrix"
+    site_rows, excluded_rows = build_structural_site_matrix(
+        input_dir,
+        output_dir,
+        annotation_view=annotation_view,
+    )
+    source = Path(output_dir) / "structural_site_matrix.tsv"
+    write_structural_site_matrix(source, site_rows)
+    return read_structural_site_matrix(source), excluded_rows, source, "prepared_in_analysis"
+
+
+def _masked_state(row):
+    return structural_site_observed_state(row)
+
+
+def _validate_complete_universe(site_rows, tree):
+    rows_by_site = defaultdict(dict)
+    for row in site_rows:
+        rows_by_site[_site_key(row)][row.get("species", "NA")] = row
+    missing = []
+    for key, by_species in sorted(rows_by_site.items()):
+        for species in sorted(tree.leaf_by_label):
+            row = by_species.get(species)
+            if row is None:
+                missing.append("/".join((*key, species)))
+                continue
+            rule = str(row.get("discovery_rule", "")).strip()
+            if rule not in COMPLETE_UNIVERSE_RULES:
+                missing.append("/".join((*key, species)) + ":nonindependent_discovery_rule")
+                continue
+            state = row.get("state", "unknown")
+            state_0 = row.get("state_0", "NA")
+            state_1 = row.get("state_1", "NA")
+            mask = str(row.get("observation_mask", "observed")).strip().lower()
+            explicit_observation = mask == "observed" and state in {state_0, state_1}
+            generated_all_zero = mask in GENERATED_ALL_ZERO_MASKS and state == state_0
+            if not (explicit_observation or generated_all_zero):
+                missing.append("/".join((*key, species)) + ":state_not_explicitly_enumerated")
+    if missing:
+        preview = ", ".join(missing[:8])
+        suffix = " ..." if len(missing) > 8 else ""
+        raise SystemExit(
+            "complete-universe ascertainment requires independent_catalogue or "
+            "curated_complete_universe rows with an observed state, or an explicitly generated "
+            "all-zero state, for every family/layer/site/species combination; unavailable: "
+            + preview + suffix
+        )
 
 
 def _pattern_observed_values(pattern):
@@ -267,6 +390,203 @@ def _model_bounds(model, root_frequency="estimated"):
     return rate_bounds
 
 
+def _comparison_models(model):
+    if model == "foreground":
+        return "ARD", "ARD_FOREGROUND", "homogeneous_vs_foreground"
+    return "ER", "ARD", "equal_rates_vs_gain_loss"
+
+
+def _unavailable_fit(model, root_frequency, root_presence, reason):
+    parameter_count = len(_model_bounds(model, root_frequency))
+    intervals = [
+        {
+            "low": None, "high": None, "status": reason, "raw_low": None,
+            "raw_high": None, "theta_low": None, "theta_high": None,
+        }
+        for _index in range(parameter_count)
+    ]
+    fit = {
+        "model": model,
+        "theta": np.array([], dtype=float),
+        "gain_rate": None,
+        "loss_rate": None,
+        "foreground_multiplier": None,
+        "root_presence": None,
+        "log_likelihood": None,
+        "parameter_count": parameter_count,
+        "aic": None,
+        "converged": False,
+        "fit_status": "not_fitted",
+        "inference_status": reason,
+        "optimizer_message": reason,
+        "boundary": False,
+        "intervals": intervals,
+        "start_count": 0,
+        "identifiable": False,
+        "information_eigenvalues": np.array([], dtype=float),
+        "information_condition": math.inf,
+        "root_frequency": root_frequency,
+        "profile_support_thetas": [],
+        "contrast_profile": {
+            "name": "NA", "low": None, "high": None, "status": reason,
+            "raw_low": None, "raw_high": None, "theta_low": None, "theta_high": None,
+        },
+        "posterior_available": False,
+        "posterior_unavailable_reason": reason,
+        "posterior_sensitivity_status": "unavailable_no_posterior",
+    }
+    return fit
+
+
+def _fit_output_row(
+    family,
+    layer,
+    fit,
+    observed_taxa,
+    site_count,
+    compressed_pattern_count,
+    informative,
+    root_frequency,
+    ascertainment,
+    analysis_summary=None,
+):
+    analysis_summary = analysis_summary or {}
+    gain_ci = fit["intervals"][0]
+    loss_ci = fit["intervals"][0] if fit["model"] == "ER" else fit["intervals"][1]
+    multiplier_ci = (
+        fit["intervals"][2]
+        if fit["model"] == "ARD_FOREGROUND"
+        else {"low": 1.0, "high": 1.0, "status": "fixed"}
+    )
+    root_ci = (
+        fit["intervals"][-1]
+        if root_frequency == "estimated"
+        else {"low": fit["root_presence"], "high": fit["root_presence"], "status": root_frequency}
+    )
+    posterior_available = _fit_valid_for_posterior(fit)
+    contrast = fit.get("contrast_profile", {})
+    return {
+        "family_id": family,
+        "layer": layer,
+        "model": fit["model"],
+        "n_taxa": observed_taxa,
+        "n_structural_sites": site_count,
+        "n_compressed_patterns": compressed_pattern_count,
+        "n_informative_patterns": informative,
+        "gain_rate": _fmt(fit["gain_rate"]),
+        "gain_rate_ci_low": _fmt(gain_ci["low"]),
+        "gain_rate_ci_high": _fmt(gain_ci["high"]),
+        "gain_rate_ci_status": gain_ci["status"],
+        "loss_rate": _fmt(fit["loss_rate"]),
+        "loss_rate_ci_low": _fmt(loss_ci["low"]),
+        "loss_rate_ci_high": _fmt(loss_ci["high"]),
+        "loss_rate_ci_status": loss_ci["status"],
+        "foreground_multiplier": _fmt(fit["foreground_multiplier"]),
+        "foreground_multiplier_ci_low": _fmt(multiplier_ci["low"]),
+        "foreground_multiplier_ci_high": _fmt(multiplier_ci["high"]),
+        "foreground_multiplier_ci_status": multiplier_ci["status"],
+        "root_presence": _fmt(fit["root_presence"]),
+        "root_presence_ci_low": _fmt(root_ci["low"]),
+        "root_presence_ci_high": _fmt(root_ci["high"]),
+        "root_presence_ci_status": root_ci["status"],
+        "root_frequency_mode": root_frequency,
+        "log_likelihood": _fmt(fit["log_likelihood"]),
+        "parameter_count": fit["parameter_count"],
+        "aic": _fmt(fit["aic"]),
+        "converged": str(fit["converged"]).lower(),
+        "fit_status": fit["fit_status"],
+        "inference_status": fit.get("inference_status", fit["fit_status"]),
+        "posterior_available": str(posterior_available).lower(),
+        "posterior_unavailable_reason": _posterior_unavailable_reason(fit),
+        "posterior_sensitivity_status": fit.get(
+            "posterior_sensitivity_status", _posterior_sensitivity_status(fit)
+        ),
+        "parameter_at_boundary": str(fit["boundary"]).lower(),
+        "identifiable": str(fit["identifiable"]).lower(),
+        "information_condition": _fmt(fit["information_condition"]),
+        "optimizer_starts": fit["start_count"],
+        "optimizer_message": fit["optimizer_message"],
+        "ascertainment": ascertainment,
+        "total_structural_sites": analysis_summary.get("total_structural_sites", site_count),
+        "included_structural_sites": site_count,
+        "variable_structural_sites": informative,
+        "known_tip_count_min": analysis_summary.get("known_tip_count_min", "NA"),
+        "known_tip_count_median": analysis_summary.get("known_tip_count_median", "NA"),
+        "known_tip_count_max": analysis_summary.get("known_tip_count_max", "NA"),
+        "known_tip_count_distribution": analysis_summary.get("known_tip_count_distribution", "NA"),
+        "linked_group_count": analysis_summary.get("linked_group_count", 0),
+        "correlated_linked_group_count": analysis_summary.get("correlated_linked_group_count", 0),
+        "discovery_rules": analysis_summary.get("discovery_rules", "NA"),
+        "observation_masks": analysis_summary.get("observation_masks", "NA"),
+        "branch_length_mode": analysis_summary.get("branch_length_mode", "NA"),
+        "matrix_schema_version": analysis_summary.get("matrix_schema_version", "NA"),
+        "matrix_source": analysis_summary.get("matrix_source", "NA"),
+        "contrast_name": contrast.get("name", "NA"),
+        "contrast_ci_low": _fmt(contrast.get("low")),
+        "contrast_ci_high": _fmt(contrast.get("high")),
+        "contrast_profile_status": contrast.get("status", "not_applicable"),
+    }
+
+
+def _no_patterns_reason(encoded_sites):
+    observed_by_site = [
+        {value for value in observations.values() if value in {0, 1}}
+        for _site_id, observations in encoded_sites
+    ]
+    if not encoded_sites:
+        return "no_sites_in_analysis_universe"
+    if not any(states for states in observed_by_site):
+        return "no_observed_states"
+    if not any(sum(value in {0, 1} for value in observations.values()) >= 2
+               for _site_id, observations in encoded_sites):
+        return "insufficient_observed_tips"
+    if not any(len(states) > 1 for states in observed_by_site):
+        return "no_observed_contrast"
+    return "no_sites_selected_by_ascertainment"
+
+
+def _lrt_unavailable_reason(
+    informative,
+    null_fit,
+    alternative_fit,
+    likelihood_difference,
+    correlated_linked_sites=False,
+):
+    if informative == 0:
+        return "no_observed_contrast"
+    if correlated_linked_sites:
+        return "correlated_linked_sites_not_modelled"
+    if likelihood_difference < -1e-7:
+        return "alternative_log_likelihood_below_null"
+    null_reason = _posterior_unavailable_reason(null_fit)
+    if null_reason != "NA":
+        return f"null_model_{null_reason}"
+    alternative_reason = _posterior_unavailable_reason(alternative_fit)
+    if alternative_reason != "NA":
+        return f"alternative_model_{alternative_reason}"
+    contrast = alternative_fit.get("contrast_profile") or {}
+    status = contrast.get("status", "missing")
+    if status != "two_sided":
+        return f"tested_contrast_profile_{status}"
+    low = contrast.get("low")
+    high = contrast.get("high")
+    if alternative_fit.get("model") == "ARD":
+        estimate = alternative_fit["gain_rate"] / alternative_fit["loss_rate"]
+    else:
+        estimate = alternative_fit.get("foreground_multiplier")
+    if (
+        low is None
+        or high is None
+        or estimate is None
+        or not all(math.isfinite(float(value)) for value in (low, high, estimate))
+        or not float(low) < float(estimate) < float(high)
+        or contrast.get("theta_low") is None
+        or contrast.get("theta_high") is None
+    ):
+        return "tested_contrast_profile_not_finite_internal"
+    return "NA"
+
+
 def _model_starts(model, root_frequency="estimated", root_presence=0.5):
     if model == "ER":
         starts = [[math.log(value)] for value in (0.01, 0.1, 1.0)]
@@ -298,8 +618,8 @@ def _profile_interval(objective, optimum, index, bounds, max_log_likelihood, tra
             trial[index] = fixed
             value = -float(objective(trial))
             if not math.isfinite(value):
-                return None, "profile_optimization_failed"
-            return value, "ok"
+                return None, None, "profile_optimization_failed"
+            return value, trial, "ok"
 
         def free_objective(free_values):
             trial = optimum.copy()
@@ -311,11 +631,14 @@ def _profile_interval(objective, optimum, index, bounds, max_log_likelihood, tra
         free_bounds = [bounds[idx] for idx in free_indices]
         result = minimize(free_objective, start, method="L-BFGS-B", bounds=free_bounds)
         if not result.success or not math.isfinite(float(result.fun)):
-            return None, "profile_optimization_failed"
-        return -float(result.fun), "ok"
+            return None, None, "profile_optimization_failed"
+        trial = optimum.copy()
+        trial[index] = fixed
+        trial[free_indices] = result.x
+        return -float(result.fun), trial, "ok"
 
     def profile_residual(fixed):
-        profiled, status = profile_at(fixed)
+        profiled, _theta, status = profile_at(fixed)
         if status != "ok":
             raise ProfileOptimizationFailed
         return profiled - target
@@ -326,24 +649,27 @@ def _profile_interval(objective, optimum, index, bounds, max_log_likelihood, tra
         previous_x = optimum[index]
         previous_value = max_log_likelihood - target
         for point in points:
-            profiled, status = profile_at(float(point))
+            profiled, endpoint_theta, status = profile_at(float(point))
             if status != "ok":
-                return None, status
+                return None, status, None
             value = profiled - target
             if value <= 0 <= previous_value:
                 try:
                     root = brentq(profile_residual, float(point), float(previous_x))
                 except ProfileOptimizationFailed:
-                    return None, "profile_optimization_failed"
+                    return None, "profile_optimization_failed", None
                 except (ValueError, RuntimeError):
-                    return None, "profile_root_failed"
-                return root, "closed"
+                    return None, "profile_root_failed", None
+                _value, root_theta, root_status = profile_at(root)
+                if root_status != "ok":
+                    return None, root_status, None
+                return root, "closed", root_theta
             previous_x = float(point)
             previous_value = value
-        return edge, "range_limited"
+        return edge, "range_limited", endpoint_theta
 
-    lower, lower_status = crossing(-1)
-    upper, upper_status = crossing(1)
+    lower, lower_status, theta_low = crossing(-1)
+    upper, upper_status, theta_high = crossing(1)
     status = "two_sided"
     failed_statuses = {lower_status, upper_status} & {"profile_optimization_failed", "profile_root_failed"}
     if failed_statuses:
@@ -364,6 +690,95 @@ def _profile_interval(objective, optimum, index, bounds, max_log_likelihood, tra
         "status": status,
         "raw_low": lower,
         "raw_high": upper,
+        "theta_low": theta_low,
+        "theta_high": theta_high,
+    }
+
+
+def _profile_contrast_interval(objective, optimum, bounds, max_log_likelihood, weights, name):
+    """Profile a declared linear contrast in optimization coordinates."""
+
+    optimum = np.asarray(optimum, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    target = max_log_likelihood - PROFILE_DROP_95
+    contrast_optimum = float(weights @ optimum)
+    corners_low = np.array([bound[0] if weight >= 0 else bound[1] for weight, bound in zip(weights, bounds)])
+    corners_high = np.array([bound[1] if weight >= 0 else bound[0] for weight, bound in zip(weights, bounds)])
+    contrast_bounds = (float(weights @ corners_low), float(weights @ corners_high))
+
+    class ProfileOptimizationFailed(Exception):
+        pass
+
+    def profile_at(fixed):
+        constraint = {
+            "type": "eq",
+            "fun": lambda theta: float(weights @ np.asarray(theta, dtype=float) - fixed),
+        }
+        displacement = (fixed - contrast_optimum) * weights / float(weights @ weights)
+        start = np.clip(optimum + displacement, [item[0] for item in bounds], [item[1] for item in bounds])
+        result = minimize(objective, start, method="SLSQP", bounds=bounds, constraints=[constraint])
+        if (
+            not result.success
+            or not math.isfinite(float(result.fun))
+            or abs(float(weights @ np.asarray(result.x, dtype=float) - fixed)) > 1e-6
+        ):
+            return None, None, "profile_optimization_failed"
+        return -float(result.fun), np.asarray(result.x, dtype=float), "ok"
+
+    def residual(fixed):
+        profiled, _theta, status = profile_at(fixed)
+        if status != "ok":
+            raise ProfileOptimizationFailed
+        return profiled - target
+
+    def crossing(direction):
+        edge = contrast_bounds[0] if direction < 0 else contrast_bounds[1]
+        points = np.linspace(contrast_optimum, edge, 18)[1:]
+        previous_x = contrast_optimum
+        previous_value = max_log_likelihood - target
+        endpoint_theta = None
+        for point in points:
+            profiled, endpoint_theta, status = profile_at(float(point))
+            if status != "ok":
+                return None, status, None
+            value = profiled - target
+            if value <= 0 <= previous_value:
+                try:
+                    root = brentq(residual, float(point), float(previous_x))
+                except ProfileOptimizationFailed:
+                    return None, "profile_optimization_failed", None
+                except (ValueError, RuntimeError):
+                    return None, "profile_root_failed", None
+                _value, root_theta, root_status = profile_at(root)
+                if root_status != "ok":
+                    return None, root_status, None
+                return root, "closed", root_theta
+            previous_x = float(point)
+            previous_value = value
+        return edge, "range_limited", endpoint_theta
+
+    low, low_status, theta_low = crossing(-1)
+    high, high_status, theta_high = crossing(1)
+    failures = {low_status, high_status} & {"profile_optimization_failed", "profile_root_failed"}
+    if failures:
+        status = ";".join(sorted(failures))
+    elif low_status == "range_limited" and high_status == "range_limited":
+        status = "range_limited_both"
+    elif low_status == "range_limited":
+        status = "lower_range_limited"
+    elif high_status == "range_limited":
+        status = "upper_range_limited"
+    else:
+        status = "two_sided"
+    return {
+        "name": name,
+        "low": math.exp(low) if low is not None else None,
+        "high": math.exp(high) if high is not None else None,
+        "status": status,
+        "raw_low": low,
+        "raw_high": high,
+        "theta_low": theta_low,
+        "theta_high": theta_high,
     }
 
 
@@ -420,6 +835,12 @@ def fit_model(
             observed = {value for value in pattern.values() if value in {0, 1}}
             if len(observed) < 2:
                 raise SystemExit("variable-only ascertainment requires every included site to vary among observed tips")
+    has_observed_contrast = any(
+        weight > 0 and len(_pattern_observed_values(pattern)) > 1
+        for pattern, weight in _iter_weighted_patterns(patterns)
+    )
+    if not has_observed_contrast:
+        return _unavailable_fit(model, root_frequency, root_presence, "no_observed_contrast")
     bounds = _model_bounds(model, root_frequency)
 
     def objective(theta):
@@ -462,7 +883,13 @@ def fit_model(
         _observed_information(objective, theta) if converged else (False, np.array([], dtype=float), math.inf)
     )
     if not converged:
-        intervals = [{"low": None, "high": None, "status": "optimizer_failed", "raw_low": None, "raw_high": None} for _idx in range(len(theta))]
+        intervals = [
+            {
+                "low": None, "high": None, "status": "optimizer_failed", "raw_low": None,
+                "raw_high": None, "theta_low": None, "theta_high": None,
+            }
+            for _idx in range(len(theta))
+        ]
         fit_status = "optimizer_failed"
     else:
         intervals = []
@@ -478,16 +905,37 @@ def fit_model(
         else:
             fit_status = "success"
     inference_status = fit_status
-    has_observed_contrast = any(
-        weight > 0 and len(_pattern_observed_values(pattern)) > 1
-        for pattern, weight in _iter_weighted_patterns(patterns)
-    )
-    if not has_observed_contrast:
-        # Local curvature cannot establish an interior rate estimate without an observed contrast.
-        fit_status = "not_estimable"
-        inference_status = "no_observed_contrast"
-        identifiable = False
-    return {
+    contrast_profile = {
+        "name": "NA", "low": None, "high": None, "status": "not_applicable",
+        "raw_low": None, "raw_high": None, "theta_low": None, "theta_high": None,
+    }
+    if converged and model == "ARD":
+        weights = [1.0, -1.0] + [0.0] * (len(theta) - 2)
+        contrast_profile = _profile_contrast_interval(
+            objective, theta, bounds, log_likelihood, weights, "gain_loss_rate_ratio"
+        )
+    elif converged and model == "ARD_FOREGROUND":
+        weights = [0.0, 0.0, 1.0] + [0.0] * (len(theta) - 3)
+        contrast_profile = _profile_contrast_interval(
+            objective, theta, bounds, log_likelihood, weights, "foreground_multiplier"
+        )
+    profile_support_thetas = []
+    for interval in intervals:
+        if interval.get("status") == "two_sided":
+            profile_support_thetas.extend(
+                endpoint
+                for endpoint in (interval.get("theta_low"), interval.get("theta_high"))
+                if endpoint is not None and np.all(np.isfinite(endpoint))
+            )
+    if contrast_profile.get("status") == "two_sided":
+        profile_support_thetas.extend(
+            endpoint
+            for endpoint in (
+                contrast_profile.get("theta_low"), contrast_profile.get("theta_high")
+            )
+            if endpoint is not None and np.all(np.isfinite(endpoint))
+        )
+    fit = {
         "model": model,
         "theta": theta,
         "gain_rate": gain,
@@ -508,8 +956,13 @@ def fit_model(
         "information_eigenvalues": information_eigenvalues,
         "information_condition": information_condition,
         "root_frequency": root_frequency,
-        "profile_support_thetas": [],
+        "profile_support_thetas": profile_support_thetas,
+        "contrast_profile": contrast_profile,
     }
+    fit["posterior_available"] = _fit_valid_for_posterior(fit)
+    fit["posterior_unavailable_reason"] = _posterior_unavailable_reason(fit)
+    fit["posterior_sensitivity_status"] = _posterior_sensitivity_status(fit)
+    return fit
 
 
 def _posterior_messages(tree, observations, gain, loss, multiplier, foreground_children, root_presence=None):
@@ -591,6 +1044,55 @@ def _expected_transition_count(joint, gain, loss, branch_length, multiplier, src
     return total
 
 
+def _profile_posterior_envelope(
+    tree,
+    observations,
+    fit,
+    foreground_children,
+    mle_node,
+    mle_edge,
+):
+    sensitivity_status = fit.get(
+        "posterior_sensitivity_status", _posterior_sensitivity_status(fit)
+    )
+    if sensitivity_status != "finite_profile_envelope":
+        return None, None, sensitivity_status
+    node_samples = {node: [np.asarray(values, dtype=float)] for node, values in mle_node.items()}
+    edge_samples = {edge: [np.asarray(values, dtype=float)] for edge, values in mle_edge.items()}
+    try:
+        for theta in fit.get("profile_support_thetas", []):
+            gain, loss, multiplier, rho = _decode_parameters(
+                theta,
+                fit["model"],
+                fit.get("root_frequency", "estimated"),
+                fit.get("root_presence", 0.5),
+            )
+            node, edge = _posterior_messages(
+                tree, observations, gain, loss, multiplier, foreground_children, rho
+            )
+            for node_id, values in node.items():
+                node_samples[node_id].append(np.asarray(values, dtype=float))
+            for edge_id, values in edge.items():
+                edge_samples[edge_id].append(np.asarray(values, dtype=float))
+    except (ValueError, FloatingPointError):
+        return None, None, "unavailable_profile_posterior_evaluation_failed"
+    node_envelope = {
+        node_id: (np.min(values, axis=0), np.max(values, axis=0))
+        for node_id, values in node_samples.items()
+    }
+    edge_envelope = {}
+    for edge_id, values in edge_samples.items():
+        array = np.asarray(values, dtype=float)
+        total_change = array[:, 0, 1] + array[:, 1, 0]
+        edge_envelope[edge_id] = {
+            "low": np.min(array, axis=0),
+            "high": np.max(array, axis=0),
+            "total_low": float(np.min(total_change)),
+            "total_high": float(np.max(total_change)),
+        }
+    return node_envelope, edge_envelope, "finite_profile_envelope"
+
+
 def _bh_adjust(rows):
     by_test = defaultdict(list)
     for index, row in enumerate(rows):
@@ -648,6 +1150,62 @@ def _read_foreground_children(path, tree):
     return frozenset(children)
 
 
+def _analysis_summary(
+    site_rows,
+    all_encoded_sites,
+    included_site_ids,
+    branch_length_mode,
+    matrix_schema_version,
+    matrix_source,
+):
+    known_counts = sorted(
+        sum(value in {0, 1} for value in observations.values())
+        for _site_id, observations in all_encoded_sites
+    )
+    grouped_links = defaultdict(set)
+    discovery_rules = set()
+    observation_masks = set()
+    for row in site_rows:
+        discovery_rules.add(str(row.get("discovery_rule", "NA")))
+        observation_masks.add(str(row.get("observation_mask", "NA")))
+        linked_ids = {
+            token
+            for token in str(row.get("linked_group_id", "NA")).split(";")
+            if token not in {"", "NA", "None", "none"}
+        }
+        for linked in linked_ids:
+            grouped_links[linked].add(row.get("site_id", "NA"))
+    included = set(included_site_ids)
+    correlated = sum(1 for sites in grouped_links.values() if len(sites & included) > 1)
+    if known_counts:
+        midpoint = len(known_counts) // 2
+        median = (
+            known_counts[midpoint]
+            if len(known_counts) % 2
+            else 0.5 * (known_counts[midpoint - 1] + known_counts[midpoint])
+        )
+        distribution = ";".join(
+            f"{count}:{known_counts.count(count)}" for count in sorted(set(known_counts))
+        )
+    else:
+        median = None
+        distribution = "NA"
+    return {
+        "total_structural_sites": len(all_encoded_sites),
+        "known_tip_count_min": min(known_counts) if known_counts else "NA",
+        "known_tip_count_median": _fmt(median),
+        "known_tip_count_max": max(known_counts) if known_counts else "NA",
+        "known_tip_count_distribution": distribution,
+        "linked_group_count": len(grouped_links),
+        "correlated_linked_group_count": correlated,
+        "discovery_rules": ";".join(sorted(discovery_rules)) or "NA",
+        "observation_masks": ";".join(sorted(observation_masks)) or "NA",
+        "branch_length_mode": branch_length_mode,
+        "matrix_schema_version": matrix_schema_version,
+        "matrix_source": str(matrix_source),
+    }
+
+
 def infer_single_copy_phylogeny(
     input_dir,
     output_dir,
@@ -658,44 +1216,50 @@ def infer_single_copy_phylogeny(
     threads=1,
     root_frequency="estimated",
     root_presence=0.5,
+    structural_site_matrix_path=None,
+    annotation_view="repertoire",
 ):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
-    site_rows, excluded_rows = build_structural_site_matrix(input_dir, output_dir)
+    site_rows, excluded_rows, matrix_source, matrix_mode = _load_site_matrix(
+        input_dir,
+        output_dir,
+        structural_site_matrix_path,
+        annotation_view,
+    )
+    matrix_annotation_view = structural_matrix_annotation_view(site_rows)
+    effective_annotation_view = (
+        annotation_view if matrix_annotation_view == "view_independent" else matrix_annotation_view
+    )
+    if matrix_annotation_view in {"canonical", "repertoire"} and matrix_annotation_view != annotation_view:
+        raise SystemExit(
+            "requested annotation view does not match the frozen structural-site matrix: "
+            f"requested={annotation_view}, matrix={matrix_annotation_view}"
+        )
     write_tsv(
         output_dir / "excluded_families.tsv",
         excluded_rows,
         ["family_id", "species", "copy_count", "gene_copy_ids", "reason"],
     )
-    write_tsv(
-        output_dir / "structural_site_matrix.tsv",
-        site_rows,
-        ["family_id", "layer", "site_id", "species", "state", "state_0", "state_1", "evidence"],
-    )
     tree_rows = _validated_tree_rows(input_dir / "species_tree.tsv", branch_length_mode)
     tree = SpeciesTree(tree_rows)
-    matrix_species = {row["species"] for row in site_rows}
-    missing_tips = sorted(matrix_species - set(tree.leaf_by_label))
-    if missing_tips:
-        raise SystemExit(
-            "species_tree.tsv lacks structural-matrix species: " + ", ".join(missing_tips)
-        )
+    validate_structural_site_tip_rows(site_rows, tree.leaf_by_label)
     foreground_children = _read_foreground_children(foreground_branches, tree)
     if model == "foreground" and not foreground_children:
         raise SystemExit("--model foreground requires --foreground-branches")
-    site_universe = None
+    matrix_versions = sorted({row.get("schema_version", "NA") for row in site_rows})
+    matrix_schema_version = ";".join(matrix_versions) if matrix_versions else STRUCTURAL_SITE_SCHEMA_VERSION
     if ascertainment == "complete-universe":
-        site_universe = _load_structural_site_universe(input_dir)
-        if site_universe is None:
-            raise SystemExit(
-                "complete-universe ascertainment requires input structural_site_universe.tsv with family_id, layer and site_id"
-            )
+        _validate_complete_universe(site_rows, tree)
 
     grouped = defaultdict(lambda: defaultdict(dict))
     state_labels = {}
+    site_kinds = {}
     for row in site_rows:
-        grouped[(row["family_id"], row["layer"])][row["site_id"]][row["species"]] = row["state"]
-        state_labels[(row["family_id"], row["layer"])] = (row["state_0"], row["state_1"])
+        grouped[(row["family_id"], row["layer"])][row["site_id"]][row["species"]] = row
+        site_key = _site_key(row)
+        state_labels[site_key] = (row["state_0"], row["state_1"])
+        site_kinds[site_key] = row.get("site_kind", "NA")
 
     fit_rows = []
     test_rows = []
@@ -703,43 +1267,76 @@ def infer_single_copy_phylogeny(
     branch_rows = []
     change_rows = []
     for (family, layer), sites in sorted(grouped.items()):
-        state_0, state_1 = state_labels[(family, layer)]
         raw_patterns = []
+        all_encoded_sites = []
         encoded_sites = []
-        for site_id, observations in sorted(sites.items()):
-            if site_universe is not None and (family, layer, site_id) not in site_universe:
-                continue
+        included_site_ids = []
+        family_layer_rows = [
+            row for row in site_rows
+            if row.get("family_id") == family and row.get("layer") == layer
+        ]
+        for site_id, observation_rows in sorted(sites.items()):
+            state_0, state_1 = state_labels[(family, layer, site_id)]
             encoded = {
-                label: 0 if observations.get(label) == state_0 else 1 if observations.get(label) == state_1 else "unknown"
+                label: (
+                    0 if _masked_state(observation_rows[label]) == state_0
+                    else 1 if _masked_state(observation_rows[label]) == state_1
+                    else "unknown"
+                )
                 for label in tree.leaf_by_label
             }
+            all_encoded_sites.append((site_id, encoded))
             observed_count = sum(value in {0, 1} for value in encoded.values())
             if observed_count >= 2 and _selected_for_ascertainment(encoded, ascertainment):
                 raw_patterns.append(encoded)
                 encoded_sites.append((site_id, encoded))
+                included_site_ids.append(site_id)
         patterns = _compress_patterns(raw_patterns, sorted(tree.leaf_by_label))
-        if not patterns:
-            continue
-        site_count = sum(weight for _pattern, weight in patterns)
-        compressed_pattern_count = len(patterns)
-        informative = sum(
-            weight
-            for pattern, weight in patterns
-            if len({value for value in pattern.values() if value in {0, 1}}) > 1
+        analysis_summary = _analysis_summary(
+            family_layer_rows,
+            all_encoded_sites,
+            included_site_ids,
+            branch_length_mode,
+            matrix_schema_version,
+            matrix_source,
         )
-        observed_taxa = len(
-            {species for pattern, _weight in patterns for species, value in pattern.items() if value in {0, 1}}
-        )
-        if model == "foreground":
-            null_fit = fit_model(tree, patterns, "ARD", ascertainment=ascertainment, threads=threads, root_frequency=root_frequency, root_presence=root_presence)
+        null_model, alternative_model, test_id = _comparison_models(model)
+        if patterns:
+            site_count = sum(weight for _pattern, weight in patterns)
+            compressed_pattern_count = len(patterns)
+            informative = sum(
+                weight
+                for pattern, weight in patterns
+                if len({value for value in pattern.values() if value in {0, 1}}) > 1
+            )
+            observed_taxa = len(
+                {
+                    species
+                    for pattern, _weight in patterns
+                    for species, value in pattern.items()
+                    if value in {0, 1}
+                }
+            )
+            null_fit = fit_model(
+                tree,
+                patterns,
+                null_model,
+                ascertainment=ascertainment,
+                threads=threads,
+                root_frequency=root_frequency,
+                root_presence=root_presence,
+            )
             extra_starts = []
             if null_fit["converged"]:
                 null_theta = null_fit["theta"]
-                extra_starts.append([null_theta[0], null_theta[1], 0.0, *null_theta[2:]])
+                if model == "foreground":
+                    extra_starts.append([null_theta[0], null_theta[1], 0.0, *null_theta[2:]])
+                else:
+                    extra_starts.append([null_theta[0], null_theta[0], *null_theta[1:]])
             alternative_fit = fit_model(
                 tree,
                 patterns,
-                "ARD_FOREGROUND",
+                alternative_model,
                 foreground_children=foreground_children,
                 ascertainment=ascertainment,
                 threads=threads,
@@ -747,94 +1344,105 @@ def infer_single_copy_phylogeny(
                 root_presence=root_presence,
                 extra_starts=extra_starts,
             )
-            test_id = "homogeneous_vs_foreground"
+            analysis_unavailable_reason = "NA" if informative > 0 else "no_observed_contrast"
         else:
-            null_fit = fit_model(tree, patterns, "ER", ascertainment=ascertainment, threads=threads, root_frequency=root_frequency, root_presence=root_presence)
-            extra_starts = []
-            if null_fit["converged"]:
-                null_theta = null_fit["theta"]
-                extra_starts.append([null_theta[0], null_theta[0], *null_theta[1:]])
-            alternative_fit = fit_model(
-                tree,
-                patterns,
-                "ARD",
-                ascertainment=ascertainment,
-                threads=threads,
-                root_frequency=root_frequency,
-                root_presence=root_presence,
-                extra_starts=extra_starts,
+            analysis_unavailable_reason = _no_patterns_reason(all_encoded_sites)
+            null_fit = _unavailable_fit(
+                null_model, root_frequency, root_presence, analysis_unavailable_reason
             )
-            test_id = "equal_rates_vs_gain_loss"
-
-        for fit in (null_fit, alternative_fit):
-            gain_ci = fit["intervals"][0]
-            loss_ci = fit["intervals"][0] if fit["model"] == "ER" else fit["intervals"][1]
-            multiplier_ci = fit["intervals"][2] if fit["model"] == "ARD_FOREGROUND" else {"low": 1.0, "high": 1.0, "status": "fixed"}
-            root_ci = fit["intervals"][-1] if root_frequency == "estimated" else {"low": fit["root_presence"], "high": fit["root_presence"], "status": root_frequency}
-            fit_rows.append(
+            alternative_fit = _unavailable_fit(
+                alternative_model, root_frequency, root_presence, analysis_unavailable_reason
+            )
+            site_count = 0
+            compressed_pattern_count = 0
+            informative = 0
+            observed_taxa = len(
                 {
-                    "family_id": family,
-                    "layer": layer,
-                    "model": fit["model"],
-                    "n_taxa": observed_taxa,
-                    "n_structural_sites": site_count,
-                    "n_compressed_patterns": compressed_pattern_count,
-                    "n_informative_patterns": informative,
-                    "gain_rate": _fmt(fit["gain_rate"]),
-                    "gain_rate_ci_low": _fmt(gain_ci["low"]),
-                    "gain_rate_ci_high": _fmt(gain_ci["high"]),
-                    "gain_rate_ci_status": gain_ci["status"],
-                    "loss_rate": _fmt(fit["loss_rate"]),
-                    "loss_rate_ci_low": _fmt(loss_ci["low"]),
-                    "loss_rate_ci_high": _fmt(loss_ci["high"]),
-                    "loss_rate_ci_status": loss_ci["status"],
-                    "foreground_multiplier": _fmt(fit["foreground_multiplier"]),
-                    "foreground_multiplier_ci_low": _fmt(multiplier_ci["low"]),
-                    "foreground_multiplier_ci_high": _fmt(multiplier_ci["high"]),
-                    "foreground_multiplier_ci_status": multiplier_ci["status"],
-                    "root_presence": _fmt(fit["root_presence"]),
-                    "root_presence_ci_low": _fmt(root_ci["low"]),
-                    "root_presence_ci_high": _fmt(root_ci["high"]),
-                    "root_presence_ci_status": root_ci["status"],
-                    "root_frequency_mode": root_frequency,
-                    "log_likelihood": _fmt(fit["log_likelihood"]),
-                    "parameter_count": fit["parameter_count"],
-                    "aic": _fmt(fit["aic"]),
-                    "converged": str(fit["converged"]).lower(),
-                    "fit_status": fit["fit_status"],
-                    "inference_status": fit.get("inference_status", fit["fit_status"]),
-                    "parameter_at_boundary": str(fit["boundary"]).lower(),
-                    "identifiable": str(fit["identifiable"]).lower(),
-                    "information_condition": _fmt(fit["information_condition"]),
-                    "optimizer_starts": fit["start_count"],
-                    "optimizer_message": fit["optimizer_message"],
-                    "ascertainment": ascertainment,
+                    species
+                    for _site_id, observations in all_encoded_sites
+                    for species, value in observations.items()
+                    if value in {0, 1}
                 }
             )
+            encoded_sites = all_encoded_sites
 
-        likelihood_difference = alternative_fit["log_likelihood"] - null_fit["log_likelihood"]
-        lrt = 2.0 * likelihood_difference if likelihood_difference >= 0.0 else None
-        estimable = (
-            informative >= 1
-            and null_fit["converged"]
-            and alternative_fit["converged"]
-            and not null_fit["boundary"]
-            and not alternative_fit["boundary"]
-            and null_fit["identifiable"]
-            and alternative_fit["identifiable"]
-            and null_fit["fit_status"] == "success"
-            and alternative_fit["fit_status"] == "success"
-            and lrt is not None
+        for fit in (null_fit, alternative_fit):
+            fit_rows.append(
+                _fit_output_row(
+                    family,
+                    layer,
+                    fit,
+                    observed_taxa,
+                    site_count,
+                    compressed_pattern_count,
+                    informative,
+                    root_frequency,
+                    ascertainment,
+                    analysis_summary,
+                )
+            )
+
+        if (
+            patterns
+            and null_fit.get("log_likelihood") is not None
+            and alternative_fit.get("log_likelihood") is not None
+        ):
+            likelihood_difference = alternative_fit["log_likelihood"] - null_fit["log_likelihood"]
+            lrt_unavailable_reason = _lrt_unavailable_reason(
+                informative,
+                null_fit,
+                alternative_fit,
+                likelihood_difference,
+                correlated_linked_sites=(
+                    analysis_summary["correlated_linked_group_count"] > 0
+                ),
+            )
+            lrt = 2.0 * max(0.0, likelihood_difference) if likelihood_difference >= -1e-7 else None
+        elif patterns:
+            likelihood_difference = None
+            lrt = None
+            lrt_unavailable_reason = (
+                "no_observed_contrast"
+                if informative == 0
+                else f"alternative_model_{_posterior_unavailable_reason(alternative_fit)}"
+            )
+        else:
+            likelihood_difference = None
+            lrt = None
+            lrt_unavailable_reason = analysis_unavailable_reason
+        lrt_df = (
+            int(alternative_fit["parameter_count"])
+            - int(null_fit["parameter_count"])
         )
-        p_value = float(chi2.sf(lrt, 1)) if estimable else None
-        if informative == 0:
-            test_status = "parameters_not_estimable"
-        elif likelihood_difference < -1e-7:
-            test_status = "optimization_failure_alternative_below_null"
-        elif estimable:
+        if lrt_unavailable_reason == "NA" and lrt_df <= 0:
+            lrt_unavailable_reason = "nonpositive_model_dimension_difference"
+        lrt_available = lrt_unavailable_reason == "NA" and lrt is not None
+        p_value = float(chi2.sf(lrt, lrt_df)) if lrt_available else None
+        if lrt_available:
             test_status = "tested"
+        elif lrt_unavailable_reason == "correlated_linked_sites_not_modelled":
+            test_status = "not_tested_correlated_sites"
+        elif lrt_unavailable_reason in {"no_observed_states", "no_observed_contrast"}:
+            test_status = "parameters_not_estimable"
+        elif lrt_unavailable_reason == "alternative_log_likelihood_below_null":
+            test_status = "optimization_failure_alternative_below_null"
         else:
             test_status = "parameters_not_estimable"
+        eligible_fits = [
+            fit for fit in (null_fit, alternative_fit)
+            if informative > 0 and _fit_valid_for_posterior(fit)
+        ]
+        selected_fit = min(eligible_fits, key=lambda fit: fit["aic"]) if eligible_fits else None
+        posterior_available = selected_fit is not None
+        if posterior_available:
+            posterior_unavailable_reason = "NA"
+        elif analysis_unavailable_reason != "NA":
+            posterior_unavailable_reason = analysis_unavailable_reason
+        else:
+            posterior_unavailable_reason = (
+                f"no_valid_fit;null={_posterior_unavailable_reason(null_fit)};"
+                f"alternative={_posterior_unavailable_reason(alternative_fit)}"
+            )
         test_row = {
             "family_id": family,
             "layer": layer,
@@ -844,28 +1452,54 @@ def infer_single_copy_phylogeny(
             "null_log_likelihood": _fmt(null_fit["log_likelihood"]),
             "alternative_log_likelihood": _fmt(alternative_fit["log_likelihood"]),
             "lrt_statistic": _fmt(lrt),
-            "df": 1,
+            "df": lrt_df,
             "p_value": _fmt(p_value),
             "q_value": "NA",
             "q_value_method": "not_available",
             "test_status": test_status,
-            "inference_status": "no_observed_contrast" if informative == 0 else test_status,
-            "reference_distribution": "chi_square_df1_asymptotic_regular_interior" if estimable else "not_available",
+            "inference_status": (
+                lrt_unavailable_reason
+                if lrt_unavailable_reason in {"no_observed_states", "no_observed_contrast"}
+                else test_status
+            ),
+            "lrt_available": str(lrt_available).lower(),
+            "lrt_unavailable_reason": lrt_unavailable_reason,
+            "reference_distribution": "asymptotic_chi_square",
+            "small_sample_accuracy": "unassessed",
+            "posterior_available": str(posterior_available).lower(),
+            "posterior_model": selected_fit["model"] if selected_fit is not None else "NA",
+            "posterior_unavailable_reason": posterior_unavailable_reason,
             "n_taxa": observed_taxa,
             "n_structural_sites": site_count,
             "n_compressed_patterns": compressed_pattern_count,
             "n_informative_patterns": informative,
+            "tested_contrast": alternative_fit.get("contrast_profile", {}).get("name", "NA"),
+            "tested_contrast_estimate": _fmt(
+                alternative_fit["gain_rate"] / alternative_fit["loss_rate"]
+                if alternative_fit.get("model") == "ARD"
+                and alternative_fit.get("gain_rate") is not None
+                and alternative_fit.get("loss_rate") not in {None, 0}
+                else alternative_fit.get("foreground_multiplier")
+            ),
+            "tested_contrast_ci_low": _fmt(
+                alternative_fit.get("contrast_profile", {}).get("low")
+            ),
+            "tested_contrast_ci_high": _fmt(
+                alternative_fit.get("contrast_profile", {}).get("high")
+            ),
+            "tested_contrast_profile_status": alternative_fit.get(
+                "contrast_profile", {}
+            ).get("status", "unavailable"),
+            **analysis_summary,
+            "included_structural_sites": site_count,
+            "variable_structural_sites": informative,
         }
         test_rows.append(test_row)
-        eligible_fits = [
-            fit for fit in (null_fit, alternative_fit)
-            if informative > 0 and _fit_valid_for_posterior(fit)
-        ]
-        selected_fit = min(eligible_fits, key=lambda fit: fit["aic"]) if eligible_fits else None
         if selected_fit is None:
             diagnostic_fit = alternative_fit if informative else null_fit
             status = diagnostic_fit.get("fit_status", "not_estimable")
             for site_id, observations in encoded_sites:
+                state_0, state_1 = state_labels[(family, layer, site_id)]
                 known = sum(value in {0, 1} for value in observations.values())
                 change_rows.append(
                     {
@@ -876,6 +1510,7 @@ def infer_single_copy_phylogeny(
                         "child_node": "NA",
                         "branch_scope": "NA",
                         "structural_change_type": "posterior_not_reported",
+                        "structural_relation": "NA",
                         "structural_pattern": f"{state_0}<->{state_1}",
                         "endpoint_change_probability": "NA",
                         "gain_endpoint_probability": "NA",
@@ -885,6 +1520,8 @@ def infer_single_copy_phylogeny(
                         "expected_loss_count": "NA",
                         "model": diagnostic_fit.get("model", "NA"),
                         "rate_test_status": test_status,
+                        "posterior_available": "false",
+                        "posterior_unavailable_reason": posterior_unavailable_reason,
                         "conditioning": (
                             f"posterior_not_reported;fit_status={status};"
                             f"inference_status={test_row['inference_status']};"
@@ -893,13 +1530,18 @@ def infer_single_copy_phylogeny(
                     }
                 )
             continue
+        sensitivity_status = selected_fit.get(
+            "posterior_sensitivity_status", _posterior_sensitivity_status(selected_fit)
+        )
         posterior_conditioning = (
             "conditional_MLE;"
             f"fit_status={selected_fit['fit_status']};"
-            "uncertainty=sensitivity_not_estimated"
+            f"uncertainty={sensitivity_status}"
         )
 
         for site_id, observations in encoded_sites:
+            state_0, state_1 = state_labels[(family, layer, site_id)]
+            site_kind = site_kinds[(family, layer, site_id)]
             site_log_likelihood = _pattern_log_likelihood(
                 tree,
                 observations,
@@ -920,6 +1562,7 @@ def infer_single_copy_phylogeny(
                         "child_node": "NA",
                         "branch_scope": "NA",
                         "structural_change_type": "posterior_not_reported",
+                        "structural_relation": "NA",
                         "structural_pattern": f"{state_0}<->{state_1}",
                         "endpoint_change_probability": "NA",
                         "gain_endpoint_probability": "NA",
@@ -929,6 +1572,8 @@ def infer_single_copy_phylogeny(
                         "expected_loss_count": "NA",
                         "model": selected_fit["model"],
                         "rate_test_status": test_status,
+                        "posterior_available": "false",
+                        "posterior_unavailable_reason": "site_likelihood_zero",
                         "conditioning": (
                             "posterior_not_reported;site_likelihood_zero;"
                             f"known_tip_count={known};requires=positive_probability_observation_pattern"
@@ -945,8 +1590,22 @@ def infer_single_copy_phylogeny(
                 foreground_children,
                 selected_fit["root_presence"],
             )
+            node_envelope, edge_envelope, site_sensitivity_status = _profile_posterior_envelope(
+                tree,
+                observations,
+                selected_fit,
+                foreground_children,
+                node_posterior,
+                edge_posterior,
+            )
             for node_id, probabilities in node_posterior.items():
                 for index, probability in enumerate(probabilities):
+                    profile_low = (
+                        node_envelope[node_id][0][index] if node_envelope is not None else None
+                    )
+                    profile_high = (
+                        node_envelope[node_id][1][index] if node_envelope is not None else None
+                    )
                     node_rows.append(
                         {
                             "family_id": family,
@@ -956,9 +1615,10 @@ def infer_single_copy_phylogeny(
                             "node_label": tree.label[node_id],
                             "state": state_0 if index == 0 else state_1,
                             "posterior_probability": _fmt(probability),
-                            "profile_probability_low": "NA",
-                            "profile_probability_high": "NA",
-                            "uncertainty_status": "sensitivity_not_estimated",
+                            "profile_probability_low": _fmt(profile_low),
+                            "profile_probability_high": _fmt(profile_high),
+                            "uncertainty_status": site_sensitivity_status,
+                            "posterior_available": "true",
                             "model": selected_fit["model"],
                             "conditioning": posterior_conditioning,
                         }
@@ -988,9 +1648,10 @@ def infer_single_copy_phylogeny(
                 gain_probability = float(joint[0, 1])
                 loss_probability = float(joint[1, 0])
                 change_probability = gain_probability + loss_probability
-                for src, dst, probability in (
-                    (state_0, state_1, gain_probability),
-                    (state_1, state_0, loss_probability),
+                envelope = edge_envelope.get((parent, child)) if edge_envelope is not None else None
+                for src_index, dst_index, src, dst, probability in (
+                    (0, 1, state_0, state_1, gain_probability),
+                    (1, 0, state_1, state_0, loss_probability),
                 ):
                     branch_rows.append(
                         {
@@ -1004,15 +1665,31 @@ def infer_single_copy_phylogeny(
                             "branch_length": _fmt(tree.branch_length(child)),
                             "from_state": src,
                             "to_state": dst,
+                            "event_type": _transition_event_type(layer, src_index, dst_index),
+                            "structural_relation": _transition_structural_relation(
+                                layer,
+                                site_kind,
+                                src_index,
+                                dst_index,
+                            ),
                             "endpoint_transition_probability": _fmt(probability),
-                            "profile_transition_probability_low": "NA",
-                            "profile_transition_probability_high": "NA",
+                            "profile_transition_probability_low": _fmt(
+                                envelope["low"][src_index, dst_index] if envelope is not None else None
+                            ),
+                            "profile_transition_probability_high": _fmt(
+                                envelope["high"][src_index, dst_index] if envelope is not None else None
+                            ),
                             "total_endpoint_change_probability": _fmt(change_probability),
-                            "profile_total_change_probability_low": "NA",
-                            "profile_total_change_probability_high": "NA",
+                            "profile_total_change_probability_low": _fmt(
+                                envelope["total_low"] if envelope is not None else None
+                            ),
+                            "profile_total_change_probability_high": _fmt(
+                                envelope["total_high"] if envelope is not None else None
+                            ),
                             "expected_gain_count": _fmt(expected_gain),
                             "expected_loss_count": _fmt(expected_loss),
-                            "uncertainty_status": "sensitivity_not_estimated",
+                            "uncertainty_status": site_sensitivity_status,
+                            "posterior_available": "true",
                             "model": selected_fit["model"],
                             "conditioning": posterior_conditioning,
                         }
@@ -1026,6 +1703,14 @@ def infer_single_copy_phylogeny(
                         "child_node": child,
                         "branch_scope": f"{tree.label[parent]}->{tree.label[child]}",
                         "structural_change_type": "bidirectional_transition_probabilities",
+                        "structural_relation": (
+                            "exon_split_or_exon_fusion"
+                            if layer == "splice_junction" and site_kind in {
+                                "within_element_junction",
+                                "within_exon_boundary",
+                            }
+                            else "NA"
+                        ),
                         "structural_pattern": f"{state_0}<->{state_1}",
                         "endpoint_change_probability": _fmt(change_probability),
                         "gain_endpoint_probability": _fmt(gain_probability),
@@ -1035,6 +1720,8 @@ def infer_single_copy_phylogeny(
                         "expected_loss_count": _fmt(expected_loss),
                         "model": selected_fit["model"],
                         "rate_test_status": test_status,
+                        "posterior_available": "true",
+                        "posterior_unavailable_reason": "NA",
                         "conditioning": posterior_conditioning,
                     }
                 )
@@ -1051,8 +1738,15 @@ def infer_single_copy_phylogeny(
             "foreground_multiplier", "foreground_multiplier_ci_low", "foreground_multiplier_ci_high",
             "foreground_multiplier_ci_status", "root_presence", "root_presence_ci_low",
             "root_presence_ci_high", "root_presence_ci_status", "root_frequency_mode", "log_likelihood",
-            "parameter_count", "aic", "converged", "fit_status", "parameter_at_boundary", "identifiable",
-            "information_condition", "optimizer_starts", "optimizer_message", "ascertainment", "inference_status",
+            "parameter_count", "aic", "converged", "fit_status", "posterior_available",
+            "posterior_unavailable_reason", "posterior_sensitivity_status", "parameter_at_boundary",
+            "identifiable", "information_condition", "optimizer_starts", "optimizer_message",
+            "ascertainment", "inference_status", "total_structural_sites",
+            "included_structural_sites", "variable_structural_sites", "known_tip_count_min",
+            "known_tip_count_median", "known_tip_count_max", "known_tip_count_distribution",
+            "linked_group_count", "correlated_linked_group_count", "discovery_rules",
+            "observation_masks", "branch_length_mode", "matrix_schema_version", "matrix_source",
+            "contrast_name", "contrast_ci_low", "contrast_ci_high", "contrast_profile_status",
         ],
     )
     write_tsv(
@@ -1061,26 +1755,36 @@ def infer_single_copy_phylogeny(
         [
             "family_id", "layer", "test_id", "null_model", "alternative_model", "null_log_likelihood",
             "alternative_log_likelihood", "lrt_statistic", "df", "p_value", "q_value", "q_value_method",
-            "test_status", "reference_distribution", "n_taxa", "n_structural_sites", "n_compressed_patterns",
-            "n_informative_patterns", "inference_status",
+            "test_status", "lrt_available", "lrt_unavailable_reason", "reference_distribution",
+            "small_sample_accuracy", "posterior_available", "posterior_model",
+            "posterior_unavailable_reason", "n_taxa", "n_structural_sites", "n_compressed_patterns",
+            "n_informative_patterns", "inference_status", "tested_contrast",
+            "tested_contrast_estimate", "tested_contrast_ci_low", "tested_contrast_ci_high",
+            "tested_contrast_profile_status", "total_structural_sites",
+            "included_structural_sites", "variable_structural_sites", "known_tip_count_min",
+            "known_tip_count_median", "known_tip_count_max", "known_tip_count_distribution",
+            "linked_group_count", "correlated_linked_group_count", "discovery_rules",
+            "observation_masks", "branch_length_mode", "matrix_schema_version", "matrix_source",
         ],
     )
     write_tsv(
         output_dir / "node_state_posteriors.tsv",
         node_rows,
         ["family_id", "layer", "site_id", "node_id", "node_label", "state", "posterior_probability",
-         "profile_probability_low", "profile_probability_high", "uncertainty_status", "model", "conditioning"],
+         "profile_probability_low", "profile_probability_high", "uncertainty_status",
+         "posterior_available", "model", "conditioning"],
     )
     write_tsv(
         output_dir / "branch_transition_posteriors.tsv",
         branch_rows,
         [
             "family_id", "layer", "site_id", "parent_node", "child_node", "parent_label", "child_label",
-            "branch_length", "from_state", "to_state", "endpoint_transition_probability",
+            "branch_length", "from_state", "to_state", "event_type", "structural_relation",
+            "endpoint_transition_probability",
             "profile_transition_probability_low", "profile_transition_probability_high",
             "total_endpoint_change_probability", "profile_total_change_probability_low",
             "profile_total_change_probability_high", "expected_gain_count", "expected_loss_count",
-            "uncertainty_status", "model", "conditioning",
+            "uncertainty_status", "posterior_available", "model", "conditioning",
         ],
     )
     write_tsv(
@@ -1088,9 +1792,11 @@ def infer_single_copy_phylogeny(
         change_rows,
         [
             "family_id", "layer", "site_id", "parent_node", "child_node", "branch_scope",
-            "structural_change_type", "structural_pattern", "endpoint_change_probability",
+            "structural_change_type", "structural_relation", "structural_pattern",
+            "endpoint_change_probability",
             "gain_endpoint_probability", "loss_endpoint_probability", "direction_probability",
-            "expected_gain_count", "expected_loss_count", "model", "rate_test_status", "conditioning",
+            "expected_gain_count", "expected_loss_count", "model", "rate_test_status",
+            "posterior_available", "posterior_unavailable_reason", "conditioning",
         ],
     )
     write_tsv(
@@ -1100,9 +1806,16 @@ def infer_single_copy_phylogeny(
             "tree_file": "species_tree.tsv",
             "tree_scope": "species_tree",
             "layers": "exon_presence;exon_role;splice_junction",
+            "matrix_source": str(matrix_source),
+            "matrix_mode": matrix_mode,
+            "matrix_schema_version": matrix_schema_version,
+            "annotation_view": effective_annotation_view,
             "note": "All homologous structural sites within each layer share fitted gain/loss parameters.",
         }],
-        ["scope", "tree_file", "tree_scope", "layers", "note"],
+        [
+            "scope", "tree_file", "tree_scope", "layers", "matrix_source", "matrix_mode",
+            "matrix_schema_version", "annotation_view", "note",
+        ],
     )
     parameters = {
         "analysis_scope": "single-copy",
@@ -1113,7 +1826,10 @@ def infer_single_copy_phylogeny(
         "root_presence_when_fixed": root_presence if root_frequency == "fixed" else None,
         "tree_file": str(input_dir / "species_tree.tsv"),
         "foreground_branches": str(foreground_branches) if foreground_branches else None,
-        "structural_site_universe": str(input_dir / "structural_site_universe.tsv") if ascertainment == "complete-universe" else None,
+        "structural_site_matrix": str(matrix_source),
+        "structural_site_matrix_mode": matrix_mode,
+        "structural_site_matrix_schema_version": matrix_schema_version,
+        "annotation_view": effective_annotation_view,
         "threads": max(1, int(threads)),
         "fixed_inputs": ["species_tree", "ortholog_set", "structural_site_states"],
         "estimated_parameters": ["gain_rate", "loss_rate"] + (["root_presence"] if root_frequency == "estimated" else []) + (["foreground_multiplier"] if model == "foreground" else []),
