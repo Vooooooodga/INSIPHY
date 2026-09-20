@@ -1,4 +1,9 @@
-# Input formats
+# Input reference
+
+For the standard FASTA/GFF/tree interface, start with [file inputs](inputs.md).
+The table interface below is optional for advanced pipelines; users do not need
+to create a manifest for ordinary analysis.
+
 
 ## Raw gene manifest
 
@@ -16,7 +21,7 @@ Search flanks and extension bounds do not redefine the annotated gene boundary.
 ## Rooted tree
 
 A Newick tree can be supplied to `build-case` or `import-orthofinder`. Species
-labels must match the manifest. The prepared `species_tree.tsv` uses
+labels must match species file stems (or species in the optional manifest). The prepared `species_tree.tsv` uses
 `node_id`, `parent_id`, `label` and optional `branch_length`. The root has no parent.
 Topology is validated independently of the inference method. CTMC requires finite
 nonnegative non-root branch lengths, unless `--branch-length-mode unit` is explicit.

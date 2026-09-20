@@ -250,7 +250,15 @@ class InterfaceTests(InterfaceTestsSupport, unittest.TestCase):
             )
         self.assertEqual(extract.call_args.args[8], "all")
 
-        with patch("intraphy.cli.build_case") as build:
+        # This dispatch-only test bypasses preflight. Supply the selection that
+        # preflight normally installs rather than performing file discovery.
+        from unittest.mock import Mock
+        def selected_session(args):
+            args._input_selection = Mock(rows=())
+            return nullcontext()
+        with patch("intraphy.cli.build_case") as build, patch(
+            "intraphy.cli.command_session", selected_session
+        ):
             main(["build-case", "--manifest", "manifest.tsv", "--output-dir", "case"])
         self.assertEqual(build.call_args.args[4], "all")
 

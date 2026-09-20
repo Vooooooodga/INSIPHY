@@ -3,18 +3,18 @@
 ## Question and inputs
 
 IntraPhy analyzes local gene structure in upstream-defined single-copy orthologs.
-The inputs are genome sequence, supplied GFF3/GTF annotation, a gene manifest and
-a rooted species tree. The reporting unit is a gene family. The statistical
+The inputs are genomic FASTA, GFF3/GTF gene annotations and a rooted species phylogeny.
+Optional ortholog FASTA records select genes; a user-written manifest is not required. The reporting unit is a gene family. The statistical
 observation is a structural character. The tree and orthology are conditions of
 the analysis; neither is estimated by this program.
 
 ## Preserve annotation before inference
 
 The extraction layer retains native genomic coordinates, strand, CDS and UTR
-intervals, introns, feature ownership, original attributes and supplied transcript
-paths. Identical coordinate structures may share computation while their path
+intervals, introns, feature ownership, original attributes and annotated transcript
+isoforms. Identical coordinate structures may share computation while their path
 identities remain traceable. Repertoire observations indicate use by at least one
-supplied path. Canonical observations concern the explicitly selected path and
+annotated isoform. Canonical observations concern the explicitly selected path and
 must be analyzed in a separate frozen matrix.
 
 The supplied annotation is not a complete census of all tissues or conditions.
@@ -57,8 +57,8 @@ The three separately analyzed layers are:
 | Layer | State 0 | State 1 |
 |---|---|---|
 | `exon_presence` | Corresponding DNA unit demonstrably absent | Corresponding DNA unit present |
-| `exon_role` | Non-exonic in adequately covering supplied paths | Exonic in the selected supplied annotation |
-| `splice_junction` | An informative path continuously spans the corresponding position | A supplied path contains the corresponding junction |
+| `exon_role` | Non-exonic in adequately covering annotated isoforms | Exonic in the selected supplied annotation |
+| `splice_junction` | An informative path continuously spans the corresponding position | A annotated isoform contains the corresponding junction |
 
 Unknown and inapplicable states are retained separately in the observation
 metadata. DNA absence makes the corresponding exon role inapplicable. Junction
@@ -73,7 +73,7 @@ Overlapping aligned sequence intervals are conservatively linked for dependence;
 sharing a transcript alone does not imply dependence. Declared linked junctions
 remain linked even though compound-event interpretations have been removed.
 
-## Freeze observations and define inference scope
+## Assemble the structural character matrix
 
 The full structural matrix is retained. Default `--analysis-range all` does not
 select characters by coverage. The optional high-coverage analysis uses known 0
@@ -116,3 +116,6 @@ It does not infer mutation-event counts, rearrangement mechanisms, functional
 consequences or selection. The [references](references.md) distinguish existing
 sequence/structure comparison, character coding and phylogenetic methods from
 this implementation's unvalidated claims of biological performance.
+
+The [illustrated model explanation](model_bridge.md) connects biological states
+to transition rates, tree likelihood and ancestral-state probabilities.

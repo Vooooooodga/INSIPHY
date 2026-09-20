@@ -1,13 +1,33 @@
 # Command-line workflow
 
+The standard interface uses genomic FASTA, matching GFF/GTF and a rooted tree.
+Use `--orthologs` to select genes from whole-genome annotations. No hand-written
+manifest is required. See [input examples and coordinate handling](inputs.md).
+
+```bash
+intraphy check --fasta genomes --gff annotations --orthologs families \
+  --species-tree tree.nwk
+intraphy build-case --fasta genomes --gff annotations --orthologs families \
+  --species-tree tree.nwk --output-dir work --threads 8
+intraphy run --input-dir work --output-dir results --threads 8
+intraphy visualize --input-dir work --result-dir results --output-dir figures
+```
+
+`check` validates matching file names, selected locus IDs, tree tips and genomic
+coordinate bounds without requiring external aligners. It reports resolved loci;
+it does not infer orthology. `extract-loci` is an optional coordinate-safe genomic
+FASTA/GFF export. `normalize-annotation` is an explicit optional AGAT adapter.
+
 ## Primary commands
 
 Use `example`, `check`, `build-case`, `run`, `infer-phylogeny`, and `visualize`.
+`explain` renders the standalone synthetic methods guide without genomic inputs.
 `import-orthofinder` prepares a supplied orthogroup. `inspect-aligners` and
 `inspect-annotation` provide diagnostics. Each command has `--help`.
 
-The raw example in the README is the recommended first run. Relative resource
-paths are interpreted relative to the manifest, not the current working directory.
+The raw example in the README is the recommended first run. Direct file paths
+are relative to the current working directory. In the optional table interface,
+resource paths are relative to the manifest.
 The tree may be Newick at preparation; the prepared tree is stored as TSV.
 No shell-specific quoting is needed for normal paths. Paths with spaces must be
 quoted by the shell in the usual way.

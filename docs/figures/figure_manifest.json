@@ -1,0 +1,29 @@
+[
+  {
+    "figure": "method_overview",
+    "svg": "method_overview.svg",
+    "title": "Overview: homologous regions to ancestral changes",
+    "purpose": "synthetic_teaching_schematic",
+    "data_result": false,
+    "source_module": "intraphy.reporting.methods.overview",
+    "caption": "The same four-species gene family is followed throughout. Teal marks a homologous DNA segment; purple marks exonic sequence around a separate intron position. Dashed exons are annotation candidates, not confirmed transcription. Branch labels illustrate minimum-change placements of two different characters. Optional likelihood inference estimates ancestral states and rates when its assumptions and diagnostics permit. No complete ancestral transcript or physical mutation mechanism is inferred."
+  },
+  {
+    "figure": "homology_inference",
+    "svg": "homology_inference.svg",
+    "title": "Algorithm: alignments, genomic context and incomplete annotation",
+    "purpose": "synthetic_teaching_schematic",
+    "data_result": false,
+    "source_module": "intraphy.reporting.methods.homology",
+    "caption": "Protein alignments are projected through coding coordinates; genomic alignments search DNA beyond existing exon annotations. Ordered-chain dynamic programming distinguishes complementary interval coverage from competing copies. Flank-bounded short alignments are evaluated with affine gaps. A DNA match without an informative transcript annotation is coded present for DNA but unknown for exonic status. A covering annotated transcript can instead support a non-exonic state, conditional on that annotation. Supported deletion, unresolved alignment and assembly gaps are not interchangeable. Illustrations explain rules rather than calibrated detection performance."
+  },
+  {
+    "figure": "phylogenetic_model",
+    "svg": "phylogenetic_model.svg",
+    "title": "Model: character coding and ancestral-state probabilities",
+    "purpose": "synthetic_teaching_schematic",
+    "data_result": false,
+    "source_module": "intraphy.reporting.methods.model",
+    "caption": "Rows are species; columns refer to the highlighted DNA interval, its exonic status, and the purple intron position. The tree is an input phylogeny, not an inferred gene tree. The probability example conditions on fixed rates and branch lengths and uses the intron column only. Pie fractions are computed by summing ancestral-state assignments and cross-checked against the production pruning algorithm; they are not arbitrary percentages or fitted biological results. Unknown and inapplicable observations have distinct meanings, though each is marginalized by the separate binary model. Rate fitting, AIC and posteriors are unavailable for known dependent included characters; small-sample calibration remains unassessed."
+  }
+]

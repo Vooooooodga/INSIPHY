@@ -9,9 +9,10 @@ import sys
 from .environment import environment_report
 from .preflight import preflight
 
-GUARDED_COMMANDS = {"build-case", "run", "infer-phylogeny", "visualize", "import-orthofinder"}
+GUARDED_COMMANDS = {"build-case", "run", "infer-phylogeny", "visualize", "import-orthofinder",
+                    "extract-loci", "normalize-annotation", "explain"}
 OWNERS = {"execution.json", "run_result.json", "case_build_report.tsv", "case_provenance.tsv",
-          "visualization_manifest.tsv", "target_manifest.tsv"}
+          "visualization_manifest.tsv", "target_manifest.tsv", "figure_manifest.json"}
 
 
 def _write_json(path, data):
@@ -27,9 +28,11 @@ def reserve_output(args):
     target = path.resolve()
     if target in {Path('/'), Path.home(), Path.cwd()}:
         raise ValueError("Use a dedicated output directory, not the filesystem root, home or working directory")
-    for field in ("input_dir", "result_dir", "structural_site_matrix", "manifest"):
+    for field in ("input_dir", "result_dir", "structural_site_matrix", "manifest", "species_tree",
+                  "fasta", "gff", "orthologs", "config"):
         value = getattr(args, field, None)
-        if value and Path(value).resolve().is_relative_to(target):
+        paths = value if isinstance(value, (list, tuple)) else [value]
+        if any(item and Path(item).resolve().is_relative_to(target) for item in paths):
             raise ValueError(f"Output directory contains --{field.replace('_', '-')}; inputs cannot be overwritten")
     if path.exists() and not path.is_dir():
         raise ValueError("Output path exists and is not a directory")
@@ -63,7 +66,7 @@ def command_session(args):
     handler = logging.FileHandler(directory / 'intraphy.log', encoding='utf-8')
     handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
     logger.addHandler(handler)
-    state = {"command": args.command, "status": "running", "arguments": vars(args),
+    state = {"command": args.command, "status": "running", "arguments": {k: v for k, v in vars(args).items() if not k.startswith("_")},
              "started_at_utc": datetime.now(timezone.utc).isoformat()}
     try:
         _write_json(directory / 'environment.json', environment_report())

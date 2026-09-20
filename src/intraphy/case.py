@@ -189,11 +189,12 @@ def build_case(
     context_aligner="minimap2",
     coding_msa_mode="linsi",
     short_context_max_length=300,
+    *, target_rows=None,
 ):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     from .preparation.manifests import load_manifest
-    rows = load_manifest(manifest)
+    rows = load_manifest(manifest) if target_rows is None else [dict(row) for row in target_rows]
     write_provenance(rows, output_dir)
     report = []
     appended = False

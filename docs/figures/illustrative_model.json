@@ -1,0 +1,12 @@
+{
+  "gain": 0.4,
+  "loss": 0.2,
+  "root_presence": 0.6666666666666666,
+  "log_likelihood": -2.6276772791749976,
+  "node_presence": {
+    "root": 0.8348236896444703,
+    "AB": 0.7565048240587149,
+    "CD": 0.9209614859229277
+  },
+  "rates_are_fixed_for_illustration": true
+}

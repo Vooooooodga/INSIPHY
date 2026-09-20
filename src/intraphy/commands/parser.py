@@ -16,6 +16,10 @@ def build_parser():
                          default="splice_difference")
     example.add_argument("--seed", type=int, default=18)
 
+    explain = sub.add_parser("explain", help="Render the synthetic structure/tree methods guide (no input data).")
+    explain.add_argument("--output-dir", required=True)
+    explain.add_argument("--png", action="store_true", help="Also render PNG previews using optional CairoSVG.")
+
     extract = sub.add_parser("extract-gene")
     extract.add_argument("--genome", required=True)
     extract.add_argument("--annotation", required=True)
@@ -122,7 +126,8 @@ def build_parser():
     inspect.add_argument("--case-id", default="case")
 
     case = sub.add_parser("build-case")
-    case.add_argument("--manifest", required=True)
+    from .file_inputs import add_file_inputs
+    add_file_inputs(case)
     case.add_argument("--output-dir", required=True)
     case.add_argument("--identity-threshold", type=float, default=0.7)
     case.add_argument("--species-tree")
@@ -271,14 +276,24 @@ def build_parser():
         command.add_argument("--min-callable-fraction", type=float, default=0.70,
                              help="Known 0/1 divided by full tree panel; also sets the high-coverage report view.")
 
-    check = sub.add_parser("check", help="Validate a gene manifest and declared input paths without running alignments.")
-    check.add_argument("--manifest", required=True)
+    check = sub.add_parser("check", help="Validate genomic FASTA, GFF and tree inputs without running alignments.")
+    add_file_inputs(check)
     check.add_argument("--species-tree")
+    loci = sub.add_parser("extract-loci", help="Export paired genomic FASTA/GFF loci with automatic flanks.")
+    add_file_inputs(loci)
+    loci.add_argument("--species-tree", required=True)
+    loci.add_argument("--output-dir", required=True)
+    loci.add_argument("--flank", type=int, default=1000)
+    normalize = sub.add_parser("normalize-annotation", help="Explicitly normalize GFF/GTF with optional AGAT.")
+    normalize.add_argument("--gff", nargs="+", required=True)
+    normalize.add_argument("--output-dir", required=True)
+    normalize.add_argument("--config", help="Optional AGAT YAML configuration.")
+    normalize.add_argument("--timeout", type=int, default=600)
     for command in sub.choices.values():
         command.formatter_class = argparse.ArgumentDefaultsHelpFormatter
         command.add_argument("--quiet", action="store_true", help="Suppress console progress; retain logs.")
         command.add_argument("--debug", action="store_true", help="Show a Python traceback on errors.")
-    for name in ("build-case", "run", "infer-phylogeny", "visualize", "import-orthofinder"):
+    for name in ("build-case", "run", "infer-phylogeny", "visualize", "import-orthofinder", "extract-loci", "normalize-annotation", "explain"):
         sub.choices[name].add_argument("--force", action="store_true",
             help="Preserve an existing IntraPhy output directory as a backup, then rerun. Never overwrites inputs.")
     return parser

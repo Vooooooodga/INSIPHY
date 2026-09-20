@@ -46,3 +46,13 @@ must not be providing imports accidentally through PYTHONPATH.
 The release's validation report distinguishes local source tests, wheel smoke
 tests and fresh dependency installation in CI. Historical logs are not evidence
 that an optional executable or a different Python interpreter was tested.
+
+
+## Optional AGAT
+
+An AGAT installation on PATH enables `intraphy normalize-annotation`. The required
+executable is `agat_convert_sp_gxf2gxf.pl`. Follow the official
+[AGAT installation instructions](https://agat.readthedocs.io/en/latest/).
+The core package does not install AGAT or change annotations automatically.
+Real MAFFT/minimap2 integration and AGAT mocked-process interface tests are
+reported separately. No real-AGAT validation is implied by a passing unit suite.

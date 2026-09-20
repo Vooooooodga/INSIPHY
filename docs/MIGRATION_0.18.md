@@ -35,3 +35,17 @@ Historical demo outputs and validation logs are retained as historical records.
 They have not been silently relabeled or regenerated as new biological evidence.
 The English documentation describes v18 only; obsolete planning notes are available
 in repository history.
+
+
+## Direct genomic inputs and teaching figures
+
+The standard interface now accepts `--fasta` and `--gff` files/directories plus
+`--species-tree`. `--orthologs` identifies upstream family members by exact GFF
+IDs. Combined genomic FASTA with species-specific sequence IDs is supported.
+The generated `input_targets.tsv` is provenance output. `--manifest` remains
+optional for pipeline use. No old project-name executable or import is restored.
+`extract-loci` writes coordinate-consistent genomic FASTA/GFF with automatic
+flanks. AGAT normalization is opt-in. See `docs/inputs.md` and `docs/figure.md`.
+The standalone `explain` command renders five original methods figures; each
+result gallery links to that separate teaching guide. No scaling benchmark or
+statistical calibration is implied by the interface completion.

@@ -29,6 +29,7 @@ def build_native_example(output_dir, scenario="splice_difference", seed=18):
     def random_dna(length):
         return "".join(rng.choice("ACGT") for _ in range(length))
     manifests = []
+    member_records = []
     for species in SPECIES:
         segments = list(exons)
         if species == "Taxon_D" and scenario == "splice_difference":
@@ -52,8 +53,11 @@ def build_native_example(output_dir, scenario="splice_difference", seed=18):
                 f"{contig}\tsynthetic\tCDS\t{left}\t{right}\t.\t+\t0\tID={transcript}_cds{index};Parent={transcript}"])
         (root / f"{species}.fa").write_text(f">{contig}\n{sequence}\n")
         (root / f"{species}.gff3").write_text("##gff-version 3\n" + "\n".join(records) + "\n")
+        member_records.append(f">{transcript} gene={gene}\n{''.join(segments)}\n")
         manifests.append({"species": species, "family_id": "example_gene", "gene_id": gene,
                           "genome_fasta": f"{species}.fa", "annotation_file": f"{species}.gff3"})
+    (root / "orthologs").mkdir()
+    (root / "orthologs/example_gene.fa").write_text("".join(member_records))
     write_tsv(root / 'manifest.tsv', manifests,
               ['species', 'family_id', 'gene_id', 'genome_fasta', 'annotation_file'])
     (root / 'species_tree.nwk').write_text('((Taxon_A:0.1,Taxon_B:0.1):0.1,(Taxon_C:0.1,Taxon_D:0.1):0.1)root;\n')

@@ -12,3 +12,17 @@
 
 No biological-accuracy benchmark or finite-sample statistical calibration is claimed.
 Earlier release notes and unchanged historical validation remain in repository history.
+
+
+### V18 file-input and explanatory-figure completion
+
+- Accept genomic FASTA/GFF files or directories and a supplied rooted tree without
+  a hand-written table; exact ortholog-FASTA identifiers select target loci.
+- Support combined genomic locus FASTA with distinct species sequence IDs.
+- Export paired locus FASTA/GFF with automatic flanks, strand/phase preservation
+  and reversible source-coordinate mapping.
+- Add optional, explicit AGAT normalization with command/failure provenance.
+- Add five original tree/structure/ribbon teaching plates and `intraphy explain`;
+  keep synthetic guide and data-derived target figures clearly separate.
+- Test file contracts, coordinate round-trips, conservative rejection and the
+  illustrated parsimony examples. No new biological/statistical calibration.

@@ -27,10 +27,24 @@ def _dispatch(args):
     if args.command == "example":
         from .verification.native_cases import build_native_example
         manifest = build_native_example(args.output_dir, args.scenario, args.seed)
-        print(f"Synthetic inputs written: {manifest}")
+        print(f"Synthetic FASTA/GFF/tree inputs written: {Path(manifest).parent}")
+    elif args.command == "explain":
+        from .reporting.methods import render_guide
+        render_guide(args.output_dir, png=args.png)
     elif args.command == "check":
         from .commands.environment import environment_report
-        print(json.dumps({"status": "valid", "environment": environment_report()}, indent=2))
+        selection = args._input_selection
+        print(json.dumps({"status": "valid", "input_mode": selection.source_mode,
+                          "species": list(selection.tree_species),
+                          "families": sorted({r["family_id"] for r in selection.rows}),
+                          "selected_gene_loci": len(selection.rows),
+                          "environment": environment_report()}, indent=2))
+    elif args.command == "extract-loci":
+        from .inputs.loci import export_loci
+        export_loci(args._input_selection, args.species_tree, args.output_dir, args.flank)
+    elif args.command == "normalize-annotation":
+        from .inputs.agat import normalize_annotations
+        normalize_annotations(args.gff, args.output_dir, args.config, args.timeout)
     elif args.command == "extract-gene":
         extract_gene(args.genome, args.annotation, args.gene_id, args.family_id, args.species, args.gene_copy_id, args.output_dir, args.append, args.transcript_policy, args.canonical_rule, args.source_label, args.copy_role, flank=args.flank, max_extension=args.max_extension)
     elif args.command == "derive-tables":
@@ -65,6 +79,7 @@ def _dispatch(args):
     elif args.command == "inspect-annotation":
         inspect_annotation(args.annotation, args.output_dir, args.query, args.alias_file, args.species, args.case_id)
     elif args.command == "build-case":
+        args._input_selection.write(Path(args.output_dir))
         build_case(
             args.manifest,
             args.output_dir,
@@ -82,6 +97,7 @@ def _dispatch(args):
             context_aligner=args.context_aligner,
             coding_msa_mode=args.coding_msa_mode,
             short_context_max_length=args.short_context_max_length,
+            target_rows=args._input_selection.rows,
         )
     elif args.command == "import-orthofinder":
         import_orthofinder(args.orthofinder_dir, args.orthogroup, args.genome_manifest, args.output_dir, args.species_tree)

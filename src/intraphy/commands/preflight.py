@@ -1,17 +1,15 @@
 """Fail before expensive analysis when arguments or declared inputs are invalid."""
-from collections import Counter
 import math
 from pathlib import Path
 import shutil
 
-from ..preparation.manifests import load_manifest
 from ..storage.tabular import read_tsv
 from ..topology import SpeciesTree
 
 
 def required_tools(args):
     names = set()
-    if args.command in {"build-case", "derive-tables", "check"}:
+    if args.command in {"build-case", "derive-tables"}:
         names.add("mafft")  # Family protein alignment and exon-pair alignment.
         names.add(getattr(args, "context_aligner", "minimap2"))
         names.add(getattr(args, "aligner", "mafft"))
@@ -19,6 +17,8 @@ def required_tools(args):
         names.update({"mafft", getattr(args, "evidence_aligner", "minimap2")})
         if getattr(args, "evidence_aligner", "minimap2") == "miniprot":
             names.add("minimap2")  # Nucleotide evidence is a separate channel.
+    if args.command == "normalize-annotation":
+        names.add("agat_convert_sp_gxf2gxf.pl")
     return sorted(names - {"internal", "auto"})
 
 
@@ -44,31 +44,16 @@ def validate_input_paths(args):
         value = getattr(args, field, None)
         if value and not Path(value).is_file():
             raise FileNotFoundError(f"--{field.replace('_', '-')}: file does not exist: {value}")
-    if args.command == "build-case" and not getattr(args, "species_tree", None):
-        raise ValueError("--species-tree is required for a formal build-case; use extract-gene for extraction alone")
-    if getattr(args, "manifest", None):
-        rows = load_manifest(args.manifest)
-        if args.command in {"build-case", "check"}:
-            counts = Counter((r["family_id"], r["species"]) for r in rows)
-            duplicates = ["/".join(key) for key, n in counts.items() if n > 1]
-            if duplicates:
-                raise ValueError("Formal input requires one gene per species and family: " + ", ".join(duplicates))
-    if args.command in {"build-case", "check"} and getattr(args, "species_tree", None):
-        import tempfile
-        from ..orthofinder import _write_species_tree
-        with tempfile.TemporaryDirectory(prefix="intraphy-tree-check-") as tmp:
-            converted = Path(tmp) / "tree.tsv"
-            _write_species_tree(args.species_tree, converted)
-            tree = SpeciesTree(read_tsv(converted))
-        panel = set(tree.leaf_by_label)
-        if getattr(args, "manifest", None):
-            families = {}
-            for row in rows:
-                families.setdefault(row["family_id"], set()).add(row["species"])
-            for family, species in families.items():
-                if species != panel:
-                    raise ValueError(f"Tree/manifest species mismatch for {family}: "
-                                     f"missing={sorted(panel-species)}, extra={sorted(species-panel)}")
+    if args.command == "normalize-annotation":
+        from ..inputs.resources import expand_files, GFF_SUFFIXES
+        expand_files(args.gff, GFF_SUFFIXES)
+        if args.config and not Path(args.config).is_file():
+            raise FileNotFoundError(f"AGAT configuration does not exist: {args.config}")
+        if args.timeout < 1:
+            raise ValueError("--timeout must be positive")
+    if args.command in {"build-case", "check", "extract-loci"}:
+        from ..inputs.selection import resolve_inputs
+        args._input_selection = resolve_inputs(args)
     if args.command in {"run", "infer-phylogeny"}:
         directory = Path(args.input_dir)
         tree_path = directory / "species_tree.tsv"
@@ -86,5 +71,5 @@ def preflight(args):
     validate_input_paths(args)
     missing = [name for name in required_tools(args) if not shutil.which(name)]
     if missing:
-        raise RuntimeError("Required alignment tools are unavailable on PATH: " + ", ".join(missing)
+        raise RuntimeError("Required external tools are unavailable on PATH: " + ", ".join(missing)
                            + ". See docs/installation.md and run intraphy inspect-aligners.")

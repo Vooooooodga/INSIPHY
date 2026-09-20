@@ -220,9 +220,14 @@ def visualize_target_groups(input_dir,result_dir,output_dir,*,selectors=(),targe
     write_tsv(output/'visualization_manifest.tsv',manifest,
               ['target_id','family_id','layer','site_id','label','color','view','path','type','intervals','selected_for_analysis','description'])
     write_tsv(output/'target_intervals.tsv',interval_table,['target_id','species','gene_copy_id','contig','start0','end0','strand','occurrence_id','kind','coordinate_evidence'])
-    (output/'index.html').write_text('<!doctype html><html lang="en"><meta charset="utf-8"><title>IntraPhy 0.17 target gallery</title>'
+    from intraphy import __version__
+    from intraphy.reporting.methods import render_guide
+    render_guide(output / 'method_guide')
+    (output/'index.html').write_text(f'<!doctype html><html lang="en"><meta charset="utf-8"><title>IntraPhy {__version__} target gallery</title>'
         '<style>body{font-family:system-ui;margin:25px}section{margin:35px 0;border-bottom:1px solid #ccc}a{margin-right:10px}</style>'
-        '<h1>IntraPhy 0.17 · one object per figure group</h1><p>Gray is the unchanged supplied annotation, not proof of absence or conservation. '
+        f'<h1>IntraPhy {__version__} · one object per figure group</h1><p>Gray is the unchanged supplied annotation, not proof of absence or conservation. '
         'Colors identify different targets; all three views of the same target share its color. No new inference is run by the renderer.</p>'
+        '<p><a href="method_guide/index.html">How the method works: synthetic teaching figures</a> '
+        '(separate from the data-derived results below).</p>'
         +''.join(html)+'</html>',encoding='utf-8')
     return manifest

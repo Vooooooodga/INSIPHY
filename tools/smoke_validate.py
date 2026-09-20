@@ -28,9 +28,17 @@ def main():
     run('--version')
     run('inspect-aligners')
     run('example','--output-dir',root/'native')
-    run('check','--manifest',root/'native/manifest.tsv','--species-tree',root/'native/species_tree.nwk')
-    run('build-case','--manifest',root/'native/manifest.tsv','--species-tree',root/'native/species_tree.nwk',
+    (root/'native/manifest.tsv').unlink()
+    (root/'native/expected.json').unlink()  # Truth is not an analysis input.
+    source=('--fasta',root/'native','--gff',root/'native',
+            '--orthologs',root/'native/orthologs','--species-tree',root/'native/species_tree.nwk')
+    run('check',*source)
+    run('build-case',*source,
         '--output-dir',root/'prepared','--threads',2)
+    run('extract-loci',*source,'--output-dir',root/'portable','--flank',100)
+    run('check','--fasta',root/'portable/example_gene','--gff',root/'portable/example_gene',
+        '--species-tree',root/'portable/example_gene/species_tree.nwk')
+    run('explain','--output-dir',root/'method-guide')
     run('run','--input-dir',root/'prepared','--output-dir',root/'parsimony','--threads',2)
     run('infer-phylogeny','--input-dir',root/'prepared','--output-dir',root/'erard','--model','er-ard',
         '--structural-site-matrix',root/'parsimony/structural_site_matrix.tsv')

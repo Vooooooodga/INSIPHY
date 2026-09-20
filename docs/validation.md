@@ -1,5 +1,26 @@
 # Validation and remaining scientific work
 
+## File-input and visual-guide completion
+
+Local evidence is archived in
+[`validation/v018/file_input_completion`](../validation/v018/file_input_completion/).
+The complete suite ran **442 tests: no failures, errors or skips**, with real
+MAFFT v7.505 and minimap2 2.26-r1175. The installed wheel completed 11 CLI commands,
+including no-manifest preparation, portable locus export, inference and graphics.
+Its result gallery contained 27 data-derived target SVGs and five separately
+labelled teaching SVGs. Five additional standalone guide SVGs were generated.
+
+The wheel was imported from a separate installation and run with `-I` outside
+the checkout. Runtime dependencies were reused from the existing environment;
+this was not a fresh dependency-resolution test. The first wheel attempt lacked
+Biopython, was corrected by supplying that dependency path, and is retained in
+the evidence directory. Remote CI results must be checked independently.
+
+The AGAT tests mock subprocess execution to verify command/failure contracts.
+A real AGAT executable was not run. The guide's small parsimony examples are
+checked against the algorithm, but are not biological or statistical validation.
+No scalability claim is added by this completion.
+
 ## Distinct evidence levels
 
 Unit tests verify stated contracts and numerical identities. Integration tests
