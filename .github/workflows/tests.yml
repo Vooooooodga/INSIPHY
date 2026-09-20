@@ -1,0 +1,61 @@
+name: tests
+on: [push, pull_request]
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  unittest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install real alignment tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mafft=7.505-1 minimap2=2.26+dfsg-1build1
+          mkdir -p validation/current
+          mafft --version 2>&1 | tee validation/current/tools.txt
+          minimap2 --version | tee -a validation/current/tools.txt
+      - name: Install package and build tools
+        run: python -m pip install -c requirements-ci.txt . build cairosvg
+      - name: Check source and installed namespace
+        run: |
+          python tools/check_source_layout.py
+          python -I tools/verify_namespace.py
+          intraphy inspect-aligners
+      - name: Unit and raw-input integration tests
+        run: |
+          set -o pipefail
+          python -m unittest discover -s tests -v 2>&1 | tee validation/current/tests.log
+      - name: Build distributions
+        run: python -m build
+      - name: Isolated wheel smoke test
+        run: |
+          python -m venv /tmp/intraphy-wheel
+          /tmp/intraphy-wheel/bin/python -m pip install -c requirements-ci.txt dist/*.whl
+          PATH=/tmp/intraphy-wheel/bin:$PATH /tmp/intraphy-wheel/bin/python -I tools/verify_namespace.py
+          /tmp/intraphy-wheel/bin/python tools/smoke_validate.py --output-dir validation/current/wheel-smoke
+      - name: Archive source and native executables for reproducibility
+        if: always()
+        run: |
+          git archive --format=zip --output=validation/current/source.zip HEAD
+          if [ '${{ matrix.python }}' = '3.13' ]; then
+            tar -czf validation/current/alignment-tools-linux-x86_64.tar.gz /usr/lib/mafft /usr/bin/mafft /usr/bin/minimap2
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-python-${{ matrix.python }}
+          path: |
+            validation/current
+            dist
+          retention-days: 30
