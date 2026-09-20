@@ -57,7 +57,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import importlib.metadata as metadata
-          import json, platform, re, subprocess
+          import json, platform, re
           root=Path('validation/v018'); root.mkdir(parents=True,exist_ok=True)
           log=Path('/tmp/v18-tests.log').read_text()
           match=re.search(r'Ran (\d+) tests in ([0-9.]+)s',log)
@@ -79,14 +79,17 @@ jobs:
       - name: Publish validated ordinary source on the release branch
         run: |
           rm -rf .release_v018
-          rm -f .release-v018-*.xzpart .github/workflows/build-v18.yml .github/workflows/v18-validation.yml
+          rm -f .release-v018-*.xzpart
+          cp .github/workflows/tests.yml /tmp/v18-final-tests.yml
+          rm -rf .github/workflows
+          git restore --source=HEAD --worktree -- .github/workflows
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m 'Release IntraPhy 0.18.0: elementary character changes, dependence safeguards, English CLI and documentation'
-          git push origin HEAD:release/v0.18.0
           git archive --format=zip --output=/tmp/intraphy-v0.18.0-source.zip HEAD
           git rev-parse HEAD > /tmp/v18-release-commit.txt
+          git push origin HEAD:release/v0.18.0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -96,6 +99,7 @@ jobs:
             /tmp/v18-native-tools.txt
             /tmp/v18-wheel-smoke
             /tmp/v18-release-commit.txt
+            /tmp/v18-final-tests.yml
             /tmp/intraphy-v0.18.0-source.zip
             dist
             validation/v018
