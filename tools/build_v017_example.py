@@ -10,8 +10,8 @@ import argparse
 import json
 import shutil
 
-from insiphy.storage.tabular import write_tsv
-from insiphy.observations.schema import write_structural_site_matrix
+from intraphy.storage.tabular import write_tsv
+from intraphy.observations.schema import write_structural_site_matrix
 
 FAMILY = 'SYNTHETIC_GENE'
 SPECIES = ('A', 'B', 'C', 'D')
@@ -129,8 +129,8 @@ E4 therefore has two equally parsimonious gain/loss histories on the supplied tr
 
 
 def run_example(root):
-    from insiphy.phylogeny import infer_phylogeny
-    from insiphy.visualize import visualize_results
+    from intraphy.phylogeny import infer_phylogeny
+    from intraphy.visualize import visualize_results
     root=Path(root);inp,prepared=build_example(root)
     for scope in ('all','high-coverage'):
         out=root/('results_'+scope);out.mkdir(exist_ok=True)

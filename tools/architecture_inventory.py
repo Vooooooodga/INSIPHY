@@ -156,7 +156,7 @@ def strongly_connected(graph):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('repo', type=Path)
-    parser.add_argument('--source', default='src/insiphy')
+    parser.add_argument('--source', default='src/intraphy')
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
     repo = args.repo.resolve()

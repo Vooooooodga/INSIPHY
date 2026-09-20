@@ -1,1 +1,0 @@
-"""Aligners components for INSIPHY."""

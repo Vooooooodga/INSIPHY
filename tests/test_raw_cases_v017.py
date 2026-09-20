@@ -5,8 +5,8 @@ import tempfile
 import unittest
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'tools'))
 from build_raw_cases_v017 import build_raw_cases,CASES
-from insiphy.preprocess import extract_gene
-from insiphy.storage.tabular import read_tsv
+from intraphy.preprocess import extract_gene
+from intraphy.storage.tabular import read_tsv
 
 class NativeInputsV017(unittest.TestCase):
     @classmethod

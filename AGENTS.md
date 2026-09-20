@@ -1,11 +1,28 @@
-# IntraPhy maintenance contract
+# IntraPhy maintenance rules
 
-- Scientific state construction belongs in `observations/`; codecs parse/validate, inference consumes a frozen matrix, reporting displays explicit results.
-- Public modules preserve imports/CLI. See `docs/architecture.md` for canonical owners; edit the owner, not a compatibility export.
-- No gene-name-based biological roles. Source/copy roles come from input manifests.
-- Unknown, absent, not-applicable, annotation-conditional and predicted evidence remain distinct. Preserve negative-strand, codon/phase and alternative-path tests.
-- Do not replace near-optimal candidate enumeration with one longest path. Do not replace Sankoff with a matrix exponential.
-- External tools use per-task temporary directories and subprocess `cwd`; do not change process cwd. Do not introduce per-layer executors or content-hash audits.
-- Keep formal single-copy, experimental multicopy and verification fixtures separate. Do not describe legacy calibration as calibration of the formal model.
-- First run targeted tests; before delivery run `PYTHONPATH=src python -m unittest discover -s tests -v`. Missing MAFFT yields explicit integration-test skips, not biological success.
-- Keep task output short: changed contract, actual tests, unresolved limits. Do not repeatedly dump whole files or copy long plans into this file.
+Use the `intraphy` package and command only. Active code, messages and documentation
+are English. Preserve established biological terms and define technical fields.
+
+Scientific observations belong in `observations/`. Inference consumes a frozen
+matrix and must not change homology or invent negative states. DNA presence,
+annotation-conditional exon identity and splice positions have distinct semantics.
+Unknown, absent, inapplicable and predicted-only evidence remain distinct.
+
+Count structural character changes, not asserted mutation events. Do not add
+possible placements or double-count split/fusion descriptions. Do not infer
+compound events. Keep dependence metadata and block all independent-character
+likelihood outputs for known linked included sites.
+
+Use actual matched intervals; do not infer complete intronic DNA homology from
+flanking exon correspondence. References do not imply ancestors. Repertoire
+means supplied annotated paths, not all biological transcript usage.
+
+Keep production modules at or below 500 physical lines. Prefer cohesive explicit
+owner modules and ordinary imports. No runtime source extraction, forwarding old
+namespace, content-hash pipeline or unnecessary framework. Patch tests at the
+actual implementation owner. Never relax evidence requirements to repair a test.
+
+Before a release, run source-layout checks, the complete test suite with real
+MAFFT/minimap2, clean wheel smoke tests and raw-input integration. Archive actual
+versions and failures. Separate unit/integration success from unperformed
+biological benchmarking and statistical calibration. Preserve historical logs.

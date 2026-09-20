@@ -1,33 +1,62 @@
-# 可判定范围，不是删去不保守序列
+# Biological scope and analysis coverage
 
-## 三种量
+The formal analysis concerns local structure in supplied single-copy orthologs.
+It can report evidence insufficient to decide. Supporting an input feature type
+is not a guarantee that its homology, role or history can be recovered.
 
-`state1_fraction_called`描述有结构的比例；`callable_fraction_panel`描述整个面板中能看清0或1的比例；`callable_fraction_applicable`仅作为角色层辅助分母。高覆盖筛选使用第二种。
+## Coverage is not conservation
 
-10种中2有内含子、8种同源位置明确无内含子：100%可判定，保留。2有、8种未知：20%。role层2适用、8个DNA确实缺失：适用内可达100%，但全树仅20%；两种分母均输出。
+Known state 0 is a supported negative observation. Known state 1 is a supported
+positive. Unknown is neither. Seven present and three explicitly absent tips have
+100% callable coverage. Seven present and three unknown tips have 70%. The
+coverage fraction uses the full supplied tree panel, not the fraction with state 1.
 
-## 单一owner
+Default `all` does not filter by this fraction. Optional `high-coverage` is a
+sensitivity subset; 0.70 is an engineering setting without a calibrated biological
+interpretation. Identical fractions can have different phylogenetic information
+when called tips cluster in one clade. The output therefore records called species,
+MRCA and representation of root subtrees.
 
-`observations/eligibility.py`消费已由观测层判定的结构矩阵。它不会根据英文说明猜角色、降低比对阈值或重新扫描DNA。明确mask的输入值在audit保留，在推断中有效值为unknown。
+Character selection leaves coordinates, full annotation and transcript paths
+unchanged. A–unknown B–C does not become an A–C splice junction. A drawing split
+never creates additional character replicates. Ascertainment and state-dependent
+observation failure remain separate statistical issues.
 
-输出：
+## Twenty-eight scope cases
 
-- `structural_observation_eligibility.tsv`：原值、有效值、mask、不适用及原原因；
-- `structural_character_eligibility.tsv`：0/1/unknown分母、实际物种、可判定MRCA、根两侧覆盖、是否进入本次分析；
-- `scope_coverage_views.tsv`：显示阈值下的计数，不附加模型；
-- `analysis_scope.json`：实际选择规则与限制；
-- 完整矩阵与实际分析矩阵分别保存。
+These cases are overlapping biological and observation situations, not 28 states
+or a claim of 28 experimentally validated capabilities.
 
-已知0不因缺少对应序列而被当成未知，前提是原观测模块已获得明确缺失证据。程序无法将仅仅无命中升级为可靠0。一个层可判定，不要求其他层也成功。
+| No. | Situation | Supported interpretation and boundary |
+|---|---|---|
+| 01 | Conserved structure | Compare explicit local states; unknown regions are not conserved by default. |
+| 02 | Unalignable intronic DNA with corresponding splice positions | Position characters may be informative without complete intron sequence homology. |
+| 03 | Missing exon annotation | Retain DNA/projection candidates; do not automatically assert exon use. |
+| 04 | Missing transcript annotation | Known-locus evidence is possible; no complete de novo gene prediction. |
+| 05 | Supported DNA deletion | Code absence only with resolved location and adequate sequence evidence. |
+| 06 | Assembly gaps or contig ends | Retain unknown and the observation reason. |
+| 07 | Shifted splice boundary | Record exact positions; no generic one-step boundary-shift history model. |
+| 08 | One-to-many complementary exon correspondence | Compare mapped blocks and elementary cutpoints; no compound-event count. |
+| 09 | Many-to-one complementary exon correspondence | Same constraints in the reverse direction; reference does not imply ancestor. |
+| 10 | Exonization | Compare DNA and annotation-conditional role separately; function is not inferred. |
+| 11 | Intronization | Retained DNA and loss of exonic role remain distinct. |
+| 12 | Exon skipping | Retain supplied paths; do not infer absent paths or usage frequency. |
+| 13 | Intron retention | Describe annotated paths; no inclusion rate or NMD inference. |
+| 14 | Alternative first or last exons | Retain path-specific endpoints and explicit completeness limitations. |
+| 15 | CDS versus UTR identity | Preserve labels; no separate coding-identity evolutionary model. |
+| 16 | Microexons | Require appropriate local evidence; short-sequence thresholds are not calibrated probabilities. |
+| 17 | Internal repeats | Distinguish repeated reference coverage from complementary fragments; abstain on ambiguous instances. |
+| 18 | Overlapping exons | Retain path ownership and actual intervals; drawing fragments are not replicates. |
+| 19 | Antisense or nested genes | Preserve strand and ownership; position alone does not assign function. |
+| 20 | Intronic noncoding RNA | Retain annotation context; no RNA-class-specific history model. |
+| 21 | Transposable elements and exonization | Retain repeat labels and role observations; no TE origin or activity mechanism. |
+| 22 | Unannotated noncoding sequence | Local DNA correspondence may be retained; no exhaustive element discovery. |
+| 23 | Inversion or order rearrangement | Report incompatible order/ambiguous correspondence; no complete rearrangement history. |
+| 24 | Frameshift or premature stop | Retain coding anomalies; no automatic pseudogene or adaptation claim. |
+| 25 | Annotation micro-intron or exception | Preserve original exception metadata; platform-specific cases are not exhausted. |
+| 26 | uORF, SECIS or RNA secondary structure | Retain supplied annotations; no translation-control or covariation inference. |
+| 27 | Circular RNA or trans-splicing | Outside the formal linear single-locus model. |
+| 28 | Multicopy families or gene fusion | Outside formal single-copy inference; historical experimental code remains separate. |
 
-## 坐标与统计单位
-
-屏蔽仅发生在状态／字符选择层。A—未知B—C仍保留原始B范围，不能生成RNA A–C连接。原始外显子切为多个绘图块，不会因此创建额外统计字符；原linked_group继续传给数值模块。仍未实现任意相关多字符的完整联合事件模型。
-
-## 条件性解释
-
-70%是可调整的工程默认，不是准确性保证，也不是生物学阈值。近缘tips集中产生的高覆盖不保证深层方向可识别。固定mask、state-dependent漏检和候选发现过程的差别仍存在。原observed-at-least-one、variable-only、complete-universe规则保持独立，未以改名规避ascertainment。
-
-## 边界
-
-没有新增完整祖先转录本、复杂倒位、多拷贝、RNA活动或选择系数模型。提供的注释不是真实所有组织和时间的RNA repertoire。预测剪接信号分不代表外显子概率。
+No molecular mechanism, selection coefficient, phenotypic cause or independent
+mutation count is inferred. See [validation](validation.md) for unperformed work.

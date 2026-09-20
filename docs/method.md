@@ -1,69 +1,118 @@
-# Method Overview
+# Method
 
-## Scope and input
+## Question and inputs
 
-IntraPhy compares gene-internal structure in a supplied set of single-copy orthologous genes. The user supplies one gene copy per species, genome FASTA, existing GFF3/GTF annotation, and a rooted species tree. Gene-level homology is an upstream result; an OrthoFinder result can be imported, or an equivalent curated manifest can be provided. IntraPhy does not search the genome for orthologous genes or infer a gene tree in this first-version scope.
+IntraPhy analyzes local gene structure in upstream-defined single-copy orthologs.
+The inputs are genome sequence, supplied GFF3/GTF annotation, a gene manifest and
+a rooted species tree. The reporting unit is a gene family. The statistical
+observation is a structural character. The tree and orthology are conditions of
+the analysis; neither is estimated by this program.
 
-The analysis asks which internal sequence units correspond across the supplied genes, what their observed annotated roles and splice boundaries are, and which structural-state changes are supported on the fixed tree. It reports evidence and model results. It does not assign molecular mechanisms or claim that a statistical result proves a particular event occurred.
+## Preserve annotation before inference
 
-## Biological observations
+The extraction layer retains native genomic coordinates, strand, CDS and UTR
+intervals, introns, feature ownership, original attributes and supplied transcript
+paths. Identical coordinate structures may share computation while their path
+identities remain traceable. Repertoire observations indicate use by at least one
+supplied path. Canonical observations concern the explicitly selected path and
+must be analyzed in a separate frozen matrix.
 
-The method carries original features, inferred correspondences, and phylogenetic observations as separate records. An element identifier tracks a proposed homologous unit; its biological label remains exon, intron, CDS, UTR, noncoding exon, or another feature type supplied by the annotation. An `EG_*` identifier is stable only for a frozen input, parameter set, and correspondence algorithm version.
+The supplied annotation is not a complete census of all tissues or conditions.
+Role state 0 requires informative covering paths in the selected annotation view.
+It does not establish that an interval is never transcribed. Annotation dropout
+can change an annotation-conditional character even when biological RNA use did
+not change. Genomic sequence alone cannot resolve this distinction.
 
-Three observation layers are analyzed separately:
+## Local sequence correspondence
 
-| Layer | State 0 | State 1 | What the comparison describes |
-|---|---|---|---|
-| `exon_presence` | homologous DNA unit absent | homologous DNA unit present | presence of the corresponding sequence interval |
-| `exon_role` | not exonic in the selected supplied-annotation view | exonic in the selected supplied-annotation view | annotation-conditional exon identity of DNA that corresponds across species |
-| `splice_junction` | the homologous cut is absent from the selected transcript view | the homologous cut is present | an intron at a corresponding position between or within mapped units |
+For coding sequence, a family protein alignment is projected through codons to
+genomic intervals. MAFFT L-INS-i is the default, with E-INS-i as an explicit
+alternative. A protein match supports only its actual projected CDS blocks; it
+does not extend through unmatched UTR or intronic sequence.
 
-DNA presence and exon role answer different questions. A DNA alignment can support sequence presence while its role remains unknown. A coding projection or another predicted feature is retained as a candidate and does not by itself establish an annotated exon role. A role contrast is coded only where the homologous DNA interval is sufficiently covered and the supplied transcript paths inform that interval.
+Nucleotide candidates retain scores, aligned blocks, orientation, alternatives
+and search completeness. Short feature-bounded alignments are candidates. A hard
+position observation requires a unique ordered flank configuration and alignment
+within the actual bounded genomic interval. Predicted coding projections do not
+become confirmed annotated exons.
 
-The input annotation may contain CDS, 5′/3′ UTR, noncoding exons, introns, and other sequence-feature classes. Their original type, coordinates, parentage, and transcript membership are retained. A feature class enters formal phylogenetic inference only when a homologous unit and a clear state definition are available. Overlapping annotations may describe different transcript paths or feature classes at the same DNA interval.
+Ordered candidate chains retain near-optimal alternatives. A local membership
+identifies a homologous unit, a native occurrence and actual matched subintervals.
+Partial matches do not expand to the entire parent exon. Complementary ordered
+reference coverage is distinguished from repeated coverage of the same reference
+positions. Genomically separated fragments are not labeled repeats solely because
+they occupy distinct genomic intervals. Transcript aliases at the same physical
+interval are not separate repeat instances.
 
-## Evidence construction
+Sequence correspondence, conserved intron position and common ancestry of an
+intron insertion are distinct questions. Two introns may occupy corresponding
+coding positions without demonstrable homology of their complete internal DNA.
+Parallel gains at one position remain possible. The reference coordinate system
+is not an ancestral-state assertion.
 
-### 1. Preserve transcript paths and annotation context
+## Define structural characters
 
-The default `transcript_policy=all` retains every supplied transcript path. Identical genomic structures may be deduplicated for computation while their transcript identifiers remain traceable. `annotation_view=repertoire` summarizes whether a structure is used by any supplied path. A `canonical` view restricts role and junction observations to the explicitly selected canonical path and records its selection rule. Sequence-presence observations are view independent. Repertoire and canonical are separate view-specific matrices; canonical is a sensitivity analysis and is never substituted into a frozen repertoire analysis.
+The three separately analyzed layers are:
 
-Role states are conditional on the annotation supplied by the user. For example, role state 0 means the corresponding interval is non-exonic in the provided, adequately covering paths; it does not establish that the interval is never transcribed in any tissue or condition. If no supplied path covers the interval, its role is unknown. Annotation and search boundaries are kept distinct so a feature extending past a gene row, or a candidate found in a declared flanking search interval, remains traceable.
+| Layer | State 0 | State 1 |
+|---|---|---|
+| `exon_presence` | Corresponding DNA unit demonstrably absent | Corresponding DNA unit present |
+| `exon_role` | Non-exonic in adequately covering supplied paths | Exonic in the selected supplied annotation |
+| `splice_junction` | An informative path continuously spans the corresponding position | A supplied path contains the corresponding junction |
 
-### 2. Build coding sequence coordinates
+Unknown and inapplicable states are retained separately in the observation
+metadata. DNA absence makes the corresponding exon role inapplicable. Junction
+absence requires positional/path evidence; a missing GFF feature or missing
+alignment hit is insufficient.
 
-For coding evidence, each transcript CDS is assembled in transcript orientation, including negative-strand paths. A family-level protein multiple sequence alignment provides shared residue columns. Residue columns are projected through codons and CDS bases back to genomic intervals, retaining the source feature and transcript for each block. Identical proteins can share alignment computation while their transcript paths remain distinct. Protein correspondence is local: a common MSA column alone does not establish an unambiguous genomic mapping; local sequence and positional anchors, competing placements, and actual projected blocks are retained.
+The character catalogue records identities, labels, discovery rules, counting
+units and dependence. The coordinate sidecar records actual evidence. Multiple
+plotting blocks do not create additional characters. Different characters with
+identical tip patterns are not merged merely because the patterns are equal.
+Overlapping aligned sequence intervals are conservatively linked for dependence;
+sharing a transcript alone does not imply dependence. Declared linked junctions
+remain linked even though compound-event interpretations have been removed.
 
-L-INS-i and E-INS-i are available for the family protein alignment. The output records the selected mode and backend. The exact executable version belongs to the container or execution provenance and is not inferred from the mode name. This uses a family-wide coding coordinate system; the supplied species tree remains the tree for evolutionary inference. For mixed CDS/UTR exons, protein evidence covers only the projected CDS blocks. UTR sequence needs nucleotide correspondence evidence or remains uncovered. The use of progressive alignment ideas is limited to sequence correspondence; IntraPhy does not run a whole-genome alignment.
+## Freeze observations and define inference scope
 
-### 3. Align short DNA intervals with local anchors
+The full structural matrix is retained. Default `--analysis-range all` does not
+select characters by coverage. The optional high-coverage analysis uses known 0
+and 1 entries divided by the complete supplied tree panel. This is a sensitivity
+analysis, not an accuracy threshold. Native coordinates and transcript adjacencies
+are never changed by character selection. A missing intermediate exon cannot
+create a new splice connection between its neighbors.
 
-Short intronic, noncoding, and boundary intervals use two stages. A feature-bounded search first records candidate alignments with their scoring scheme, orientation, score, candidate count, completeness status, and aligned blocks. It cannot create a hard membership. When both flanks map uniquely, in the expected order and on the same transcript path, the intervening genomic interval is extracted and realigned. Only this anchor-bounded result can support a hard nucleotide membership or position observation. The current bounded nucleotide candidate scheme `nt_blastn_v1` uses match `+2`, mismatch `-3`, gap-open `-7`, and gap-extension `-2`. Optimal ties are retained where enumerated. Ambiguous or incomplete flank configurations remain candidate evidence.
+Frozen-matrix analyses use their archived coordinate sidecar when available;
+current annotation is not reread to manufacture coordinates for an old matrix.
+Missing sidecars remain explicit limitations. See [scope](scope_policy.md).
 
-### 4. Resolve ordered correspondences and block coverage
+## Reconstruct elementary changes
 
-Candidate alignments are connected into monotone chains when their blocks are compatible in query and target transcript order. Chaining compares scores only within the same molecule type and scoring scheme. Structural role and splice conservation do not add score, so the correspondence step does not prefer a candidate merely because it preserves an exon pattern. Near-optimal mappings and incomplete candidate enumeration remain explicit.
+Equal-cost Sankoff reconstruction reports all node states and branch endpoint
+pairs compatible with a global minimum. A change is `required` when every optimum
+requires that directed change on the branch, and `possible` when at least one
+optimum permits it. Neither label is a confidence probability.
 
-A resolved hard membership is identified by the element, the source occurrence, and the actual matched subinterval blocks. One parent occurrence can therefore contribute several local memberships. A partial alignment supports only its covered subinterval and never expands to the full parent feature. Candidate and unresolved mappings remain review records and create no hard phylogenetic observation. For one-to-many relations, projections that cover distinct, ordered, complementary portions of the same reference interval are classified as complementary. Projections that repeatedly cover the same reference portion are classified as repeated overlap and remain separate repeat instances or ambiguous mappings. These sequence-coverage relationships define the structural correspondence; parsimony subsequently evaluates mapped junction states on the tree. Multiple junctions within one 1:n relation share a linked-group identifier so their dependence is visible.
+One deterministic compatible optimum is provided for inspection. Its total cost
+is checked against the dynamic-programming optimum. It is not a sampled history.
+Per-layer minimum-change totals do not add alternative possible placements.
+Junction gain and the corresponding exon-split description are one character
+change. Multiple cutpoints are not summarized as one compound event.
 
-An absence call requires a resolved homologous location, ordered flanking anchors, and evidence that the intervening sequence was searchable. Missing annotation, an unsearched boundary, an ambiguous repeated hit, or an incomplete search yields unknown rather than absence.
+Separate layer reconstructions need not form a valid complete ancestral
+transcript. An applicability audit flags incompatible singleton reconstructions;
+it does not repair the history or establish a joint model.
 
-## Phylogenetic analysis
+## Likelihood and interpretation
 
-The default analysis uses equal-cost maximum parsimony on the supplied rooted species tree. For each site, it retains every node state and branch endpoint pair found in all globally minimum-change histories. A directed change is `required` on a branch when every optimal history assigns it there, and `possible` when at least one optimal history does. Ties are reported as sets; the method does not choose one arbitrary history or convert counts of equally parsimonious histories into probabilities. The method follows the fixed-tree minimum-change framework of [Sankoff (1975)](https://epubs.siam.org/doi/10.1137/0128004).
+Optional binary CTMC models compare gain/loss rates or a foreground multiplier,
+conditional on the same frozen matrix. Known dependent characters jointly used
+in one family-layer prevent this independent-character analysis before fitting.
+Rates, AIC, intervals, LRT and posterior outputs are all unavailable in that case.
+See [statistical model](statistical_model.md) for ascertainment and fit diagnostics.
 
-Tree changes are reported at the resolution of the observed layer: sequence-unit gain/loss, annotation-conditional exon-role gain/loss, or intron/junction gain/loss. For a `1↔2` relation, the junction character reports `event_type=intron_gain` or `intron_loss`, while `structural_relation` reports `split` or `fusion`. These two columns describe the same observed structural contrast at different resolutions.
-
-For a `1↔n` relation with `n>=3`, all component cutpoints must co-occur in one species, one gene copy, and one transcript path before the summary can report a `required` compound structural event. Component changes that lack this joint path evidence are retained as individual sites and summarized as `possible_non_joint`. `compound_structural_events.tsv` records this distinction. These outputs describe structural state changes; they do not assign a molecular mechanism or an absolute time.
-
-The repertoire matrix is generated once and frozen. Parsimony, ER/ARD, and foreground CTMC consume that same schema-v3 file; optional likelihood runs receive it through `--structural-site-matrix`. A canonical sensitivity analysis first creates its own frozen matrix and is kept in a separate result directory.
-
-Optional ER/ARD and foreground CTMC analyses are described in [Statistical Model](statistical_model.md). They estimate rates and compare explicit rate models conditional on the supplied tree, structural matrix, and ascertainment rule. Their P values concern those model comparisons; they do not establish that a particular branch event occurred.
-
-## Interpretation limits
-
-The formal first-version scope is strongest for single-copy orthologs with at least some locally alignable gene-internal sequence and usable annotation paths. Extreme clusters of near-identical microexons can have multiple equally plausible mappings; the affected interval is reported as unresolved while independent regions remain analyzable. Whole-gene multi-copy families are outside this analysis scope because gene-copy correspondence requires additional inference.
-
-Genome sequence and annotation alone do not establish tissue-specific transcript use, sex-specific expression, regulatory mechanism, or functional consequences. IntraPhy reports sequence, supplied-annotation, and tree-based structural evidence for users to interpret with other data. Complex rearrangements and feature classes without a defensible homology/state definition may be retained descriptively without entering the formal tree model.
-
-Relevant biological background includes comparative studies of [splice-boundary evolution](https://academic.oup.com/gbe/article/8/8/2340/2198117), a review of [intron biology](https://www.frontiersin.org/journals/genetics/articles/10.3389/fgene.2023.1150212/full), and work on [cross-species transcript paths](https://pmc.ncbi.nlm.nih.gov/articles/PMC8327911/). These citations provide biological context; the state definitions and inference rules used here are specified above.
+The method reports local structural evidence and conditional reconstruction.
+It does not infer mutation-event counts, rearrangement mechanisms, functional
+consequences or selection. The [references](references.md) distinguish existing
+sequence/structure comparison, character coding and phylogenetic methods from
+this implementation's unvalidated claims of biological performance.

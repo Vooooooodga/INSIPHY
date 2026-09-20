@@ -1,0 +1,43 @@
+"""mapping / short context: explicit implementation ownership."""
+from __future__ import annotations
+
+from collections import defaultdict
+from intraphy.aligners.short import anchored_short_alignment
+from intraphy.aligners.types import AlignmentBackendError
+from intraphy.coordinates import ClosedInterval1
+from intraphy.coordinates import CoordinateBlock
+from intraphy.coordinates import Interval0
+from intraphy.coordinates import genome_interval_to_local
+from intraphy.coordinates import local_interval_to_genome
+from intraphy.mapping.candidate_coordinates import _coordinate_block0
+from intraphy.mapping.candidate_coordinates import _format_alignment_blocks
+from intraphy.mapping.candidate_coordinates import _format_genomic_blocks
+from intraphy.mapping.candidate_coordinates import _genomic_blocks0
+from intraphy.mapping.candidate_records import _candidate_record
+from intraphy.mapping.candidate_serialization import _public_candidate_record
+from intraphy.mapping.candidate_serialization import _public_gap_blocks
+from intraphy.mapping.candidate_serialization import _public_interval
+from intraphy.mapping.candidate_serialization import _transpose_candidate_record
+from intraphy.mapping.candidate_serialization import _transpose_gap_blocks
+from intraphy.mapping.fields import DEFAULT_CORRESPONDENCE_CRITERIA
+from intraphy.mapping.flank_context import _anchor_bounded_gap_blocks
+from intraphy.mapping.flank_context import _candidate_blocks_for_copy
+from intraphy.mapping.flank_context import _context_flank_pairs
+from intraphy.mapping.flank_context import _cut0_between_loci
+from intraphy.mapping.flank_context import _gene_locus_records
+from intraphy.mapping.flank_context import _interval_between_transcript_flanks
+from intraphy.mapping.flank_context import _owner_occurrence_for_copy
+from intraphy.mapping.flank_context import _value_tokens
+from intraphy.mapping.match_records import _format_contract_value
+from intraphy.mapping.match_records import _format_optional_number
+from intraphy.mapping.path_membership import _candidate_path_memberships
+from intraphy.mapping.policies import _candidate_sequence_accepted
+from intraphy.mapping.policies import occurrence_copy_key
+from intraphy.mapping.short_alignment import _rerun_anchor_bounded_short_candidates
+from intraphy.storage.fasta import parse_fasta
+from intraphy.storage.tabular import read_tsv
+from intraphy.storage.values import to_float
+from pathlib import Path
+import json
+
+

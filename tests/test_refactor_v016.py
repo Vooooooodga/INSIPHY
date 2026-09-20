@@ -11,16 +11,16 @@ import typing
 import unittest
 from unittest.mock import patch
 
-from insiphy.candidate_chain import ChainCandidate, ordered_candidate_chain
-from insiphy.coordinates import Interval0
-from insiphy.observations.matrix import ObservationMatrix, prepare_observation_matrix
-from insiphy.preparation.annotation_index import (
+from intraphy.candidate_chain import ChainCandidate, ordered_candidate_chain
+from intraphy.coordinates import Interval0
+from intraphy.observations.matrix import ObservationMatrix, prepare_observation_matrix
+from intraphy.preparation.annotation_index import (
     AnnotationIndex, clear_annotation_cache, iter_annotation, load_annotation_index,
     read_annotation_for_gene,
 )
-from insiphy.preparation.features import FeatureHierarchy
-from insiphy.run_result import RunResult, begin_run, result_model
-from insiphy.storage.tabular import iter_tsv, read_tsv, write_tsv
+from intraphy.preparation.features import FeatureHierarchy
+from intraphy.run_result import RunResult, begin_run, result_model
+from intraphy.storage.tabular import iter_tsv, read_tsv, write_tsv
 
 
 class Refactor016Contracts(unittest.TestCase):
@@ -73,14 +73,14 @@ class Refactor016Contracts(unittest.TestCase):
             result.rows[0]['state'] = 'absent'
 
     def test_frozen_matrix_does_not_call_builder(self):
-        from insiphy.io import write_structural_site_matrix
+        from intraphy.io import write_structural_site_matrix
         src = self.root / 'source'; out = self.root / 'output'
         src.mkdir()
         path = src / 'matrix.tsv'
         rows = [dict(family_id='f', layer='exon_presence', site_id='s', species='A',
                      state='unknown', state_0='absent', state_1='present', evidence='fixture')]
         write_structural_site_matrix(path, rows)
-        with patch('insiphy.structural_sites.build_structural_site_matrix', side_effect=AssertionError('must not rebuild')):
+        with patch('intraphy.structural_sites.build_structural_site_matrix', side_effect=AssertionError('must not rebuild')):
             result = prepare_observation_matrix(src, out, path)
         self.assertEqual(result.mode, 'frozen_matrix')
         self.assertEqual(result.rows[0]['state'], 'unknown')
@@ -107,7 +107,7 @@ class Refactor016Contracts(unittest.TestCase):
             result_model(self.root)
 
     def test_visual_status_does_not_interpret_prose(self):
-        from insiphy.visualize import visual_status
+        from intraphy.visualize import visual_status
         row = {'role': 'CDS', 'presence_status': 'present',
                'evidence': 'unknown predicted inferred hidden; these are discussion words'}
         self.assertEqual(visual_status(row, {'membership_call': 'core_member'}, 'exon_like'), 'annotated')
@@ -115,7 +115,7 @@ class Refactor016Contracts(unittest.TestCase):
         self.assertEqual(visual_status(row, {}, 'exon_like'), 'predicted')
 
     def test_probability_display_uses_boolean_field(self):
-        from insiphy.visualize import valid_probability_change
+        from intraphy.visualize import valid_probability_change
         row = {'endpoint_change_probability': '0.8', 'posterior_available': '1',
                'conditioning': 'this wording is not a protocol'}
         self.assertTrue(valid_probability_change(row))
@@ -124,7 +124,7 @@ class Refactor016Contracts(unittest.TestCase):
         self.assertFalse(valid_probability_change(row))
 
     def test_gene_names_do_not_assign_history(self):
-        from insiphy.case import infer_manifest_copy_role, infer_manifest_source_label
+        from intraphy.case import infer_manifest_copy_role, infer_manifest_source_label
         for symbol in ('jingwei', 'Sdic', 'Adh', 'yellow emperor', 'ordinary'):
             row = {'gene_id': symbol, 'gene_symbol': symbol}
             self.assertEqual(infer_manifest_copy_role(row), 'candidate')
@@ -132,13 +132,13 @@ class Refactor016Contracts(unittest.TestCase):
         self.assertEqual(infer_manifest_copy_role({'copy_role': 'source'}), 'source')
 
     def test_missing_explicit_tree_is_error(self):
-        from insiphy.case import copy_optional_tree
+        from intraphy.case import copy_optional_tree
         copy_optional_tree(None, self.root, 'species_tree.tsv')
         with self.assertRaises(FileNotFoundError):
             copy_optional_tree(self.root / 'missing', self.root, 'species_tree.tsv')
 
     def test_benchmark_retains_distinct_site_identity(self):
-        from insiphy.benchmark import benchmark_events
+        from intraphy.benchmark import benchmark_events
         inp = self.root / 'input'; out = self.root / 'output'; inp.mkdir(); out.mkdir()
         fields = ['family_id', 'event_class', 'site_id']
         truth = [dict(family_id='f', event_class='intron_loss', site_id=s) for s in ('a', 'b')]
@@ -150,13 +150,13 @@ class Refactor016Contracts(unittest.TestCase):
         self.assertEqual(result['false_negative'], 1)
 
     def test_absent_truth_is_not_zero_performance(self):
-        from insiphy.benchmark import benchmark_events
+        from intraphy.benchmark import benchmark_events
         rows = benchmark_events(self.root, self.root / 'out')
         self.assertEqual(rows[0]['status'], 'unavailable')
         self.assertNotIn('precision', rows[0])
 
     def test_removed_baseline_does_not_fabricate_method_scores(self):
-        from insiphy.baseline import evaluate_baselines
+        from intraphy.baseline import evaluate_baselines
         rows = evaluate_baselines(self.root, self.root / 'out')
         self.assertEqual(rows[0]['status'], 'not_a_method_comparison')
         self.assertEqual(rows[0]['score'], 'NA')
@@ -203,7 +203,7 @@ class Refactor016Contracts(unittest.TestCase):
         self.assertEqual(index.overlap('other',1,100),[])
 
     def test_one_annotation_parse_for_multiple_gene_queries(self):
-        import insiphy.preparation.annotation_index as module
+        import intraphy.preparation.annotation_index as module
         path=self._gff();clear_annotation_cache()
         with patch.object(module,'iter_annotation',wraps=iter_annotation) as parse:
             read_annotation_for_gene(path,'g1');read_annotation_for_gene(path,'g2');read_annotation_for_gene(path,'g1')
@@ -241,12 +241,12 @@ class Refactor016Contracts(unittest.TestCase):
             self.assertTrue({transcript,'e1','c1','g1'}<=ids)
 
     def test_alignment_type_hints_remain_resolvable(self):
-        from insiphy.alignment import AlignmentStats, AlignmentCandidate, AlignmentCandidateSet, AlignmentGap
+        from intraphy.alignment import AlignmentStats, AlignmentCandidate, AlignmentCandidateSet, AlignmentGap
         for cls in (AlignmentStats,AlignmentCandidate,AlignmentCandidateSet,AlignmentGap):
             self.assertTrue(typing.get_type_hints(cls))
 
     def test_numeric_kernels_do_not_import_preparation_or_reporting(self):
-        package=Path(__file__).resolve().parents[1]/'src/insiphy/inference'
+        package=Path(__file__).resolve().parents[1]/'src/intraphy/inference'
         for name in ('ctmc.py','sankoff.py','posterior.py'):
             tree=ast.parse((package/name).read_text())
             for node in ast.walk(tree):
@@ -254,12 +254,12 @@ class Refactor016Contracts(unittest.TestCase):
                     self.assertFalse(any(piece in (node.module or '') for piece in ('preparation','annotation','visualize','reporting','structural_sites')),(name,node.module))
 
     def test_formal_dispatch_import_does_not_load_legacy_numeric_model(self):
-        code='import sys; import insiphy.phylogeny; assert "insiphy.experimental.phylogeny" not in sys.modules; assert "insiphy.experimental.tree_model" not in sys.modules'
+        code='import sys; import intraphy.phylogeny; assert "intraphy.experimental.phylogeny" not in sys.modules; assert "intraphy.experimental.tree_model" not in sys.modules'
         completed=subprocess.run([sys.executable,'-c',code],text=True,capture_output=True)
         self.assertEqual(completed.returncode,0,completed.stderr)
 
     def test_old_completion_file_not_an_implicit_correspondence_input(self):
-        from insiphy.correspondence import infer_correspondence
+        from intraphy.correspondence import infer_correspondence
         inp=self.root/'input';clean=self.root/'clean';dirty=self.root/'dirty'
         for path in (inp,clean,dirty):path.mkdir()
         occurrences=[dict(occurrence_id='a',family_id='f',species='A',gene_copy_id='ga',role='CDS',presence_status='present',start='1',end='6',strand='+',contig='chr1')]

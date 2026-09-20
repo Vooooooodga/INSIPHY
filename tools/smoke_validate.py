@@ -1,62 +1,45 @@
 #!/usr/bin/env python3
-"""Run source-checkout CLI smoke checks on a synthetic fixture.
-
-Requires the source tree including tests. Replaces only validation/cli_fixture_v017.
-It does not run biological demos or install external programs.
-"""
+"""Run an installed-package CLI example and retain reproducible diagnostic outputs."""
 from pathlib import Path
-import ast, json, subprocess, sys, os, shutil, xml.etree.ElementTree as ET
-root=Path(__file__).resolve().parents[1]
-work=root/'validation'/'cli_fixture_v017'
-if work.exists():shutil.rmtree(work)
-work.mkdir(parents=True)
-sys.path[:0]=[str(root/'src'),str(root/'tests')]
-from test_insiphy import SingleCopyPhylogenyTests
-from insiphy.structural_sites import build_structural_site_matrix
-fixture=work/'prepared'
-fixture.mkdir(exist_ok=True)
-input_dir,result_dir=SingleCopyPhylogenyTests().write_structural_case(fixture)
-rows,_=build_structural_site_matrix(input_dir,result_dir)
-# Published local smoke fixture: no real species and no fitting truth is invented.
-matrix=result_dir/'structural_site_matrix.tsv'
-from insiphy.io import write_structural_site_matrix
-write_structural_site_matrix(matrix,rows)
-commands=[]
-env=dict(os.environ,PYTHONPATH=str(root/'src'))
-def run(args):
- p=subprocess.run([sys.executable,'-m','insiphy.cli']+list(map(str,args)),env=env,text=True,capture_output=True,timeout=40)
- commands.append({'args':list(map(str,args)),'exit_code':p.returncode,'stdout':p.stdout,'stderr':p.stderr})
- if p.returncode:raise RuntimeError(p.stderr or p.stdout)
- return p
-run(['--version']);run(['--help'])
+import argparse
+import json
+import os
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
 
-foreground=work/'foreground.tsv'
-foreground.write_text('parent_id\tchild_id\nab\ta\n')
-checks=[]
-for model in ('parsimony','er-ard','foreground'):
-    for threads in (1,2):
-        out=work/(model+'_'+str(threads))
-        args=['infer-phylogeny','--input-dir',input_dir,'--output-dir',out,
-              '--model',model,'--structural-site-matrix',matrix,'--threads',threads]
-        if model=='foreground':args+=['--foreground-branches',foreground]
-        run(args)
-        manifest=json.loads((out/'run_result.json').read_text())
-        assert manifest['model']==model and manifest['status']=='completed'
-        assert manifest['artifacts'] and all((out/name).is_file() for name in manifest['artifacts'])
-    files = ['node_structural_states.tsv','branch_structural_events.tsv','structural_site_summary.tsv','compound_structural_events.tsv'] if model=='parsimony' else ['model_fits.tsv','model_tests.tsv','node_state_posteriors.tsv','branch_transition_posteriors.tsv','structural_changes.tsv']
-    for name in files:
-        left=(work/(model+'_1')/name).read_text()
-        right=(work/(model+'_2')/name).read_text()
-        assert left==right,(model,name)
-    checks.append({'model':model,'threads':[1,2],'exactly_equal_result_tables':files})
-    run(['visualize','--input-dir',input_dir,'--result-dir',work/(model+'_1'),
-         '--output-dir',work/(model+'_figures')])
-    svg=list((work/(model+'_figures')).rglob('*.svg'))
-    assert svg
-    for path in svg:ET.parse(path)
-    checks[-1]['valid_svg_files']=len(svg)
-for path in (root/'src').rglob('*.py'):
-    ast.parse(path.read_text(),filename=str(path),feature_version=(3,9))
-commands=[{**row,'args':[a.replace(str(root),'PROJECT') for a in row['args']]} for row in commands]
-(root/'validation'/'cli_smoke_results_v017.json').write_text(json.dumps({'commands':commands,'checks':checks,'syntax_python39':True,'data':'synthetic four-species fixture, not biological validation'},indent=2)+'\n')
-print(json.dumps(checks,indent=2))
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output-dir',type=Path,required=True)
+    parser.add_argument('--python',default=sys.executable,help='Interpreter of the installed distribution.')
+    args=parser.parse_args(); root=args.output_dir.resolve()
+    if root.exists() and any(root.iterdir()): parser.error('Smoke output directory must be empty')
+    root.mkdir(parents=True,exist_ok=True)
+    commands=[]
+    def run(*values):
+        command=[args.python,'-I','-m','intraphy',*map(str,values)]
+        result=subprocess.run(command,cwd=root,env={k:v for k,v in os.environ.items() if k!='PYTHONPATH'},
+                              text=True,capture_output=True,timeout=240)
+        commands.append(dict(command=command,returncode=result.returncode,
+                             stdout=result.stdout,stderr=result.stderr))
+        (root/'commands.json').write_text(json.dumps(commands,indent=2)+'\n')
+        if result.returncode: raise RuntimeError(result.stderr or result.stdout)
+    run('--version')
+    run('inspect-aligners')
+    run('example','--output-dir',root/'native')
+    run('check','--manifest',root/'native/manifest.tsv','--species-tree',root/'native/species_tree.nwk')
+    run('build-case','--manifest',root/'native/manifest.tsv','--species-tree',root/'native/species_tree.nwk',
+        '--output-dir',root/'prepared','--threads',2)
+    run('run','--input-dir',root/'prepared','--output-dir',root/'parsimony','--threads',2)
+    run('infer-phylogeny','--input-dir',root/'prepared','--output-dir',root/'erard','--model','er-ard',
+        '--structural-site-matrix',root/'parsimony/structural_site_matrix.tsv')
+    run('visualize','--input-dir',root/'prepared','--result-dir',root/'parsimony','--output-dir',root/'figures')
+    svg=list((root/'figures').rglob('*.svg'))
+    if not svg: raise AssertionError('No result figures generated')
+    for path in svg: ET.parse(path)
+    print(json.dumps(dict(commands=len(commands),svg_files=len(svg),status='passed',
+                         validation_scope='installed_package_synthetic_raw_input'),indent=2))
+
+if __name__=='__main__':
+    main()

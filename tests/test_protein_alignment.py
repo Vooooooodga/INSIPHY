@@ -3,7 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from insiphy.alignment import (
+from intraphy.alignment import (
     NT_BLASTN_V1,
     AlignmentBackendError,
     anchored_short_alignment,
@@ -16,11 +16,11 @@ from insiphy.alignment import (
 
 class ProteinAlignmentTests(unittest.TestCase):
     def setUp(self):
-        availability = patch("insiphy.alignment.shutil.which", return_value="/mock/mafft")
+        availability = patch("intraphy.alignment.shutil.which", return_value="/mock/mafft")
         self.available = availability.start()
         self.addCleanup(availability.stop)
         self.result = SimpleNamespace(returncode=0, stdout=">query\nMK-WX\n>target\nMKQ-X\n", stderr="")
-        process = patch("insiphy.alignment.subprocess.run", return_value=self.result)
+        process = patch("intraphy.alignment.subprocess.run", return_value=self.result)
         self.run = process.start()
         self.addCleanup(process.stop)
 

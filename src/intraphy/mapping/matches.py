@@ -1,0 +1,41 @@
+"""mapping / matches: explicit implementation ownership."""
+from __future__ import annotations
+
+from collections import defaultdict
+from intraphy.aligners.pairwise import local_alignment_stats
+from intraphy.aligners.pairwise import overlap_alignment_stats
+from intraphy.aligners.short import anchored_short_alignment
+from intraphy.aligners.types import AlignmentStats
+from intraphy.coordinates import ClosedInterval1
+from intraphy.coordinates import CoordinateBlock
+from intraphy.coordinates import Interval0
+from intraphy.mapping.candidate_coordinates import _alignment_blocks0
+from intraphy.mapping.candidate_coordinates import _covered_bases
+from intraphy.mapping.candidate_coordinates import _explicit_bounded_target
+from intraphy.mapping.candidate_coordinates import _format_alignment_blocks
+from intraphy.mapping.candidate_coordinates import _genomic_matched_blocks
+from intraphy.mapping.candidate_coordinates import _valid_local_boundary_range
+from intraphy.mapping.candidate_serialization import _alignment_candidate_records
+from intraphy.mapping.candidate_serialization import _mapped_genomic_interval0
+from intraphy.mapping.candidate_serialization import _set_explicit_alignment_score
+from intraphy.mapping.candidate_serialization import _transpose_candidate_record
+from intraphy.mapping.candidate_serialization import _transpose_cigar
+from intraphy.mapping.fields import EXON_LIKE_ROLES
+from intraphy.mapping.fields import _transcript_id_set
+from intraphy.mapping.match_context import _path_order_context
+from intraphy.mapping.match_context import cheap_match_evidence
+from intraphy.mapping.match_context import context_score
+from intraphy.mapping.match_context import copy_order_context
+from intraphy.mapping.match_context import load_distance_table
+from intraphy.mapping.match_context import pair_threshold
+from intraphy.mapping.match_context import phase_score
+from intraphy.mapping.match_context import role_boundary_score
+from intraphy.mapping.match_context import segment_length
+from intraphy.mapping.match_context import should_align_pair
+from intraphy.mapping.pairwise_matches import match_evidence
+from intraphy.mapping.policies import occurrence_copy_key
+from intraphy.preparation.transcripts import transcript_sort_key
+from intraphy.storage.tabular import read_tsv
+from intraphy.storage.values import to_float
+
+

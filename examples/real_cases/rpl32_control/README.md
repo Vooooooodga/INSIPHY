@@ -12,14 +12,14 @@ Expected signal:
 Example:
 
 ```bash
-PYTHONPATH=src python3 -m insiphy.cli build-case \
+PYTHONPATH=src python3 -m intraphy.cli build-case \
   --manifest examples/real_cases/rpl32_control/manifest.tsv \
   --species-tree examples/real_cases/rpl32_control/species_tree.tsv \
   --output-dir work/rpl32_control_case \
   --aligner auto \
   --threads 4
 
-PYTHONPATH=src python3 -m insiphy.cli run \
+PYTHONPATH=src python3 -m intraphy.cli run \
   --input-dir work/rpl32_control_case \
   --output-dir results/rpl32_control \
   --analysis-scope single-copy \
@@ -27,7 +27,7 @@ PYTHONPATH=src python3 -m insiphy.cli run \
   --branch-length-mode supplied \
   --threads 4
 
-PYTHONPATH=src python3 -m insiphy.cli visualize \
+PYTHONPATH=src python3 -m intraphy.cli visualize \
   --input-dir work/rpl32_control_case \
   --result-dir results/rpl32_control \
   --output-dir results/rpl32_control_figures

@@ -1,0 +1,30 @@
+"""evidence / deletion: explicit implementation ownership."""
+from __future__ import annotations
+
+from intraphy.aligners.pairwise import local_alignment_stats
+from intraphy.aligners.types import AlignmentBackendError
+from intraphy.evidence.alignment_provenance import _alignment_evidence_provenance
+from intraphy.evidence.alignment_provenance import _ambiguous_repeated_mapping
+from intraphy.evidence.alignment_provenance import _format_alternative_hits
+from intraphy.evidence.alignment_provenance import _nucleotide_interval_candidates
+from intraphy.evidence.alignment_provenance import _offset_alignment_target
+from intraphy.evidence.alignment_provenance import _projection_within_anchor_interval
+from intraphy.evidence.alignment_provenance import _set_alignment_context
+from intraphy.evidence.deletion_support import _alternative_supports_expected_deletion
+from intraphy.evidence.deletion_support import _cigar_ops
+from intraphy.evidence.deletion_support import _flank_support_from_spanning_blocks
+from intraphy.evidence.deletion_support import _ordered_anchor_deletion_support
+from intraphy.evidence.deletion_support import _projected_interval_coverage
+from intraphy.evidence.deletion_support import _query_only_gaps
+from intraphy.evidence.deletion_support import _supported_alignment_blocks
+from intraphy.evidence.projection import _oriented_locus_slice
+from intraphy.evidence.projection import _project_locus_interval
+from intraphy.evidence.projection import _relative_interval_within_span
+from intraphy.evidence.search_context import _occurrence_for_element
+from intraphy.evidence.search_context import _occurrences_for_element
+from intraphy.evidence.search_context import _ordered_occurrence_pair
+from intraphy.evidence.search_context import _ordered_occurrence_triplet
+from intraphy.storage.values import to_float
+import json
+
+

@@ -1,0 +1,8 @@
+# Reproducible numeric baseline; package metadata retains compatible lower bounds.
+numpy==2.2.6; python_version < "3.11"
+numpy==2.3.5; python_version >= "3.11"
+scipy==1.15.3; python_version < "3.11"
+scipy==1.17.0; python_version >= "3.11"
+biopython==1.86
+networkx==3.4.2; python_version < "3.11"
+networkx==3.6.1; python_version >= "3.11"

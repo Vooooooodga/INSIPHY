@@ -1,113 +1,132 @@
-# Statistical Model
+# Statistical model and interpretation
 
-## Analysis unit and observations
+## Observation and sampling units
 
-The analysis conditions on an upstream-defined single-copy ortholog set, the supplied rooted species tree, the inferred local sequence correspondences, and a frozen `structural_site_matrix.tsv`. The gene family is the reporting unit; each homologous structural site is an observation. Nucleotide count, transcript count, sequence length, and number of computational runs do not increase the number of structural sites.
+A family-layer contains binary structural characters observed at tree tips.
+Nucleotide length, exon drawing fragments, transcript number and number of runs
+are not replicate structural characters. Presence, exon identity and splice
+junctions are fitted separately. Cross-layer totals are not independent-event
+counts. A character may undergo repeated change; a mutation may affect multiple
+characters. No mutation-event total is estimated.
 
-The matrix separates three binary layers. `state_0` and `state_1` hold the literal labels for a layer; `state` is one of those labels or `unknown`.
+Unknown tips allow both states in parsimony and have likelihood vector `(1,1)`
+in CTMC pruning. DNA-absent exon roles are inapplicable, not observed non-exonic
+states. Inapplicability and unknown are distinguished in output metadata even
+when both are marginalized by the separate binary model. This is not a joint
+model of DNA presence and conditional RNA structure.
 
-| Layer | State 0 | State 1 |
-|---|---|---|
-| `exon_presence` | `absent` | `present` |
-| `exon_role` | `not_exonic` in the selected supplied-annotation view | `exonic` in the selected supplied-annotation view |
-| `splice_junction` | `absent` in the selected transcript view | `present` in the selected transcript view |
+## Default equal-cost parsimony
 
-Unknown observations permit both states in parsimony and are marginalized in likelihood. Applicability is recorded separately. If the DNA unit is absent, exon role is inapplicable or unknown; it is not coded as `not_exonic`. Exon-role state 0 is conditional on adequate coverage of either the supplied transcript repertoire or the explicitly selected canonical path, as recorded in `annotation_view`. Predicted-only features remain candidate evidence and do not establish an observed state.
+For node v and state s:
 
-The method fits each layer separately. This keeps DNA presence, exon role, and junction presence as separate observations. Junctions from one split/fusion pattern can be linked with `linked_group_id`; they may share a structural cause, so the optional likelihood's conditional independence assumption should be interpreted cautiously. No joint three-layer ancestral transcript is inferred.
-
-## Default: equal-cost maximum parsimony
-
-For a binary site, each tip contributes the singleton set `{0}`, `{1}`, or `{0,1}` for an unknown observation. The cost is zero for the same endpoint state and one for a change. For node `v` and state `s`, the inside recursion is
-
-```text
-D_v(s) = sum over children u [ min_t (D_u(t) + c(s,t)) ]
-D_tip(s) = 0 when s is allowed at the tip, otherwise infinity
-minimum_changes = min_s D_root(s)
+```
+D_v(s) = sum over children u [min_t {D_u(t) + 1(s != t)}]
 ```
 
-An outside pass determines all node states and parent-child endpoint pairs compatible with the global minimum. `required_gain` or `required_loss` means the directed change occurs on that branch in every minimum-change history. `possible_gain` or `possible_loss` means it occurs there in at least one minimum-change history. All-optimum sets are reported; the software does not select a single tied history or assign probabilities from the number of tied histories. All-unknown sites are retained and marked as having no observed states. Sites with no observed contrast are distinguished from fully observed conservation.
+Tip costs are zero for allowed states and infinity otherwise. An outside pass
+finds all states and endpoint pairs attaining the global minimum. Branch lengths
+do not affect this equal-cost reconstruction. `required` and `possible` refer
+to the minimum-change criterion, not statistical significance or confidence.
 
-The branch is one parent-to-child edge of the supplied tree. A branch placement describes a state change under this cost model. A set of equally optimal placements indicates that the observed tips do not uniquely locate the change. It does not provide a P value, a time estimate, or a molecular mechanism. This is a fixed-tree Sankoff-style reconstruction ([Sankoff 1975](https://epubs.siam.org/doi/10.1137/0128004)).
+`minimum_change_history.tsv` is one reproducible witness of the optimum.
+`gene_change_summary.tsv` adds site minimum changes within a layer; it never adds
+all possible branch placements. Unknown-only characters contribute no inferred
+history. A zero tree-internal minimum does not imply that a structure never
+originated before the sampled root.
 
-## Optional continuous-time Markov models
+## Optional CTMC
 
-For a binary site, the CTMC rate matrix is
-
-```text
-Q = [ -g   g ]
-    [  l  -l ]
+```
+Q = [[-g, g], [l, -l]]
 P(t) = exp(Q t)
 ```
 
-Here `g` is the 0→1 rate, `l` is the 1→0 rate, and `t` is a supplied branch length. Likelihoods are calculated by pruning on the fixed tree. Unknown tips have likelihood vector `(1, 1)`, so both states are integrated over. A separate root-state frequency is estimated by default; stationary and user-fixed root frequencies are explicit alternatives.
+ER constrains `g=l=q`; ARD estimates gain and loss separately. The foreground
+alternative multiplies both rates on predeclared branches by `m`, with null
+`m=1`. It tests overall turnover, not a separate gain-only effect. The foreground
+must leave at least one background branch.
 
-Sites within a family-layer share rate parameters. The likelihood is the sum of site log likelihoods, with site-pattern compression preserving site identities and observation masks. A site enters CTMC fitting only when at least two tree tips have explicit binary states and the observed pattern satisfies the selected ascertainment rule. Sites failing either condition remain in the frozen matrix and are counted in the analysis scope, with an exclusion reason. This is a model for binary structural characters. It does not use DNA alignment length as a substitute for the number of structural observations.
+Rates are shared by characters within a family-layer. Root-state frequency is
+estimated by default, with stationary and fixed alternatives. Unknown tips are
+marginalized by log-space pruning. Pattern compression changes computation only,
+not sample size or character identities. At least two explicit tips and the
+selected ascertainment criterion are operational admission conditions, not
+reliability guarantees.
 
-### ER versus ARD
+### Dependence is checked before fitting
 
-The nested comparison is:
+When a declared linked group contains multiple included characters, the current
+independent-character likelihood is not fitted. Parameter estimates, AIC,
+likelihood intervals, LRT P/q values, model selection and posteriors are all
+unavailable with `correlated_linked_sites_not_modelled`. The matrix and parsimony
+outputs remain available. Removing a compound-event label or a linked-group ID
+is not a valid correction for dependence.
 
-| Model | Null or alternative | Rate constraints |
-|---|---|---|
-| ER | H0 | `g = l = q` |
-| ARD | H1 | `g` and `l` estimated separately |
-
-With the same root-frequency treatment in both models, the likelihood-ratio statistic is `2 * (logL_ARD - logL_ER)`. Under regular conditions its reference distribution is asymptotic chi-square with degrees of freedom equal to the difference in free parameters (one for this comparison). It tests whether the data support separate gain and loss rate parameters under these models. It does not test whether a particular gain or loss occurred on a named branch.
-
-### Foreground rate model
-
-The foreground comparison uses branches specified before examining the result:
-
-| Model | Null or alternative | Branch rates |
-|---|---|---|
-| H0 | one ARD process | `g` and `l` shared across all branches |
-| H1 | foreground multiplier | both rates on selected branches are multiplied by `m` |
-
-The null is `m = 1`. Under regular conditions the comparison uses the parameter-count difference, ordinarily one degree of freedom. It tests an overall rate multiplier on the selected branches under this parameterization. Foreground branches must be declared before inspecting the result, must match the supplied tree, and must leave at least one background branch. A significant comparison does not identify a specific event or its cause.
+The check covers declared linked sites and overlapping aligned intervals; it
+cannot detect every shared mutation or dependence process. Identical observed
+patterns alone neither prove dependence nor justify character merging.
 
 ### Fit and test availability
 
-Rates are optimized on the log scale with multiple starting points. The fit and likelihood-ratio test are reported separately. A test is available only when the required models converge, the alternative likelihood is not below the null beyond numerical tolerance, numerical identifiability and boundary diagnostics permit the asymptotic comparison, and the tested contrast has a finite two-sided profile interval containing its estimate. If a parameter is not identifiable, an estimate is boundary-limited, a profile endpoint is open or non-finite, or optimization fails, the affected test is reported unavailable with its reason. The degrees of freedom are based on the actual free-parameter difference.
+Models use log-rate optimization, multiple starts, identifiability and boundary
+diagnostics, and profile likelihood. A rate-model LRT requires valid null and
+alternative fits, nonnegative likelihood improvement within numerical tolerance,
+positive parameter-count difference and a finite two-sided profile for the tested
+contrast. The usual parameter-count difference is one. Failed diagnostics yield
+an unavailable result with a reason, not P=1.
 
-The current likelihood multiplies site likelihoods conditionally independently. When one `linked_group_id` contains more than one site, those sites can be components of one structural change. The family-layer LRT is then unavailable with `lrt_unavailable_reason=correlated_linked_sites_not_modelled`; parsimony and site-level descriptive outputs remain available.
+Where admitted, the reference distribution is asymptotic chi-square. The output
+explicitly records `small_sample_accuracy=unassessed`. Passing numeric diagnostics
+does not establish finite-sample calibration. Single-gene structural data may
+contain too little information to estimate rates and root frequency separately.
+No formal parameter-bootstrap calibration is claimed in v18.
 
-`total_structural_sites` counts all sites in that family-layer in the frozen matrix. `n_structural_sites` and `included_structural_sites` count only sites admitted to the CTMC after the explicit-tip and ascertainment filters. `n_informative_patterns` is a further subset with an observed binary contrast. These quantities must not be interchanged when reporting sample size.
+### Character discovery and ascertainment
 
-The chi-square reference is asymptotic. Its accuracy for the small number of structural sites commonly present in a single gene has not been assessed by the method specification; the output records `small_sample_accuracy=unassessed`. A P value is evidence about the stated rate-model comparison under its assumptions; it is not evidence that a particular exon split, fusion, gain, or loss happened. Multiple-testing adjustment does not correct a poor model fit or an inaccurate small-sample reference distribution.
+`observed-at-least-one` conditions on at least one observed tip being 1:
 
-## Ancestral and branch probabilities
-
-For a valid fitted model, inside-outside likelihood messages give node-state probabilities and joint parent/child endpoint probabilities conditional on the tree, observed states, model, and fitted parameter estimates. Expected numbers of transitions along a branch integrate over possible CTMC paths and can exceed the probability that the two endpoints differ. These quantities are distinct.
-
-Parameter-conditional probabilities do not integrate over uncertainty in the alignment, annotation, correspondence, tree, or fitted rates. A probability range is reported only when the parameter profile supports a finite, interpretable range. Non-identifiable or boundary-limited fits and open profile intervals do not receive a seemingly precise posterior sensitivity range. An unavailable range is labelled unavailable; an optimizer's search limit is not treated as a confidence endpoint. Likelihood-test availability and conditional posterior availability are reported separately.
-
-## Ascertainment and the character universe
-
-The likelihood's inclusion rule must describe the same character universe that was supplied to the model. The default `observed-at-least-one` mode is for discovered structural sites selected because at least one observed tip has state 1. For each site, the likelihood is conditioned on that same event using the same observed-tip mask:
-
-```text
-log P(data | at least one 1) = log P(data) - log[1 - P(all observed tips are 0)]
+```
+log L_cond = log P(data) - log(1 - P(all observed tips are 0))
 ```
 
-`variable-only` is for a matrix intentionally restricted to sites with both state 0 and state 1 among observed tips. Its Lewis-style conditional likelihood is
+`variable-only` conditions on both states being observed, removing the all-zero
+and all-one probabilities over that same observed-tip mask. `complete-universe`
+requires an independently specified catalogue. Explicit unknown tips with missing
+masks and reasons are permitted; catalogue membership does not create absence
+observations. Observed all-zero characters can be included in an independent
+catalogue.
 
-```text
-log P(data | variable) = log P(data) - log[1 - P(all 0) - P(all 1)]
-```
+These corrections condition on a fixed mask. They do not model state-dependent
+annotation dropout, assembly errors, correspondence discovery or preferential
+retention of slowly evolving sequence. Coverage filtering does not solve these
+problems. Different discovery schemes must not be compared as though they were
+the same observed dataset.
 
-The denominator is computed over the observed tips for that site. `complete-universe` is for a separately defined candidate catalogue that includes sites with all-zero observations; membership in the catalogue does not turn unobserved species into state 0. Excluded sites and reasons are retained. A site set filtered under one rule cannot be analyzed as if it had been selected under another rule.
+### Posteriors, model choice and counts
 
-These corrections condition on a fixed observation mask. They do not model annotation or assembly failure that depends on the true state. Linked or neighboring sites can also be dependent; the current binary-site likelihood does not jointly model a deletion or one structural event affecting several characters. Separate layers or linked sites must not be combined into a single independent-event count.
+For valid fits, the program chooses an eligible model by AIC and reports node
+states, joint branch endpoint probabilities and expected transition counts,
+conditional on fitted parameters. An endpoint change probability differs from
+the probability of any transition on that branch: gain followed by loss can leave
+identical endpoints. Expected counts may exceed endpoint probabilities.
 
-## Multiple testing and branch lengths
+The posterior does not integrate uncertainty in orthology, alignment, annotation,
+tree, model selection or estimated rates. Finite profile envelopes are parameter
+sensitivity summaries, not full joint credible intervals. An optimizer limit is
+not a confidence endpoint.
 
-Benjamini-Hochberg adjustment is applied within each declared test family across valid tests in the run. Missing P values remain missing, and the number of tests included is reported.
+### Branch lengths and multiple tests
 
-In `supplied` mode, every non-root branch length must be finite and nonnegative. A zero-length branch has the identity transition matrix. In `unit` mode, every branch has length one; rates then describe transitions per unit branch and carry no calendar-time interpretation. Rates inherit the unit of the supplied tree lengths.
+Supplied branch lengths must be finite and nonnegative. Rates inherit their unit.
+Substitution-length trees do not provide calendar-time rates. Unit branches
+produce rates per unit edge and no absolute dates. Zero-length branches have the
+identity transition matrix.
 
-## Statistical scope and references
+BH adjustment applies to valid tests within the declared test family in a run.
+Separately run genes require project-level aggregation before a project-wide FDR
+claim. Multiple-testing adjustment cannot repair misspecified likelihoods or
+uncalibrated P values. Foreground selection or alternative character definitions
+must not be chosen by searching for the smallest P value.
 
-The analysis conditions on the upstream single-copy orthology, fixed species tree, local correspondence, annotation-derived states, and ascertainment rule. It does not estimate a gene tree or integrate uncertainty across these inputs. A small number of sites may leave rate parameters or ancestral states weakly identified. Numerical convergence alone does not establish reliable finite-sample P values.
-
-The likelihood menu follows standard phylogenetic practice: specify nested hypotheses and shared parameters, estimate them by maximum likelihood on a fixed tree, and use a likelihood-ratio reference only under its regularity assumptions. See the [PAML manual](https://github.com/abacus-gene/paml/wiki/BASEML) and [HyPhy methods](https://www.hyphy.org/methods/) for examples of problem-specific model menus and their assumptions. IntraPhy's characters are homologous gene-internal structural sites; interpretation remains with the user.
+See [counting](event_counting.md), [scope](scope_policy.md), and the primary
+[references](references.md), especially Sankoff (1975), Lewis (2001) and Malin.

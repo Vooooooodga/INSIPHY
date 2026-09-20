@@ -14,19 +14,19 @@ import xml.etree.ElementTree as ET
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 from build_v017_example import build_example, observation, write_rows, FAMILY, SPECIES
-from insiphy.observations.eligibility import ScopePolicy,assess_scope
-from insiphy.observations.matrix import prepare_observation_matrix
-from insiphy.observations.schema import write_structural_site_matrix
-from insiphy.storage.tabular import read_tsv
-from insiphy.phylogeny import infer_phylogeny
-from insiphy.visualize import visualize_results
-from insiphy.candidate_chain import (ChainCandidate,ChainPathMembership,ordered_candidate_chain,genomic_candidate_chain)
-from insiphy.coordinates import Interval0
-from insiphy.preparation.transcripts import _path_role_record
-from insiphy.mapping.policies import _candidate_sequence_accepted
-from insiphy.observations.junctions import _explicit_intron_between
-from insiphy.reporting.target_model import load_targets,FigureTarget,resolve_intervals,target_ribbons
-from insiphy.reporting.target_scene import build_scene
+from intraphy.observations.eligibility import ScopePolicy,assess_scope
+from intraphy.observations.matrix import prepare_observation_matrix
+from intraphy.observations.schema import write_structural_site_matrix
+from intraphy.storage.tabular import read_tsv
+from intraphy.phylogeny import infer_phylogeny
+from intraphy.visualize import visualize_results
+from intraphy.candidate_chain import (ChainCandidate,ChainPathMembership,ordered_candidate_chain,genomic_candidate_chain)
+from intraphy.coordinates import Interval0
+from intraphy.preparation.transcripts import _path_role_record
+from intraphy.mapping.policies import _candidate_sequence_accepted
+from intraphy.observations.junctions import _explicit_intron_between
+from intraphy.reporting.target_model import load_targets,FigureTarget,resolve_intervals,target_ribbons
+from intraphy.reporting.target_scene import build_scene
 
 SVG='{http://www.w3.org/2000/svg}'
 
@@ -165,7 +165,7 @@ class CallabilityV017(unittest.TestCase):
         self.assertEqual({r['layer'] for r in selected},{'splice_junction'})
 
     def test_reported_tree_scope_is_local(self):
-        from insiphy.topology import SpeciesTree
+        from intraphy.topology import SpeciesTree
         tree=SpeciesTree([{'node_id':n,'parent_id':p,'label':n,'branch_length':'1'} for n,p in [('root',''),('AB','root'),('CD','root'),('A','AB'),('B','AB'),('C','CD'),('D','CD')]])
         rows=[observation('X',sp,1 if sp in 'AB' else None) for sp in 'ABCD']
         summary=assess_scope(rows,tree=tree)[3][0]
@@ -188,9 +188,9 @@ class CallabilityV017(unittest.TestCase):
             inp,prepared=build_example(tmp)
             captures=[]
             def capture(*args,**kwargs):captures.append(kwargs['observation_matrix'])
-            with patch('insiphy.parsimony.infer_single_copy_parsimony',side_effect=capture):
+            with patch('intraphy.parsimony.infer_single_copy_parsimony',side_effect=capture):
                 infer_phylogeny(inp,Path(tmp)/'p',structural_site_matrix_path=prepared/'structural_site_matrix.tsv',analysis_range='high-coverage')
-            with patch('insiphy.structural_phylogeny.infer_single_copy_phylogeny',side_effect=capture):
+            with patch('intraphy.structural_phylogeny.infer_single_copy_phylogeny',side_effect=capture):
                 infer_phylogeny(inp,Path(tmp)/'c',model='er-ard',structural_site_matrix_path=prepared/'structural_site_matrix.tsv',analysis_range='high-coverage')
             self.assertEqual(captures[0].rows,captures[1].rows)
 
@@ -306,7 +306,7 @@ class TargetFiguresV017(unittest.TestCase):
         self.assertEqual(ET.tostring(root.find(f"{SVG}g[@id='native-background']")),ET.tostring(self.svg().find(f"{SVG}g[@id='native-background']")))
 
     def test_plot_does_not_reinfer(self):
-        with patch('insiphy.phylogeny.infer_phylogeny',side_effect=AssertionError('must not infer')):
+        with patch('intraphy.phylogeny.infer_phylogeny',side_effect=AssertionError('must not infer')):
             visualize_results(self.inp,self.result,self.root/'again',targets=[FAMILY+'/exon_presence/E3'])
 
     def test_manifest_rejects_mixed_targets(self):
@@ -338,7 +338,7 @@ class TargetFiguresV017(unittest.TestCase):
         self.assertEqual([i.interval for i in ints],[Interval0(720,740)])
 
     def test_layer_does_not_claim_function(self):
-        from insiphy.reporting.target_model import LAYER_LABELS
+        from intraphy.reporting.target_model import LAYER_LABELS
         self.assertEqual(LAYER_LABELS['exon_role'],'Annotated exonic use')
         self.assertNotIn('function',' '.join(LAYER_LABELS.values()).lower())
 
@@ -346,7 +346,7 @@ class TargetFiguresV017(unittest.TestCase):
 
 class IntegratedContractsV017(unittest.TestCase):
     def test_pathless_actual_mapping_stage_preserves_DNA(self):
-        from insiphy.mapping.chains import _apply_ordered_candidate_chains
+        from intraphy.mapping.chains import _apply_ordered_candidate_chains
         occurrences=[];paths=[];rows=[]
         for sp in ('A','B'):
             for i,name in enumerate(('a','u','c')):
@@ -370,7 +370,7 @@ class IntegratedContractsV017(unittest.TestCase):
         self.assertNotEqual(row['flanking_anchor_status'],'ordered_double_sided_homologous_flanks_same_path')
 
     def test_unknown_mid_exon_not_converted_to_jump_in_state_builder(self):
-        from insiphy.observations.junctions import _junction_site_rows
+        from intraphy.observations.junctions import _junction_site_rows
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);inp=root/'in';out=root/'out';inp.mkdir();out.mkdir()
             occurrences=[];paths=[];elements=[]

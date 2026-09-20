@@ -1,0 +1,42 @@
+"""mapping / candidate codec: explicit implementation ownership."""
+from __future__ import annotations
+
+from intraphy.aligners.types import NT_BLASTN_V1_GAP_EXTEND
+from intraphy.aligners.types import NT_BLASTN_V1_GAP_OPEN
+from intraphy.aligners.types import NT_BLASTN_V1_MATCH
+from intraphy.aligners.types import NT_BLASTN_V1_MISMATCH
+from intraphy.coordinates import ClosedInterval1
+from intraphy.coordinates import CoordinateBlock
+from intraphy.coordinates import Interval0
+from intraphy.coordinates import format_legacy_blocks
+from intraphy.coordinates import local_interval_to_genome
+from intraphy.mapping.candidate_coordinates import _alignment_blocks
+from intraphy.mapping.candidate_coordinates import _alignment_blocks0
+from intraphy.mapping.candidate_coordinates import _alignment_gap_blocks
+from intraphy.mapping.candidate_coordinates import _block_signature
+from intraphy.mapping.candidate_coordinates import _candidate_value
+from intraphy.mapping.candidate_coordinates import _coordinate_block0
+from intraphy.mapping.candidate_coordinates import _covered_bases
+from intraphy.mapping.candidate_coordinates import _explicit_bounded_target
+from intraphy.mapping.candidate_coordinates import _format_alignment_blocks
+from intraphy.mapping.candidate_coordinates import _format_genomic_blocks
+from intraphy.mapping.candidate_coordinates import _genomic_blocks0
+from intraphy.mapping.candidate_coordinates import _genomic_matched_blocks
+from intraphy.mapping.candidate_coordinates import _unknown_pair_count
+from intraphy.mapping.candidate_coordinates import _valid_local_boundary_range
+from intraphy.mapping.candidate_records import _candidate_record
+from intraphy.mapping.candidate_serialization import _alignment_candidate_records
+from intraphy.mapping.candidate_serialization import _mapped_genomic_interval
+from intraphy.mapping.candidate_serialization import _mapped_genomic_interval0
+from intraphy.mapping.candidate_serialization import _nt_column_score
+from intraphy.mapping.candidate_serialization import _public_candidate_record
+from intraphy.mapping.candidate_serialization import _public_gap_blocks
+from intraphy.mapping.candidate_serialization import _public_interval
+from intraphy.mapping.candidate_serialization import _set_explicit_alignment_score
+from intraphy.mapping.candidate_serialization import _transpose_candidate_record
+from intraphy.mapping.candidate_serialization import _transpose_cigar
+from intraphy.mapping.candidate_serialization import _transpose_gap_blocks
+from intraphy.mapping.fields import STRUCTURAL_ROLES
+import re
+
+

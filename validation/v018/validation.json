@@ -1,0 +1,28 @@
+{
+  "release": "0.18.0",
+  "base_commit": "cb5d88bf2604b5f44b183343e97f9b5fe026ef77",
+  "python": "3.13.15",
+  "tests_run": 401,
+  "test_seconds": 89.132,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "native_tools": [
+    "v7.505 (2022/Apr/10)",
+    "2.26-r1175"
+  ],
+  "dependencies": {
+    "numpy": "2.3.5",
+    "scipy": "1.17.0",
+    "biopython": "1.86",
+    "networkx": "3.6.1"
+  },
+  "installed_wheel": "fresh isolated virtual environment with dependencies installed from package indexes",
+  "smoke_commands": 8,
+  "smoke_svg_files": 27,
+  "scope": "software regression and synthetic raw-input integration",
+  "real_biological_accuracy_benchmark": false,
+  "finite_sample_statistical_calibration": false,
+  "miniprot_integration_tested": false,
+  "lastz_integration_tested": false
+}

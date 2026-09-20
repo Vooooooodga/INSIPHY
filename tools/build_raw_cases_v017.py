@@ -8,7 +8,7 @@ from pathlib import Path
 import argparse
 import json
 from random import Random
-from insiphy.storage.tabular import write_tsv
+from intraphy.storage.tabular import write_tsv
 
 CASES={
  'conserved_annotations': 'Paired native exon ranges are preserved.',

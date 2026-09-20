@@ -1,0 +1,37 @@
+"""observations / junctions: explicit implementation ownership."""
+from __future__ import annotations
+
+from collections import defaultdict
+from intraphy.coordinates import parse_legacy_blocks
+from intraphy.observations.junction_coordinates import _boundary_from_pair
+from intraphy.observations.junction_coordinates import _candidate_record_blocks
+from intraphy.observations.junction_coordinates import _continuous_reference_block_covers
+from intraphy.observations.junction_coordinates import _explicit_intron_between
+from intraphy.observations.junction_coordinates import _genomically_contiguous
+from intraphy.observations.junction_coordinates import _has_resolved_protein_projection
+from intraphy.observations.junction_coordinates import _legacy_projected_reference_blocks
+from intraphy.observations.junction_coordinates import _mapped_reference_coordinate
+from intraphy.observations.junction_coordinates import _member_position_eligible
+from intraphy.observations.junction_coordinates import _occurrence_length
+from intraphy.observations.junction_coordinates import _parse_projected_reference_blocks
+from intraphy.observations.junction_coordinates import _phase_status
+from intraphy.observations.junction_coordinates import _position_eligible
+from intraphy.observations.junction_coordinates import _project_query_base_to_reference
+from intraphy.observations.junction_coordinates import _project_target_base_to_reference
+from intraphy.observations.junction_coordinates import _read_match_rows
+from intraphy.observations.junction_coordinates import _reference_by_element
+from intraphy.observations.junction_coordinates import _retained_candidate_reference_blocks
+from intraphy.observations.junction_coordinates import _within_exon_boundary
+from intraphy.observations.junction_matrix import _junction_site_rows
+from intraphy.observations.support import EXONIC_ROLES
+from intraphy.observations.support import MISSING
+from intraphy.observations.support import _finalize_site_metadata
+from intraphy.observations.support import _is_true
+from intraphy.observations.support import _json_records
+from intraphy.observations.support import _observation_row
+from intraphy.observations.support import _tokens
+from intraphy.storage.tabular import read_tsv
+from intraphy.storage.tabular import write_tsv
+from pathlib import Path
+
+
