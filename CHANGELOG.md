@@ -1,6 +1,7 @@
 # 0.16.0 — architecture and contract refactor (2026-09-20)
 
 - Project-facing name changed to **IntraPhy** (*Phylogenetic inference of intragenic structure*); the `insiphy` Python namespace and CLI remain compatibility aliases.
+- Verification fixtures and legacy demos now declare explicit unit branch lengths; annotation-dropout verification follows the 0.16 resolved-anchor requirement instead of treating unresolved evidence as a hidden exon.
 
 - Split preparation, evidence, mapping, observations, inference, reporting and legacy verification responsibilities, preserving public import and CLI compatibility.
 - Explicit final-correspondence completion input, shared read-only observation matrix and selected-run result metadata.

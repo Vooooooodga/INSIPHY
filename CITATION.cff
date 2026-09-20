@@ -1,9 +1,0 @@
-cff-version: 1.2.0
-title: "IntraPhy: phylogenetic inference of intragenic structure"
-message: "If you use IntraPhy, please cite the repository and the associated paper when available."
-type: software
-version: 0.16.0
-authors:
-  - name: "IntraPhy contributors"
-date-released: 2026-09-20
-repository-code: "https://github.com/Vooooooodga/INSIPHY"

@@ -1,3 +1,0 @@
-family_id	element_id	mrca_label	present_species_count	tree_tip_count	coverage_class	present_species	present_copies
-jingwei	EG_Adh_A	root	5	5	tree_spanning	Dere;Dmel;Dsim;Dtei;Dyak	Dere:Adh_source_copy;Dmel:Adh_source_copy;Dsim:Adh_source_copy;Dtei:jgw_copy;Dyak:jgw_copy
-jingwei	EG_yande_Y	root	5	5	tree_spanning	Dere;Dmel;Dsim;Dtei;Dyak	Dere:yande_source_copy;Dmel:yande_source_copy;Dsim:yande_source_copy;Dtei:jgw_copy;Dyak:jgw_copy

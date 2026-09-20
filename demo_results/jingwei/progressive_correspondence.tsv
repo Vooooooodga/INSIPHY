@@ -1,6 +1,0 @@
-match_id	query_species	subject_species	query_gene_copy_id	subject_gene_copy_id	tree_distance	progressive_tier	total_score	correspondence_call
-jm1	Dyak	Dmel	jgw_copy	Adh_source_copy	5	deep_tree_support	0.8145	reciprocal_best
-jm2	Dtei	Dmel	jgw_copy	Adh_source_copy	5	deep_tree_support	0.8065	best_unique
-jm3	Dyak	Dmel	jgw_copy	yande_source_copy	5	deep_tree_support	0.7715	best_unique
-jm4	Dtei	Dmel	jgw_copy	yande_source_copy	5	deep_tree_support	0.78	reciprocal_best
-jm5	Dyak	Dmel	jgw_copy	yande_source_copy	5	deep_tree_support	0.633	best_unique

@@ -1,1 +1,0 @@
-"""Coding components for INSIPHY."""

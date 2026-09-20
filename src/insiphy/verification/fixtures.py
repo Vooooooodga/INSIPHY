@@ -181,13 +181,16 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
     rng = random.Random(seed)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    # Verification fixtures use an explicit unit-branch tree.  The formal tree
+    # contract deliberately rejects missing branch lengths; tests must state
+    # their branch-length convention instead of relying on an implicit fallback.
     species_tree = [
-        {"node_id": "root", "parent_id": "", "label": "root"},
-        {"node_id": "sp1", "parent_id": "root", "label": "Sp1"},
-        {"node_id": "sp2", "parent_id": "root", "label": "Sp2"},
-        {"node_id": "clade34", "parent_id": "root", "label": "clade34"},
-        {"node_id": "sp3", "parent_id": "clade34", "label": "Sp3"},
-        {"node_id": "sp4", "parent_id": "clade34", "label": "Sp4"},
+        {"node_id": "root", "parent_id": "", "label": "root", "branch_length": "0.0"},
+        {"node_id": "sp1", "parent_id": "root", "label": "Sp1", "branch_length": "1.0"},
+        {"node_id": "sp2", "parent_id": "root", "label": "Sp2", "branch_length": "1.0"},
+        {"node_id": "clade34", "parent_id": "root", "label": "clade34", "branch_length": "1.0"},
+        {"node_id": "sp3", "parent_id": "clade34", "label": "Sp3", "branch_length": "1.0"},
+        {"node_id": "sp4", "parent_id": "clade34", "label": "Sp4", "branch_length": "1.0"},
     ]
     base = {
         "A": "ATGGCCGATGCCGATGCCGATGCCGATGCC",
@@ -372,7 +375,7 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
         truth.append({"family_id": family, "event_class": "te_associated_exonization", "branch_scope": "root->clade34", "object_id": "EG_sim_C", "notes": "simulated TE-like hidden segment becomes exon or CDS"})
     elif scenario == "gene_conversion":
         truth = [{"family_id": family, "event_class": "ambiguous_paralogous_similarity", "branch_scope": "root->clade34", "object_id": "EG_sim_A", "notes": "simulated paralogous copies are unusually similar; mechanism remains ambiguous"}]
-    write_tsv(output_dir / "species_tree.tsv", species_tree, ["node_id", "parent_id", "label"])
+    write_tsv(output_dir / "species_tree.tsv", species_tree, ["node_id", "parent_id", "label", "branch_length"])
     write_tsv(output_dir / "copy_tree.tsv", simulated_copy_tree(copy_map), ["node_id", "parent_id", "label", "branch_length"])
     write_tsv(output_dir / "segment_occurrences.tsv", rows, ["occurrence_id", "family_id", "species", "gene_copy_id", "transcript_id", "role", "role_set", "presence_status", "contig", "start", "end", "strand", "phase", "source_feature_id", "boundary_class", "splice_motif_score", "splice_donor", "splice_acceptor", "frame_status"])
     write_tsv(output_dir / "segment_homology.tsv", homology, ["homology_id", "occurrence_id", "support_type", "confidence", "source_label"])

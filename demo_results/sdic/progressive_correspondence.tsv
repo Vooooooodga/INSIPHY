@@ -1,6 +1,0 @@
-match_id	query_species	subject_species	query_gene_copy_id	subject_gene_copy_id	tree_distance	progressive_tier	total_score	correspondence_call
-sm1	Dmel	Dmel	Sdic_copy1	AnxB10_source	0	nearest_species_support	0.793	reciprocal_best
-sm2	Dmel	Dmel	Sdic_copy1	sw_source	0	nearest_species_support	0.7925	reciprocal_best
-sm3	Dmel	Dsim	Sdic_copy1	sw_source	3	within_clade_support	0.7635	reciprocal_best
-sm4	Dmel	Dmel	Sdic_copy2	AnxB10_source	0	nearest_species_support	0.695	best_unique
-sm5	Dmel	Dmel	Sdic_copy2	sw_source	0	nearest_species_support	0.687	best_unique

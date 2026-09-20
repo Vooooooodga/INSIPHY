@@ -1,9 +1,0 @@
-family_id	species	gene_copy_id	copy_class	notes
-sdic	Dyak	AnxB10_source	single_copy	source_locus
-sdic	Dyak	sw_source	single_copy	source_locus
-sdic	Dsim	AnxB10_source	single_copy	source_locus
-sdic	Dsim	sw_source	single_copy	source_locus
-sdic	Dmel	AnxB10_source	single_copy	source_locus
-sdic	Dmel	sw_source	single_copy	source_locus
-sdic	Dmel	Sdic_copy1	tandem_multi_copy	derived_chimeric_copy
-sdic	Dmel	Sdic_copy2	unresolved	copy_number_ambiguous_demo

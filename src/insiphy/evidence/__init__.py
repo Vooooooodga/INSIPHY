@@ -1,1 +1,0 @@
-"""Evidence components for INSIPHY."""

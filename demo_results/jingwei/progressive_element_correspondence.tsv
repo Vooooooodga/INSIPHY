@@ -1,3 +1,0 @@
-element_id	family_id	homology_ids	member_count	species_count	copy_count	exon_like_members	candidate_source_members	nearest_species_support	within_clade_support	deep_tree_support	best_pair_score	mean_pair_score	progressive_call
-EG_Adh_A	jingwei	H_Adh_A	5	5	5	5	0	0	0	2	0.8145	0.8105	deep_only_support
-EG_yande_Y	jingwei	H_yande_Y	6	5	5	2	4	0	0	3	0.78	0.728167	deep_only_support

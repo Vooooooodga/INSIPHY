@@ -1,9 +1,0 @@
-layer	object_id	test_id	observed_lrt	bootstrap_replicates	empirical_p_value	monte_carlo_se	null_lrt_mean	null_lrt_q025	null_lrt_q500	null_lrt_q975	seed	tip_error
-element_presence	EG_Anx_A	ctmc_vs_invariant_parametric_bootstrap	0	5	1	0	0	0	0	0	7	1e-06
-element_role_state	EG_Anx_A	ctmc_vs_invariant_parametric_bootstrap	0	5	1	0	0	0	0	0	7	1e-06
-element_role_state	EG_sdic_I	ctmc_vs_invariant_parametric_bootstrap	24.6389	5	0.166667	0.152145	0	0	0	0	7	1e-06
-element_presence	EG_sw_S	ctmc_vs_invariant_parametric_bootstrap	0	5	1	0	0	0	0	0	7	1e-06
-element_role_state	EG_sw_S	ctmc_vs_invariant_parametric_bootstrap	0	5	1	0	0	0	0	0	7	1e-06
-element_adjacency_state	EG_Anx_A__EG_sw_S	ctmc_vs_invariant_parametric_bootstrap	25.3644	5	0.166667	0.152145	0	0	0	0	7	1e-06
-source_mixture	sdic	ctmc_vs_invariant_parametric_bootstrap	24.4238	5	0.166667	0.152145	0	0	0	0	7	1e-06
-copy_multiplicity	sdic	ctmc_vs_invariant_parametric_bootstrap	23.682	5	0.166667	0.152145	0	0	0	0	7	1e-06

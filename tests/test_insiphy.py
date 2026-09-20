@@ -632,7 +632,11 @@ class SimulationBenchmarkTests(unittest.TestCase):
             benchmark_events(sim, out)
             annot = read_tsv(out / "annotation_completion_candidates.tsv")
             bench = read_tsv(out / "benchmark_summary.tsv")
-            self.assertIn("hidden_segment_candidate", {row["completion_call"] for row in annot})
+            # This legacy fixture supplies no resolved double-flank interval.
+            # Under the 0.16 evidence contract that is deliberately ambiguous,
+            # not a confirmed hidden-exon call.  The negative control must still
+            # produce no structural event.
+            self.assertIn("ambiguous_evidence", {row["completion_call"] for row in annot})
             self.assertEqual(bench[0]["truth_events"], "0")
             self.assertEqual(bench[0]["called_events"], "0")
 

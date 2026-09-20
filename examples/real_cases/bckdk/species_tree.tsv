@@ -1,8 +1,0 @@
-node_id	parent_id	label	branch_length
-root		root	0
-primates	root	primates	1
-Homo_sapiens	primates	Homo_sapiens	1
-Pan_troglodytes	primates	Pan_troglodytes	1
-rodents	root	rodents	1
-Mus_musculus	rodents	Mus_musculus	1
-Rattus_norvegicus	rodents	Rattus_norvegicus	1

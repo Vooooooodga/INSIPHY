@@ -1,4 +1,0 @@
-family_id	element_id	mrca_label	present_species_count	tree_tip_count	coverage_class	present_species	present_copies
-sdic	EG_Anx_A	root	3	3	tree_spanning	Dmel;Dsim;Dyak	Dmel:AnxB10_source;Dmel:Sdic_copy1;Dmel:Sdic_copy2;Dsim:AnxB10_source;Dyak:AnxB10_source
-sdic	EG_sdic_I	root	2	3	partial	Dmel;Dsim	Dmel:Sdic_copy1;Dsim:sw_source
-sdic	EG_sw_S	root	3	3	tree_spanning	Dmel;Dsim;Dyak	Dmel:Sdic_copy1;Dmel:Sdic_copy2;Dmel:sw_source;Dsim:sw_source;Dyak:sw_source
