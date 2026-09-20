@@ -1,3 +1,15 @@
+# 0.16.0 — architecture and contract refactor (2026-09-20)
+
+- Project-facing name changed to **IntraPhy** (*Phylogenetic inference of intragenic structure*); the `insiphy` Python namespace and CLI remain compatibility aliases.
+
+- Split preparation, evidence, mapping, observations, inference, reporting and legacy verification responsibilities, preserving public import and CLI compatibility.
+- Explicit final-correspondence completion input, shared read-only observation matrix and selected-run result metadata.
+- Shared annotation/Parent/spatial indexes and per-copy coding feature hierarchy; gzip streaming TSV; strict external-format errors.
+- Correct empty interval overlap, all-near-optimal path ambiguity and jointly resolved protein-coordinate propagation.
+- Remove gene-name-derived historical roles and fabricated baseline reward scores; retain object identity in benchmark events.
+- Separate formal topology/numeric kernels from experimental multicopy models; plotting uses structured availability rather than prose.
+- Added 29 contract regressions. See validation records for passed and MAFFT-dependent skipped checks. Scientific calibration and real-data validation are not claimed.
+
 # Changelog
 
 ## 0.14.0 - 2026-09-18

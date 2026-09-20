@@ -51,14 +51,8 @@ def evidence_role(row):
 
 
 def evidence_promotes_element(row):
-    status = row.get("evidence_status", "")
-    completion = row.get("completion_call", "")
-    candidate_role = evidence_role(row)
-    return (
-        candidate_role in EXON_LIKE_ROLES
-        or (completion in HIDDEN_COMPLETION_CALLS and candidate_role in EXON_LIKE_ROLES)
-        or (status in HIDDEN_EVIDENCE_STATUS and candidate_role in EXON_LIKE_ROLES)
-    )
+    """Retain the pre-0.16 eligibility rule without redundant disjuncts."""
+    return evidence_role(row) in EXON_LIKE_ROLES
 
 
 def collect_element_profiles(homology, occurrences, evidence_rows=None):

@@ -390,7 +390,7 @@ class EvidenceSemanticsTests(unittest.TestCase):
         ]
         cache = {}
         protein_contexts = {"fam": {context1["protein_id"]: context1, context2["protein_id"]: context2}}
-        with patch("insiphy.annotation.protein_locus_exons", return_value=rows) as project:
+        with patch("insiphy.evidence.protein.protein_locus_exons", return_value=rows) as project:
             hit1, reason1 = _cached_protein_projection(
                 context1, "fam", ("fam", "B", "B_gene"), "B|B_gene|chrB:1-100:+", "A" * 100,
                 protein_contexts, cache, 0.7, 0.6, 1
@@ -438,7 +438,7 @@ class EvidenceSemanticsTests(unittest.TestCase):
                 "parent_id": "p1", "projection_status": "cds_target",
             }
             with patch("insiphy.annotation.local_alignment_stats", return_value=nucleotide), patch(
-                "insiphy.annotation.protein_locus_exons", return_value=[projection]
+                "insiphy.evidence.protein.protein_locus_exons", return_value=[projection]
             ):
                 evidence = generate_sequence_evidence(input_dir, result_dir, aligner="miniprot")
             self.assertEqual(len(evidence), 1)
@@ -544,7 +544,7 @@ class EvidenceSemanticsTests(unittest.TestCase):
                 "parent_id": "projected_1", "projection_status": "cds_target",
             }
             with patch("insiphy.annotation.local_alignment_stats", return_value=no_dna_hit), patch(
-                "insiphy.annotation.protein_locus_exons", return_value=[projection]
+                "insiphy.evidence.protein.protein_locus_exons", return_value=[projection]
             ):
                 evidence = generate_sequence_evidence(
                     input_dir, result_dir, aligner="miniprot"
@@ -725,7 +725,7 @@ class EvidenceSemanticsTests(unittest.TestCase):
             matches=8,
             gap_bases=4,
         )
-        with patch("insiphy.annotation.local_alignment_stats", return_value=spanning) as align:
+        with patch("insiphy.evidence.deletion.local_alignment_stats", return_value=spanning) as align:
             supported, reason, provenance = _ordered_anchor_deletion_support(
                 source_occurrences,
                 target_occurrences,
@@ -768,7 +768,7 @@ class EvidenceSemanticsTests(unittest.TestCase):
         for base in ambiguous_codes:
             with self.subTest(location="source_deletion", base=base):
                 source_sequence = f"AAAA{base}CCCGGGG"
-                with patch("insiphy.annotation.local_alignment_stats") as align:
+                with patch("insiphy.evidence.deletion.local_alignment_stats") as align:
                     supported, reason, _provenance = _ordered_anchor_deletion_support(
                         source_occurrences, target_occurrences, element_by_occurrence,
                         source_occurrences[1], "Eleft", "Eright",
@@ -781,7 +781,7 @@ class EvidenceSemanticsTests(unittest.TestCase):
 
             with self.subTest(location="target_between_flanks", base=base):
                 target_sequence = f"AAAA{base}GGGG"
-                with patch("insiphy.annotation.local_alignment_stats") as align:
+                with patch("insiphy.evidence.deletion.local_alignment_stats") as align:
                     supported, reason, _provenance = _ordered_anchor_deletion_support(
                         source_occurrences, target_occurrences, element_by_occurrence,
                         source_occurrences[1], "Eleft", "Eright",
@@ -818,7 +818,7 @@ class EvidenceSemanticsTests(unittest.TestCase):
             gap_bases=4, hit_count=2, ambiguous_hit_count=1,
             alternative_hits=[{"identity": "0.95", "coverage": "0.95"}],
         )
-        with patch("insiphy.annotation.local_alignment_stats", return_value=spanning):
+        with patch("insiphy.evidence.deletion.local_alignment_stats", return_value=spanning):
             supported, reason, _provenance = _ordered_anchor_deletion_support(
                 source_occurrences, target_occurrences, element_by_occurrence,
                 source_occurrences[1], "Eleft", "Eright",
@@ -955,6 +955,8 @@ class LocalCorrespondenceContractTests(unittest.TestCase):
         self.assertEqual(len(result.context_summaries), 2)
         self.assertEqual(result.best_path_count_capped, 1)
         self.assertEqual(result.near_optimal_path_count_capped, 1)
+        # Each context has one path, but the global candidate set has two
+        # alternatives. No node occurs in every retained context.
         self.assertEqual(result.ambiguous_ids, frozenset())
         self.assertEqual(result.ambiguity_status, "unique_within_reported_candidates")
 
@@ -1045,8 +1047,8 @@ class LocalCorrespondenceContractTests(unittest.TestCase):
         )
         self.assertEqual(len(result.context_summaries), 2)
         self.assertEqual(result.best_path_count_capped, 1)
-        self.assertEqual(result.ambiguous_ids, frozenset())
-        self.assertEqual(result.ambiguity_status, "unique_within_reported_candidates")
+        self.assertEqual(result.ambiguous_ids, frozenset({"a_left", "a_right", "b_left", "b_right"}))
+        self.assertEqual(result.ambiguity_status, "multiple_near_optimal_chains")
 
     def test_shared_flanks_remain_resolved_across_two_tied_internal_paths(self):
         context = ChainPathMembership(

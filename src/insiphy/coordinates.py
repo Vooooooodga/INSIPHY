@@ -27,7 +27,7 @@ class Interval0:
         return self.end0 - self.start0
 
     def overlaps(self, other: "Interval0"):
-        return self.start0 < other.end0 and other.start0 < self.end0
+        return max(self.start0, other.start0) < min(self.end0, other.end0)
 
     def intersection(self, other: "Interval0") -> Optional["Interval0"]:
         start0 = max(self.start0, other.start0)

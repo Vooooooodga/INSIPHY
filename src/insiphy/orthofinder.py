@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from collections import defaultdict
+from insiphy.preparation.annotation_index import load_annotation_index
 
 from Bio import Phylo
 
@@ -167,12 +168,9 @@ def _feature_index_tokens(feature):
 
 
 def _build_gff_locus_index(annotation_file):
-    features = read_annotation(annotation_file)
-    features_by_id = defaultdict(list)
-    for feature in features:
-        feature_id = feature.get("id", "")
-        if feature_id:
-            features_by_id[feature_id].append(feature)
+    index = load_annotation_index(annotation_file)
+    features = index.rows
+    features_by_id = index.by_id
 
     gene_ids_to_loci = defaultdict(set)
     gene_alias_to_loci = defaultdict(set)
