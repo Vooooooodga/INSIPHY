@@ -1,0 +1,171 @@
+name: Publish reviewed IntraPhy V18
+on:
+  push:
+    branches: ['release/v0.18.0']
+    paths: ['.github/workflows/publish-reviewed-v18.yml']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish-reviewed-source:
+    if: github.repository == 'Vooooooodga/IntraPhy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: Vooooooodga/IntraPhy
+      ORIGINAL_MAIN: cb5d88bf2604b5f44b183343e97f9b5fe026ef77
+      ORIGINAL_V18: 329d2584cedf045e7498b1123249a0f218283670
+      ORIGINAL_V16: 50538d9928a54cefa9c906451d05074c5c7fd948
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check exact publication baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$ORIGINAL_V18"
+          test "$(git rev-parse origin/main)" = "$ORIGINAL_MAIN"
+          test "$(git rev-parse origin/release/intraphy-0.16.0)" = "$ORIGINAL_V16"
+          mkdir -p validation/current
+      - name: Apply hash-verified reviewed source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, urllib.request
+          shas = [
+              '86b28b26720880e5b88b70205ad84a6dcd26b090',
+              'fb69e5756a8895c2e1e8814bbf07072187715c40',
+              '1ace5405239c96a5faa8a671e373ad2830022312',
+              '989a0c893a55fdb94d8f51f08ae27a34b68a8a3a',
+              '377a09e7610e845a7a5202f8633bd392d4b3c285',
+              'e874f26fb7cfd0d6586e78b0fabf4df8708e41c2',
+          ]
+          chunks = []
+          for sha in shas:
+              url = f'https://api.github.com/repos/{os.environ["REPOSITORY"]}/git/blobs/{sha}'
+              req = urllib.request.Request(url, headers={
+                  'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                  'Accept': 'application/vnd.github+json', 'User-Agent': 'IntraPhy-reviewed-publication'})
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  obj = json.load(response)
+              assert obj['sha'] == sha and obj['encoding'] == 'base64'
+              data = base64.b64decode(obj['content'])
+              assert hashlib.sha1(f'blob {len(data)}\0'.encode() + data).hexdigest() == sha
+              chunks.append(data)
+          compressed = b''.join(chunks)
+          digest = hashlib.sha256(compressed).hexdigest()
+          assert digest == 'd2ea0b0a976d4ec33592d847216975aff0a19c31d49490a1e40bcd581b425556', digest
+          pathlib.Path('/tmp/intraphy-reviewed.patch').write_bytes(lzma.decompress(compressed))
+          print('Verified reviewed source transport:', digest)
+          PY
+          git apply --check /tmp/intraphy-reviewed.patch
+          git apply /tmp/intraphy-reviewed.patch
+          git rm -- .v18-completion-01.b64 .v18-completion-02.b64 .v18-completion-03.b64
+      - name: Install and record actual dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mafft=7.505-1 minimap2=2.26+dfsg-1build1
+          mafft --version 2>&1 | tee validation/current/tools.txt
+          minimap2 --version | tee -a validation/current/tools.txt
+          python -m pip install -c requirements-ci.txt . build cairosvg
+          python -m pip freeze > validation/current/python-packages.txt
+      - name: Render reviewed figures and validate complete source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/render_method_figures.py --png
+          python tools/check_source_layout.py
+          python -I tools/verify_namespace.py
+          intraphy inspect-aligners
+          python -m unittest discover -s tests -v 2>&1 | tee validation/current/tests.log
+          python -m build
+          python -m venv /tmp/intraphy-reviewed-wheel
+          /tmp/intraphy-reviewed-wheel/bin/python -m pip install -c requirements-ci.txt dist/*.whl
+          PATH=/tmp/intraphy-reviewed-wheel/bin:$PATH /tmp/intraphy-reviewed-wheel/bin/python -I tools/verify_namespace.py
+          /tmp/intraphy-reviewed-wheel/bin/python tools/smoke_validate.py --output-dir validation/current/wheel-smoke
+      - name: Preserve histories and publish tested release tree
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'IntraPhy publication'
+          git config user.email '57168144+Vooooooodga@users.noreply.github.com'
+          test "$(git ls-remote origin refs/heads/release/v0.18.0 | cut -f1)" = "$GITHUB_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$ORIGINAL_MAIN"
+          git add -A
+          tree=$(git write-tree)
+          commit=$(printf '%s\n' 'Complete IntraPhy V18 file inputs and biology-facing model figures' '' 'Preserve V16 history without restoring its superseded implementation. Reviewed patch and real-tool tests passed.' | git commit-tree "$tree" -p "$GITHUB_SHA" -p "$ORIGINAL_V16")
+          git push origin "$commit:refs/heads/release/v0.18.0"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          printf '{"tested_commit":"%s","tree":"%s","preserved_v16":"%s"}\n' "$commit" "$tree" "$ORIGINAL_V16" | tee validation/current/publication.json
+          echo "TESTED_V18_COMMIT=$commit" >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive validation before main publication
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-v18-validation
+          path: |
+            validation/current
+            dist
+          retention-days: 30
+      - name: Delete only unchanged release refs after main publication passes CI
+        env:
+          TESTED_COMMIT: ${{ steps.publish.outputs.commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, subprocess, time, urllib.request
+          repo = os.environ['REPOSITORY']
+          tested = os.environ['TESTED_COMMIT']
+          original = os.environ['ORIGINAL_MAIN']
+          headers = {'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                     'Accept': 'application/vnd.github+json', 'User-Agent': 'IntraPhy-reviewed-publication'}
+          def api(path):
+              req = urllib.request.Request(f'https://api.github.com/repos/{repo}/{path}', headers=headers)
+              with urllib.request.urlopen(req, timeout=60) as response:
+                  return json.load(response)
+          for attempt in range(90):
+              main = api('git/ref/heads/main')['object']['sha']
+              if main != original:
+                  comparison = api(f'compare/{tested}...{main}')
+                  if comparison['status'] not in ('ahead', 'identical'):
+                      raise SystemExit('Main does not preserve the tested release; refusing cleanup')
+                  runs = api(f'actions/runs?head_sha={main}&per_page=100')['workflow_runs']
+                  tests = [r for r in runs if r['path'] == '.github/workflows/tests.yml' and r['event'] == 'push']
+                  if tests:
+                      latest = max(tests, key=lambda r: r['id'])
+                      if latest['status'] == 'completed':
+                          if latest['conclusion'] != 'success':
+                              raise SystemExit('Main CI was not successful; branches retained')
+                          break
+              time.sleep(10)
+          else:
+              raise SystemExit('Main publication/CI not confirmed in this run; branches retained')
+          expected = [('release/v0.18.0', tested),
+                      ('release/intraphy-0.16.0', os.environ['ORIGINAL_V16'])]
+          for branch, sha in expected:
+              assert branch != 'main'
+              current = api('git/ref/heads/' + branch)['object']['sha']
+              if current != sha:
+                  raise SystemExit(f'{branch} moved; refusing cleanup')
+          args = ['git', 'push', '--atomic']
+          args += [f'--force-with-lease=refs/heads/{branch}:{sha}' for branch, sha in expected]
+          args += ['origin'] + [f':refs/heads/{branch}' for branch, sha in expected]
+          subprocess.run(args, check=True)
+          print('MAIN_PUBLICATION_VERIFIED', main)
+          print('Deleted only the two unchanged release refs; their histories remain ancestors of main.')
+          PY
+      - name: Archive diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-v18-failure
+          path: validation/current
+          retention-days: 30
