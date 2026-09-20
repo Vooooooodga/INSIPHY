@@ -52,13 +52,14 @@ def infer_single_copy_phylogeny(
     root_presence=0.5,
     structural_site_matrix_path=None,
     annotation_view="repertoire",
-    *, observation_matrix=None,
+    *, observation_matrix=None, analysis_range="all", min_callable_fraction=0.70,
 ):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
     if observation_matrix is None:
         site_rows, excluded_rows, matrix_source, matrix_mode = _load_site_matrix(
             input_dir, output_dir, structural_site_matrix_path, annotation_view,
+            analysis_range=analysis_range, min_callable_fraction=min_callable_fraction,
         )
     else:
         site_rows, excluded_rows, matrix_source, matrix_mode = observation_matrix.as_legacy_tuple()

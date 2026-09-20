@@ -507,7 +507,7 @@ class VisualizationSemanticTests(unittest.TestCase):
     def test_visualize_keeps_colorblind_palette_and_integrated_view(self):
         with tempfile.TemporaryDirectory() as tmp:
             input_dir, result_dir, output_dir = self.write_case(Path(tmp))
-            visualize_results(input_dir, result_dir, output_dir)
+            visualize_results(input_dir, result_dir, output_dir, layout="legacy-overview")
             synteny = (output_dir / "intragenic_synteny.svg").read_text()
             integrated = (output_dir / "integrated_phylo_synteny.svg").read_text()
             self.assertIn("#0072B2", synteny)

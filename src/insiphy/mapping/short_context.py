@@ -23,6 +23,7 @@ from insiphy.mapping.chains import _candidate_path_memberships
 from insiphy.mapping.match_records import _format_contract_value
 from insiphy.mapping.match_records import _format_optional_number
 from insiphy.mapping.policies import _candidate_sequence_accepted
+from insiphy.mapping.fields import DEFAULT_CORRESPONDENCE_CRITERIA
 from insiphy.mapping.policies import occurrence_copy_key
 from insiphy.storage.fasta import parse_fasta
 from insiphy.storage.tabular import read_tsv
@@ -551,6 +552,13 @@ def _rerun_anchor_bounded_short_candidates(
                 row_blocks
                 and _candidate_sequence_accepted(
                     record, to_float(row.get("threshold"), 0.0), short_context=True,
+                    anchored_microexon=(
+                        3 <= len(query_sequence) < DEFAULT_CORRESPONDENCE_CRITERIA.short_min_aligned_pairs
+                        and candidate_set.enumeration_complete
+                        and len(candidate_set.candidates) == 1
+                        and bool(left_id) and bool(right_id) and left_id != right_id
+                        and all(base in "ACGT" for base in query_sequence.upper())
+                    ),
                 )
             ))
             record["acceptance_threshold"] = row.get("threshold", "NA")

@@ -282,5 +282,7 @@ def _encode_sites(site_rows, tree):
     return encoded
 
 
-def _load_site_matrix(input_dir, output_dir, structural_site_matrix_path, annotation_view):
-    return load_site_matrix(input_dir, output_dir, structural_site_matrix_path, annotation_view)
+def _load_site_matrix(input_dir, output_dir, structural_site_matrix_path, annotation_view,
+                      *, analysis_range="all", min_callable_fraction=0.70):
+    return load_site_matrix(input_dir, output_dir, structural_site_matrix_path, annotation_view,
+                           analysis_range=analysis_range, min_callable_fraction=min_callable_fraction)

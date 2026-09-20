@@ -1,6 +1,6 @@
 [project]
 name = "intraphy"
-version = "0.16.0"
+version = "0.17.0"
 description = "Phylogenetic inference of intragenic structure from genome sequence and annotation"
 requires-python = ">=3.9"
 dependencies = [
@@ -22,5 +22,5 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [project.urls]
-Homepage = "https://github.com/Vooooooodga/INSIPHY"
-Repository = "https://github.com/Vooooooodga/INSIPHY"
+Homepage = "https://github.com/Vooooooodga/IntraPhy"
+Repository = "https://github.com/Vooooooodga/IntraPhy"

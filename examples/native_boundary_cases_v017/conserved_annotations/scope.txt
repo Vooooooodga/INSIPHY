@@ -1,0 +1,2 @@
+Paired native exon ranges are preserved.
+Synthetic native input only; not a certified evolutionary reconstruction.

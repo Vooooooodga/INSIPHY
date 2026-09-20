@@ -635,7 +635,8 @@ class ObservationSemanticsTests(unittest.TestCase):
             self.assertEqual(paths["tx1"]["position_role"], "single")
             self.assertEqual(paths["tx1"]["annotation_source"], "test")
             self.assertIn("ID=ex", paths["tx1"]["original_attributes"])
-            self.assertEqual((paths["tx1"]["partial_start"], paths["tx1"]["partial_end"]), ("0", "1"))
+            # v0.17: the gene extent does not establish transcript incompleteness.
+            self.assertEqual((paths["tx1"]["partial_start"], paths["tx1"]["partial_end"]), ("0", "0"))
             self.assertEqual(paths["tx3"]["coding_role"], "noncoding_exon")
             raw = {row["id"]: row for row in read_tsv(out / "raw_gene_features.tsv")}
             self.assertEqual((raw["c1"]["parent"], raw["c1"]["phase"]), ("tx1", "0"))

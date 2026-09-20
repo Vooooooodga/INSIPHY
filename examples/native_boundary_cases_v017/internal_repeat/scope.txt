@@ -1,0 +1,2 @@
+Two copies of a local segment are not one-to-two complementary coverage.
+Synthetic native input only; not a certified evolutionary reconstruction.

@@ -1,0 +1,10 @@
+##gff-version 3
+chrA	fixture	gene	101	1400	.	+	.	ID=gA
+chrA	fixture	mRNA	101	1080	.	+	.	ID=tA;Parent=gA
+chrA	fixture	exon	101	220	.	+	.	ID=eA1;Parent=tA
+chrA	fixture	exon	401	520	.	+	.	ID=eA2;Parent=tA
+chrA	fixture	exon	901	1080	.	+	.	ID=eA3;Parent=tA
+chrA	fixture	mRNA	151	1050	.	+	.	ID=tAalt;Parent=gA
+chrA	fixture	exon	151	220	.	+	.	ID=altA1;Parent=tAalt
+chrA	fixture	exon	401	520	.	+	.	ID=altA2;Parent=tAalt
+chrA	fixture	exon	901	1050	.	+	.	ID=altA3;Parent=tAalt

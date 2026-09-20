@@ -92,6 +92,11 @@ def build_parser():
     cal.add_argument("--seed", type=int, default=101)
 
     viz = sub.add_parser("visualize")
+    viz.add_argument("--layout", choices=["target-groups", "legacy-overview"], default="target-groups",
+                     help="One target per group on unchanged native annotation (default).")
+    viz.add_argument("--target", action="append", default=[],
+                     help="Exact family/layer/site ID (repeatable); unambiguous site IDs also accepted.")
+    viz.add_argument("--target-manifest", help="TSV of targets and optional exact native intervals; see docs/target_views.md.")
     viz.add_argument("--input-dir", required=True)
     viz.add_argument("--result-dir", required=True)
     viz.add_argument("--output-dir", required=True)
@@ -250,5 +255,11 @@ def build_parser():
                 default=300,
                 help="Maximum anchor-bounded interval length for the short local DNA route.",
             )
+
+    for command in (sub.choices["run"], sub.choices["infer-phylogeny"]):
+        command.add_argument("--analysis-range", choices=["all", "high-coverage"], default="all",
+                             help="Fit all callable observations, or an explicit character subset. Never trims DNA.")
+        command.add_argument("--min-callable-fraction", type=float, default=0.70,
+                             help="Known 0/1 divided by full tree panel; also sets the high-coverage report view.")
 
     return parser

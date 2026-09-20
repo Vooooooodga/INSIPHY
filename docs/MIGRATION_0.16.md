@@ -1,8 +1,3 @@
-
-## Project name
-
-The project-facing name is now **IntraPhy** (*Phylogenetic inference of intragenic structure*). The Python package namespace remains `insiphy`, and both `intraphy` and the legacy `insiphy` console commands resolve to the same CLI in 0.16.0.
-
 # Migration to 0.16.0
 
 This distribution was refactored from the user-supplied INSIPHY-main.zip (0.15.0 source). It is a complete source tree and locally built wheel, not a patch loader or a GitHub release pushed on your behalf.

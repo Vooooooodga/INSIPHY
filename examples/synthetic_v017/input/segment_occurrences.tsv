@@ -1,0 +1,20 @@
+boundary_state	coding_status	contig	end	evidence	family_id	gene_copy_id	occurrence_id	phase	presence_status	role	role_set	segment_id	source_feature_id	species	start	strand	transcript_id	transcript_order
+known	coding	chrA	250	synthetic_prepared_coordinate	SYNTHETIC_GENE	A_gene	A_e1	0	present	exon	exon	e1	A_e1	A	101	+	A_tx1	1
+known	coding	chrA	550	synthetic_prepared_coordinate	SYNTHETIC_GENE	A_gene	A_e2	0	present	exon	exon	e2	A_e2	A	401	+	A_tx1	2
+known	noncoding	chrA	680	synthetic_prepared_coordinate	SYNTHETIC_GENE	A_gene	A_q	0	present	intron	intron	q	A_q	A	561	+		3
+known	coding	chrA	820	synthetic_prepared_coordinate	SYNTHETIC_GENE	A_gene	A_e3	0	present	exon	exon	e3	A_e3	A	701	+	A_tx1	4
+known	coding	chrA	1180	synthetic_prepared_coordinate	SYNTHETIC_GENE	A_gene	A_e4	0	present	exon	exon	e4	A_e4	A	1001	+	A_tx1	5
+known	coding	chrB	250	synthetic_prepared_coordinate	SYNTHETIC_GENE	B_gene	B_e1	0	present	exon	exon	e1	B_e1	B	101	+	B_tx1	1
+known	coding	chrB	550	synthetic_prepared_coordinate	SYNTHETIC_GENE	B_gene	B_e2	0	present	exon	exon	e2	B_e2	B	401	+	B_tx1	2
+known	noncoding	chrB	680	synthetic_prepared_coordinate	SYNTHETIC_GENE	B_gene	B_q	0	present	intron	intron	q	B_q	B	561	+		3
+known	coding	chrB	750	synthetic_prepared_coordinate	SYNTHETIC_GENE	B_gene	B_e3a	0	present	exon	exon	e3a	B_e3a	B	701	+	B_tx1	4
+known	coding	chrB	820	synthetic_prepared_coordinate	SYNTHETIC_GENE	B_gene	B_e3b	0	present	exon	exon	e3b	B_e3b	B	766	+	B_tx1	5
+known	coding	chrB	1180	synthetic_prepared_coordinate	SYNTHETIC_GENE	B_gene	B_e4	0	present	exon	exon	e4	B_e4	B	1001	+	B_tx1	6
+known	coding	chrC	1300	synthetic_prepared_coordinate	SYNTHETIC_GENE	C_gene	C_e1	0	present	exon	exon	e1	C_e1	C	1151	-	C_tx1	1
+known	coding	chrC	1000	synthetic_prepared_coordinate	SYNTHETIC_GENE	C_gene	C_e2	0	present	exon	exon	e2	C_e2	C	851	-	C_tx1	2
+known	noncoding	chrC	840	synthetic_prepared_coordinate	SYNTHETIC_GENE	C_gene	C_q	0	present	intron	intron	q	C_q	C	721	-		3
+known	coding	chrC	700	synthetic_prepared_coordinate	SYNTHETIC_GENE	C_gene	C_e3	0	present	exon	exon	e3	C_e3	C	581	-	C_tx1	4
+known	coding	chrD	250	synthetic_prepared_coordinate	SYNTHETIC_GENE	D_gene	D_e1	0	present	exon	exon	e1	D_e1	D	101	+	D_tx1	1
+known	coding	chrD	550	synthetic_prepared_coordinate	SYNTHETIC_GENE	D_gene	D_e2	0	present	exon	exon	e2	D_e2	D	401	+	D_tx1	2
+known	noncoding	chrD	680	synthetic_prepared_coordinate	SYNTHETIC_GENE	D_gene	D_q	0	present	intron	intron	q	D_q	D	561	+		3
+known	coding	chrD	820	synthetic_prepared_coordinate	SYNTHETIC_GENE	D_gene	D_e3	0	present	exon	exon	e3	D_e3	D	701	+	D_tx1	4

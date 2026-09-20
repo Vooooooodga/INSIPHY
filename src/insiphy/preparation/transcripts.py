@@ -208,23 +208,9 @@ def _path_role_record(transcript_id, rank, path_features, index, feature, transc
         partial_start = _partial_boundary(transcript, "start")
     if transcript is not None and position_role in {"last", "single"} and partial_end == "0":
         partial_end = _partial_boundary(transcript, "end")
-    # A transcript may be wholly contained in its linked gene while its
-    # terminal CDS/exon has no explicit partial attribute.  The uncovered
-    # gene boundary is still evidence of a partial path.
-    if transcript is not None:
-        gene_start = transcript.get("_gene_start")
-        gene_end = transcript.get("_gene_end")
-        strand = transcript.get("strand", "+")
-        if position_role in {"first", "single"} and gene_start is not None and gene_end is not None:
-            if (strand == "+" and int(feature["start"]) > int(gene_start)) or (
-                strand == "-" and int(feature["end"]) < int(gene_end)
-            ):
-                partial_start = "1"
-        if position_role in {"last", "single"} and gene_start is not None and gene_end is not None:
-            if (strand == "+" and int(feature["end"]) < int(gene_end)) or (
-                strand == "-" and int(feature["start"]) > int(gene_start)
-            ):
-                partial_end = "1"
+    # A complete alternative transcript may start/end within the gene envelope.
+    # Preserve explicit partial flags; an unmarked end means unassessed completeness,
+    # not biological truncation inferred from another transcript's coordinates.
     return {
         "transcript_id": transcript_id,
         "path_rank": rank,

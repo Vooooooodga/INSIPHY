@@ -1,0 +1,2 @@
+Permuted DNA pieces are outside a single monotone event model.
+Synthetic native input only; not a certified evolutionary reconstruction.

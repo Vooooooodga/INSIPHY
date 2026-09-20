@@ -275,7 +275,10 @@ def _phase_status(left_row, right_row, left, right):
 
 def _explicit_intron_between(path_rows, left_index, right_index, left, right,
                              intron_rows, transcript_id):
-    if any(row.get("role") == "intron" for row in path_rows[left_index + 1:right_index]):
+    intervening = path_rows[left_index + 1:right_index]
+    if any(row.get("role") != "intron" for row in intervening):
+        return False  # retained-marker adjacency is not an RNA splice connection
+    if intervening:
         return True
     left_features, right_features = _tokens(left.get("source_feature_id")), _tokens(right.get("source_feature_id"))
     return any(row.get("transcript_id") == transcript_id
@@ -418,9 +421,14 @@ def _junction_site_rows(input_dir, output_dir, occurrences, element_rows, valid_
             left_index, left_row, left, left_element = left_entry
             right_index, right_row, right, right_element = right_entry
             linked_group = linked.get(left_element, "NA") if left_element == right_element else "NA"
-            boundary, unavailable = _boundary_from_pair(
-                family, left_element, right_element, left.get("occurrence_id"), right.get("occurrence_id"),
-                occ_by_id, membership_by_occ, references, match_rows, linked_group)
+            intervening = path_rows[left_index + 1:right_index]
+            if any(occ_by_id.get(row.get("occurrence_id"), row).get("role", row.get("role")) != "intron"
+                   for row in intervening):
+                boundary, unavailable = None, "unresolved_intervening_annotated_feature"
+            else:
+                boundary, unavailable = _boundary_from_pair(
+                    family, left_element, right_element, left.get("occurrence_id"), right.get("occurrence_id"),
+                    occ_by_id, membership_by_occ, references, match_rows, linked_group)
             phase_status = _phase_status(left_row, right_row, left, right)
             boundary_rows.append({
                 "family_id": family, "species": species, "gene_copy_id": gene_copy,

@@ -1,0 +1,7 @@
+##gff-version 3
+chrB	fixture	gene	101	1400	.	+	.	ID=gB
+chrB	fixture	mRNA	101	1080	.	+	.	ID=tB;Parent=gB
+chrB	fixture	exon	101	220	.	+	.	ID=eB1;Parent=tB
+chrB	fixture	exon	401	460	.	+	.	ID=eB2;Parent=tB
+chrB	fixture	exon	516	575	.	+	.	ID=eB3;Parent=tB
+chrB	fixture	exon	901	1080	.	+	.	ID=eB4;Parent=tB

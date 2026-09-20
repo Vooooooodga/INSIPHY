@@ -49,7 +49,9 @@ def main(argv=None):
         calibrate_simulations(args.output_dir, args.scenario, args.replicates, args.bootstrap_replicates, args.stochastic_maps, args.seed)
     elif args.command == "visualize":
         encoding = args.correspondence_encoding or "color"
-        visualize_results(args.input_dir, args.result_dir, args.output_dir, encoding)
+        visualize_results(args.input_dir, args.result_dir, args.output_dir, encoding,
+                          layout=args.layout, targets=args.target,
+                          target_manifest=args.target_manifest)
     elif args.command == "inspect-aligners":
         for row in available_alignment_backends():
             print(f"{row['aligner']}\t{row['available']}\t{row['notes']}")
@@ -108,6 +110,8 @@ def main(argv=None):
             root_frequency=args.root_frequency,
             root_presence=args.root_presence,
             structural_site_matrix_path=args.structural_site_matrix,
+            analysis_range=args.analysis_range,
+            min_callable_fraction=args.min_callable_fraction,
             annotation_view=args.annotation_view,
         )
     elif args.command == "compare-baselines":
@@ -133,6 +137,8 @@ def main(argv=None):
             short_context_max_length=args.short_context_max_length,
             annotation_view=args.annotation_view,
             structural_site_matrix_path=args.structural_site_matrix,
+            analysis_range=args.analysis_range,
+            min_callable_fraction=args.min_callable_fraction,
         )
 
 

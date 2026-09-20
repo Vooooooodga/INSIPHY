@@ -1,8 +1,14 @@
-# 0.16.0 — architecture and contract refactor (2026-09-20)
+# 0.17.0 — callable scope and target-focused visualization (2026-09-20)
 
-- Project-facing name changed to **IntraPhy** (*Phylogenetic inference of intragenic structure*); the `insiphy` Python namespace and CLI remain compatibility aliases.
-- Verification fixtures and legacy demos now declare explicit unit branch lengths; annotation-dropout verification follows the 0.16 resolved-anchor requirement instead of treating unresolved evidence as a hidden exon.
-- Legacy jingwei/Sdic demo assertions now match the resolved-anchor contract; compound simulation truth includes both left and right adjacencies created by the inserted segment, matching object-aware benchmark keys.
+- Add per-character callability summaries and explicit all-observations versus high-coverage analysis scopes without deleting the full observation matrix.
+- Keep genomic correspondence separate from transcript-path compatibility so unannotated DNA evidence is retained without promoting it to confirmed exon use.
+- Repair alternative transcript terminal completeness handling and complementary split/fusion candidate ordering.
+- Add context-dependent short/microexon handling without globally weakening short-match thresholds.
+- Add target-focused figure groups: a fixed gray annotation background, one highlighted structural target per group, target-only ribbons, explicit legends, and matching phylogenetic event overlays.
+- Add synthetic and raw FASTA/GFF boundary cases plus scope/visualization contract tests.
+- Rename the public project to IntraPhy while retaining the historical `insiphy` Python namespace and CLI alias for compatibility.
+
+# 0.16.0 — architecture and contract refactor (2026-09-20)
 
 - Split preparation, evidence, mapping, observations, inference, reporting and legacy verification responsibilities, preserving public import and CLI compatibility.
 - Explicit final-correspondence completion input, shared read-only observation matrix and selected-run result metadata.

@@ -1,0 +1,10 @@
+alignment_backend	alignment_strand	correspondence_basis	enumeration_complete	match_id	match_status	matched_blocks	position_edge_eligible	query_occurrence_id	subject_occurrence_id
+synthetic_supplied_blocks	+	DNA	1	A_e3__B_e3a	mapped	1-50:1-50	1	A_e3	B_e3a
+synthetic_supplied_blocks	+	DNA	1	A_e3__B_e3b	mapped	66-120:1-55	1	A_e3	B_e3b
+synthetic_supplied_blocks	+	DNA	1	B_e3a__C_e3	mapped	1-50:1-50	1	B_e3a	C_e3
+synthetic_supplied_blocks	+	DNA	1	B_e3b__C_e3	mapped	1-55:66-120	1	B_e3b	C_e3
+synthetic_supplied_blocks	+	DNA	1	C_e3__D_e3	mapped	1-120:1-120	1	C_e3	D_e3
+synthetic_supplied_blocks	+	DNA	1	A_e4__B_e4	mapped	1-180:1-180	1	A_e4	B_e4
+synthetic_supplied_blocks	+	DNA	1	A_q__B_q	mapped	1-120:1-120	1	A_q	B_q
+synthetic_supplied_blocks	+	DNA	1	B_q__C_q	mapped	1-120:1-120	1	B_q	C_q
+synthetic_supplied_blocks	+	DNA	1	C_q__D_q	mapped	1-120:1-120	1	C_q	D_q

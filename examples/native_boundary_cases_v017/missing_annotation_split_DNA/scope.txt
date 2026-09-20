@@ -1,0 +1,2 @@
+B has no middle-exon annotation; only DNA/context candidates may be recovered.
+Synthetic native input only; not a certified evolutionary reconstruction.

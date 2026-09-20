@@ -334,3 +334,7 @@ MATCH_FIELDS = [
 
 def _transcript_id_set(row):
     return {token for token in str(row.get("transcript_id", "")).split(";") if token and token != "NA"}
+
+# Explicit, independently labelled DNA and supplied-transcript channels.
+MATCH_FIELDS += ["genomic_retained_candidate_ids", "transcript_retained_candidate_ids",
+                 "correspondence_channels"]

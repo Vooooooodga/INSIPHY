@@ -1,0 +1,2 @@
+Internal alternative start/end must not imply partial.
+Synthetic native input only; not a certified evolutionary reconstruction.

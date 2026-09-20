@@ -25,6 +25,8 @@ def run_all(
     short_context_max_length=300,
     annotation_view="repertoire",
     structural_site_matrix_path=None,
+    analysis_range="all",
+    min_callable_fraction=0.70,
 ):
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     from .run_result import RunResult
@@ -58,6 +60,8 @@ def run_all(
         root_presence=root_presence,
         annotation_view=annotation_view,
         structural_site_matrix_path=structural_site_matrix_path,
+        analysis_range=analysis_range,
+        min_callable_fraction=min_callable_fraction,
     )
     _record_evidence_aligner(
         output_dir,

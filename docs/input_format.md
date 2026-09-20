@@ -8,7 +8,7 @@ The formal first-version analysis requires:
 2. Genome FASTA and existing GFF3/GTF annotation for each species.
 3. A user-supplied rooted species tree whose leaves match the species labels.
 
-Gene-level homology is an upstream input. `import-orthofinder` can read an OrthoFinder result and identify one mapped gene locus per requested species. A curated manifest is also accepted. INSIPHY performs gene-internal sequence correspondence after this relationship is supplied; it does not perform genome-wide ortholog discovery or infer a gene tree in the formal first-version analysis. Transcriptome or expression data are not required or consumed.
+Gene-level homology is an upstream input. `import-orthofinder` can read an OrthoFinder result and identify one mapped gene locus per requested species. A curated manifest is also accepted. IntraPhy performs gene-internal sequence correspondence after this relationship is supplied; it does not perform genome-wide ortholog discovery or infer a gene tree in the formal first-version analysis. Transcriptome or expression data are not required or consumed.
 
 ## OrthoFinder resource manifest
 

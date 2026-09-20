@@ -1,0 +1,13 @@
+case	files	scope
+conserved_annotations	A.fa;A.gff3;B.fa;B.gff3	Paired native exon ranges are preserved.
+missing_annotation_split_DNA	A.fa;A.gff3;B.fa;B.gff3	B has no middle-exon annotation; only DNA/context candidates may be recovered.
+annotated_split	A.fa;A.gff3;B.fa;B.gff3	One A exon versus two B exons with a 55bp interval; no automatic event polarity.
+short_complete_alternative	A.fa;A.gff3;B.fa;B.gff3	Internal alternative start/end must not imply partial.
+assembly_gap	A.fa;A.gff3;B.fa;B.gff3	N-rich middle interval is unknown, not a deletion.
+microexon9	A.fa;A.gff3;B.fa;B.gff3	9bp annotated exon requires coding/flank context for homology.
+retained_intron_paths	A.fa;A.gff3;B.fa;B.gff3	Both annotated paths exist; repertoire is not a conflict.
+nested_antisense	A.fa;A.gff3;B.fa;B.gff3	Other-owner exon is context, not focal-gene exonic usage.
+internal_repeat	A.fa;A.gff3;B.fa;B.gff3	Two copies of a local segment are not one-to-two complementary coverage.
+UTR_CDS_role	A.fa;A.gff3;B.fa;B.gff3	A CDS boundary change does not erase exon identity.
+translation_exception	A.fa;A.gff3;B.fa;B.gff3	CDS exception is not automatic structure-gain evidence.
+rearranged_candidate	A.fa;A.gff3;B.fa;B.gff3	Permuted DNA pieces are outside a single monotone event model.

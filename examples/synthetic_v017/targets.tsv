@@ -1,0 +1,5 @@
+family_id	label	layer	site_id	target_id
+SYNTHETIC_GENE	Exon 3 homologous DNA	exon_presence	E3	exon_3
+SYNTHETIC_GENE	Exon 4 homologous DNA	exon_presence	E4	exon_4
+SYNTHETIC_GENE	Unannotated intronic DNA segment	exon_presence	Q	intron_segment
+SYNTHETIC_GENE	Splice position between E2 and E3	splice_junction	J_E2_E3	splice_position

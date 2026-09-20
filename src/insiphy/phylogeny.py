@@ -16,6 +16,8 @@ def infer_phylogeny(
     root_presence=0.5,
     structural_site_matrix_path=None,
     annotation_view="repertoire",
+    analysis_range="all",
+    min_callable_fraction=0.70,
 ):
     if analysis_scope == "single-copy":
         if model not in {"parsimony", "er-ard", "foreground"}:
@@ -32,7 +34,8 @@ def infer_phylogeny(
         from insiphy.run_result import begin_run
         begin_run(output_dir, model, analysis_scope)
         from insiphy.observations.matrix import prepare_observation_matrix
-        matrix = prepare_observation_matrix(input_dir, output_dir, structural_site_matrix_path, annotation_view)
+        matrix = prepare_observation_matrix(input_dir, output_dir, structural_site_matrix_path, annotation_view,
+                                            analysis_range=analysis_range, min_callable_fraction=min_callable_fraction)
         if model == "parsimony":
             from insiphy.parsimony import infer_single_copy_parsimony
 
@@ -62,6 +65,8 @@ def infer_phylogeny(
         )
     if analysis_scope != "experimental-multicopy":
         raise ValueError(f"unsupported analysis_scope: {analysis_scope!r}")
+    if analysis_range != "all" or min_callable_fraction != 0.70:
+        raise ValueError("callable-scope policy is a formal single-copy feature")
     from insiphy.experimental.phylogeny import infer_experimental_phylogeny
     from insiphy.run_result import record_run_result
     result = infer_experimental_phylogeny(

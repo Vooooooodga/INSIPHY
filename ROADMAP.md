@@ -1,4 +1,4 @@
-# INSIPHY Roadmap
+# IntraPhy Roadmap
 
 ## Current v0.12 status
 

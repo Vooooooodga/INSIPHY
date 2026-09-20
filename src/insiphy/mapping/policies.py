@@ -50,6 +50,7 @@ def _candidate_sequence_accepted(
     threshold,
     short_context=False,
     criteria=DEFAULT_CORRESPONDENCE_CRITERIA,
+    *, anchored_microexon=False,
 ):
     identity = to_float(record.get("identity"), 0.0)
     coverage = to_float(record.get("coverage"), 0.0)
@@ -61,6 +62,13 @@ def _candidate_sequence_accepted(
         )
     )
     if short_context:
+        pairs = int(to_float(record.get("known_aligned_pairs", record.get("aligned_pairs", 0)), 0.0))
+        short_coverage = to_float(record.get("short_sequence_coverage", record.get("query_coverage")), 0.0)
+        if anchored_microexon and 3 <= pairs < criteria.short_min_aligned_pairs:
+            # This is a conservative, testable candidate rule, not a homology
+            # probability. Reading frame is an output, not an acceptance filter.
+            return bool(accepted and identity >= max(0.90, threshold)
+                        and short_coverage >= 0.95)
         accepted = bool(
             accepted
             and identity >= max(criteria.short_min_identity, threshold)

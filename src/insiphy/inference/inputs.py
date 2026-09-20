@@ -41,8 +41,10 @@ def _site_key(row):
     return (row.get("family_id", "NA"), row.get("layer", "NA"), row.get("site_id", "NA"))
 
 
-def _load_site_matrix(input_dir, output_dir, structural_site_matrix_path, annotation_view):
-    return load_site_matrix(input_dir, output_dir, structural_site_matrix_path, annotation_view)
+def _load_site_matrix(input_dir, output_dir, structural_site_matrix_path, annotation_view,
+                      *, analysis_range="all", min_callable_fraction=0.70):
+    return load_site_matrix(input_dir, output_dir, structural_site_matrix_path, annotation_view,
+                           analysis_range=analysis_range, min_callable_fraction=min_callable_fraction)
 
 
 def _masked_state(row):

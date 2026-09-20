@@ -1,0 +1,9 @@
+##gff-version 3
+chrA	fixture	gene	101	1400	.	+	.	ID=gA
+chrA	fixture	mRNA	101	1080	.	+	.	ID=tA;Parent=gA
+chrA	fixture	exon	101	220	.	+	.	ID=eA1;Parent=tA
+chrA	fixture	exon	401	520	.	+	.	ID=eA2;Parent=tA
+chrA	fixture	exon	901	1080	.	+	.	ID=eA3;Parent=tA
+chrA	fixture	CDS	131	220	.	+	0	ID=cdsA1;Parent=tA;exception=ribosomal%20slippage
+chrA	fixture	CDS	401	520	.	+	0	ID=cdsA2;Parent=tA;exception=ribosomal%20slippage
+chrA	fixture	CDS	901	1080	.	+	0	ID=cdsA3;Parent=tA;exception=ribosomal%20slippage

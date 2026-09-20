@@ -1,0 +1,5 @@
+annotation_end	annotation_start	contig	gene_copy_id	species	strand
+1300	101	chrA	A_gene	A	+
+1300	101	chrB	B_gene	B	+
+1300	101	chrC	C_gene	C	-
+1300	101	chrD	D_gene	D	+

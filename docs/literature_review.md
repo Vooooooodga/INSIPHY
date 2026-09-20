@@ -57,7 +57,7 @@ ancestral sequence interval can be partitioned into multiple descendant
 exons, or multiple ancestral intervals can become one exon.
 
 Progressive Cactus demonstrates the general value of ordering difficult
-homology comparisons by a guide phylogeny. INSIPHY applies that principle
+homology comparisons by a guide phylogeny. IntraPhy applies that principle
 locally within supplied orthologous genes. It does not run whole-genome Cactus
 and does not infer new gene families.
 
@@ -79,7 +79,7 @@ The PAML manual contributes several operational principles used here:
 - ancestral reconstructions are conditional on the fitted model and tree;
 - boundary estimates and weak information require cautious inference.
 
-PAML itself models nucleotide, codon, or amino-acid substitution. INSIPHY uses
+PAML itself models nucleotide, codon, or amino-acid substitution. IntraPhy uses
 the same likelihood discipline for binary homologous gene-structure sites.
 
 Core references:
@@ -112,13 +112,13 @@ information, as in *Whole-genome microsynteny-based phylogeny of angiosperms*
 https://doi.org/10.1038/s41467-021-23665-0
 
 The linked-block visualization used for conserved chromosome synteny provides
-the visual grammar for INSIPHY exon tracks. The tree and homologous connections
+the visual grammar for IntraPhy exon tracks. The tree and homologous connections
 are shown together, while posterior structural changes are placed on branches.
 
 Recent synteny software such as Synolog emphasizes scalable orthology,
 multi-genome synteny clusters, and linked visual outputs:
 https://doi.org/10.64898/2026.04.07.717040
-INSIPHY begins after gene orthology has been supplied and operates at the
+IntraPhy begins after gene orthology has been supplied and operates at the
 within-gene structural scale.
 
 ## Statistical boundary
@@ -134,7 +134,7 @@ infer:
 - gene-level orthology;
 - species-tree uncertainty.
 
-These questions can use INSIPHY outputs as structured evidence in a broader
+These questions can use IntraPhy outputs as structured evidence in a broader
 study.
 
 ## Empirical benchmark strategy

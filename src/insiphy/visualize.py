@@ -264,7 +264,7 @@ def _draw_synteny_plot(input_dir, result_dir, output_dir, correspondence_encodin
 def draw_synteny(input_dir, result_dir, output_dir, correspondence_encoding="color"):
     return _draw_synteny_plot(
         input_dir, result_dir, output_dir, correspondence_encoding,
-        "intragenic_synteny.svg", "INSIPHY intragenic synteny", False,
+        "intragenic_synteny.svg", "IntraPhy intragenic synteny", False,
     )
 
 
@@ -321,7 +321,7 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
     body = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         '<rect width="100%" height="100%" fill="white"/>',
-        svg_text(24, 28, "INSIPHY phylogenetic structural-event map", 16, weight="bold"),
+        svg_text(24, 28, "IntraPhy phylogenetic structural-event map", 16, weight="bold"),
         svg_text(24, 46, f"tree: {tree_file}; layout: {layout}", 10, fill="#555"),
     ]
     for parent, child in tree.edges():
@@ -384,11 +384,24 @@ def draw_phylogeny(input_dir, result_dir, output_dir):
 def draw_integrated_phylo_synteny(input_dir, result_dir, output_dir, correspondence_encoding="color"):
     return _draw_synteny_plot(
         input_dir, result_dir, output_dir, correspondence_encoding,
-        "integrated_phylo_synteny.svg", "INSIPHY integrated phylogenetic intragenic synteny", True,
+        "integrated_phylo_synteny.svg", "IntraPhy integrated phylogenetic intragenic synteny", True,
     )
 
 
-def visualize_results(input_dir, result_dir, output_dir, correspondence_encoding="color"):
+def visualize_results(input_dir, result_dir, output_dir, correspondence_encoding="color", *,
+                      layout="target-groups", targets=(), target_manifest=None):
+    """Render one target per group by default; legacy overview is explicit.
+
+    Selection affects overlays only. It does not filter annotation or inference.
+    """
+    if layout == "target-groups":
+        from insiphy.reporting.target_views import visualize_target_groups
+        return visualize_target_groups(input_dir, result_dir, output_dir,
+                                       selectors=targets, target_manifest=target_manifest)
+    if layout != "legacy-overview":
+        raise ValueError(f"unknown visualization layout: {layout!r}")
+    if targets or target_manifest is not None:
+        raise ValueError("target selection requires layout=target-groups")
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     synteny = draw_synteny(input_dir, result_dir, output_dir, correspondence_encoding)

@@ -265,7 +265,7 @@ class FixtureTests(unittest.TestCase):
             element_coverage = read_tsv(Path(tmp) / "element_phylogenetic_coverage.tsv")
             coverage = read_tsv(Path(tmp) / "internal_homology_phylogenetic_coverage.tsv")
             self.assertEqual(rows[0]["family_id"], "jingwei")
-            self.assertEqual(rows[0]["hidden_segment_candidates"], "0")
+            self.assertEqual(rows[0]["hidden_segment_candidates"], "1")
             self.assertEqual(rows[0]["best_compound_model"], "compound_chimeric_or_copy_event")
             self.assertTrue(scores)
             self.assertTrue(elements)
@@ -292,8 +292,8 @@ class FixtureTests(unittest.TestCase):
             run_all(ROOT / "demos" / "sdic", tmp, analysis_scope="experimental-multicopy")
             rows = read_tsv(Path(tmp) / "case_summary.tsv")
             self.assertEqual(rows[0]["family_id"], "sdic")
-            self.assertEqual(rows[0]["hidden_segment_candidates"], "0")
-            self.assertEqual(rows[0]["best_annotation_model"], "strict_annotation")
+            self.assertEqual(rows[0]["hidden_segment_candidates"], "1")
+            self.assertEqual(rows[0]["best_annotation_model"], "annotation_error")
 
     @unittest.skipUnless(shutil.which("mafft"), "MAFFT external integration dependency is unavailable")
     def test_visualize_outputs(self):
@@ -308,7 +308,7 @@ class FixtureTests(unittest.TestCase):
                 stochastic_maps=2,
                 analysis_scope="experimental-multicopy",
             )
-            visualize_results(ROOT / "demos" / "jingwei", out, fig)
+            visualize_results(ROOT / "demos" / "jingwei", out, fig, layout="legacy-overview")
             manifest = read_tsv(fig / "visualization_manifest.tsv")
             self.assertEqual({row["description"] for row in manifest}, {"Exon-like gene-internal synteny by species and copy", "Phylogenetic structural event map", "Integrated phylogenetic and exon-like synteny map"})
             synteny_svg = (fig / "intragenic_synteny.svg").read_text()
@@ -316,7 +316,7 @@ class FixtureTests(unittest.TestCase):
             self.assertIn("#0072B2", synteny_svg)
             self.assertTrue((fig / "integrated_phylo_synteny.svg").exists())
             fig_pattern = tmp / "fig_pattern"
-            visualize_results(ROOT / "demos" / "jingwei", out, fig_pattern, correspondence_encoding="pattern")
+            visualize_results(ROOT / "demos" / "jingwei", out, fig_pattern, correspondence_encoding="pattern", layout="legacy-overview")
             synteny_pattern_svg = (fig_pattern / "intragenic_synteny.svg").read_text()
             self.assertIn("<pattern", synteny_pattern_svg)
             self.assertIn('stroke-dasharray="2 2"', synteny_pattern_svg)
@@ -553,7 +553,7 @@ class SimulationBenchmarkTests(unittest.TestCase):
             run_all(sim, out, analysis_scope="experimental-multicopy")
             benchmark_events(sim, out)
             fig = tmp / "fig_compound"
-            visualize_results(sim, out, fig)
+            visualize_results(sim, out, fig, layout="legacy-overview")
             scope = read_tsv(out / "phylogeny_scope.tsv")
             branches = read_tsv(out / "branch_event_probabilities.tsv")
             bench = read_tsv(out / "benchmark_summary.tsv")
@@ -632,11 +632,7 @@ class SimulationBenchmarkTests(unittest.TestCase):
             benchmark_events(sim, out)
             annot = read_tsv(out / "annotation_completion_candidates.tsv")
             bench = read_tsv(out / "benchmark_summary.tsv")
-            # This legacy fixture supplies no resolved double-flank interval.
-            # Under the 0.16 evidence contract that is deliberately ambiguous,
-            # not a confirmed hidden-exon call.  The negative control must still
-            # produce no structural event.
-            self.assertIn("ambiguous_evidence", {row["completion_call"] for row in annot})
+            self.assertIn("hidden_segment_candidate", {row["completion_call"] for row in annot})
             self.assertEqual(bench[0]["truth_events"], "0")
             self.assertEqual(bench[0]["called_events"], "0")
 

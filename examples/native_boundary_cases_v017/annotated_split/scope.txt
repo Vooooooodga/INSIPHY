@@ -1,0 +1,2 @@
+One A exon versus two B exons with a 55bp interval; no automatic event polarity.
+Synthetic native input only; not a certified evolutionary reconstruction.

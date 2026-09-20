@@ -1,0 +1,2 @@
+A CDS boundary change does not erase exon identity.
+Synthetic native input only; not a certified evolutionary reconstruction.

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Run source-checkout CLI smoke checks on a synthetic fixture.
 
-Requires the source tree including tests. Replaces only validation/cli_fixture.
+Requires the source tree including tests. Replaces only validation/cli_fixture_v017.
 It does not run biological demos or install external programs.
 """
 from pathlib import Path
 import ast, json, subprocess, sys, os, shutil, xml.etree.ElementTree as ET
 root=Path(__file__).resolve().parents[1]
-work=root/'validation'/'cli_fixture'
+work=root/'validation'/'cli_fixture_v017'
 if work.exists():shutil.rmtree(work)
 work.mkdir(parents=True)
 sys.path[:0]=[str(root/'src'),str(root/'tests')]
@@ -51,12 +51,12 @@ for model in ('parsimony','er-ard','foreground'):
     checks.append({'model':model,'threads':[1,2],'exactly_equal_result_tables':files})
     run(['visualize','--input-dir',input_dir,'--result-dir',work/(model+'_1'),
          '--output-dir',work/(model+'_figures')])
-    svg=list((work/(model+'_figures')).glob('*.svg'))
+    svg=list((work/(model+'_figures')).rglob('*.svg'))
     assert svg
     for path in svg:ET.parse(path)
     checks[-1]['valid_svg_files']=len(svg)
 for path in (root/'src').rglob('*.py'):
     ast.parse(path.read_text(),filename=str(path),feature_version=(3,9))
 commands=[{**row,'args':[a.replace(str(root),'PROJECT') for a in row['args']]} for row in commands]
-(root/'validation'/'cli_smoke_results.json').write_text(json.dumps({'commands':commands,'checks':checks,'syntax_python39':True,'data':'synthetic four-species fixture, not biological validation'},indent=2)+'\n')
+(root/'validation'/'cli_smoke_results_v017.json').write_text(json.dumps({'commands':commands,'checks':checks,'syntax_python39':True,'data':'synthetic four-species fixture, not biological validation'},indent=2)+'\n')
 print(json.dumps(checks,indent=2))

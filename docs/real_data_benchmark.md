@@ -586,7 +586,7 @@ documented structural changes. Candidate cases must satisfy:
 - assembly and annotation versions available;
 - enough species to distinguish alternative branch placements;
 - sequence-level evidence for the altered exon or junction;
-- a published history that can be reviewed independently of INSIPHY.
+- a published history that can be reviewed independently of IntraPhy.
 
 Jingwei and Sdic remain useful for future multi-copy development. Their
 duplication histories place them outside the current formal single-copy

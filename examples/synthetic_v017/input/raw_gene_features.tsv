@@ -1,0 +1,59 @@
+end	family_id	gene_copy_id	id	parent	seqid	source	species	start	strand	type
+1300	SYNTHETIC_GENE	A_gene	A_gene	NA	chrA	synthetic_native_annotation	A	101	+	gene
+250	SYNTHETIC_GENE	A_gene	A_e1	A_tx1	chrA	synthetic_native_annotation	A	101	+	exon
+242	SYNTHETIC_GENE	A_gene	A_e1_cds	A_tx1	chrA	synthetic_native_annotation	A	113	+	CDS
+112	SYNTHETIC_GENE	A_gene	A_e1_utr	A_tx1	chrA	synthetic_native_annotation	A	101	+	five_prime_UTR
+550	SYNTHETIC_GENE	A_gene	A_e2	A_tx1	chrA	synthetic_native_annotation	A	401	+	exon
+542	SYNTHETIC_GENE	A_gene	A_e2_cds	A_tx1	chrA	synthetic_native_annotation	A	413	+	CDS
+680	SYNTHETIC_GENE	A_gene	A_q	DNA context	chrA	synthetic_native_annotation	A	561	+	intron
+820	SYNTHETIC_GENE	A_gene	A_e3	A_tx1	chrA	synthetic_native_annotation	A	701	+	exon
+812	SYNTHETIC_GENE	A_gene	A_e3_cds	A_tx1	chrA	synthetic_native_annotation	A	713	+	CDS
+1180	SYNTHETIC_GENE	A_gene	A_e4	A_tx1	chrA	synthetic_native_annotation	A	1001	+	exon
+1172	SYNTHETIC_GENE	A_gene	A_e4_cds	A_tx1	chrA	synthetic_native_annotation	A	1013	+	CDS
+770	SYNTHETIC_GENE	A_gene	A_antisense	other_gene	chrA	synthetic_context	A	725	-	exon
+930	SYNTHETIC_GENE	A_gene	A_snoRNA	other annotations	chrA	synthetic_context	A	900	+	ncRNA
+355	SYNTHETIC_GENE	A_gene	A_repeat	other annotations	chrA	synthetic_context	A	320	+	repeat_region
+250	SYNTHETIC_GENE	A_gene	A_alternative_first	A_tx2	chrA	synthetic_alternative_transcript	A	155	+	exon
+1300	SYNTHETIC_GENE	B_gene	B_gene	NA	chrB	synthetic_native_annotation	B	101	+	gene
+250	SYNTHETIC_GENE	B_gene	B_e1	B_tx1	chrB	synthetic_native_annotation	B	101	+	exon
+242	SYNTHETIC_GENE	B_gene	B_e1_cds	B_tx1	chrB	synthetic_native_annotation	B	113	+	CDS
+112	SYNTHETIC_GENE	B_gene	B_e1_utr	B_tx1	chrB	synthetic_native_annotation	B	101	+	five_prime_UTR
+550	SYNTHETIC_GENE	B_gene	B_e2	B_tx1	chrB	synthetic_native_annotation	B	401	+	exon
+542	SYNTHETIC_GENE	B_gene	B_e2_cds	B_tx1	chrB	synthetic_native_annotation	B	413	+	CDS
+680	SYNTHETIC_GENE	B_gene	B_q	DNA context	chrB	synthetic_native_annotation	B	561	+	intron
+750	SYNTHETIC_GENE	B_gene	B_e3a	B_tx1	chrB	synthetic_native_annotation	B	701	+	exon
+742	SYNTHETIC_GENE	B_gene	B_e3a_cds	B_tx1	chrB	synthetic_native_annotation	B	713	+	CDS
+820	SYNTHETIC_GENE	B_gene	B_e3b	B_tx1	chrB	synthetic_native_annotation	B	766	+	exon
+812	SYNTHETIC_GENE	B_gene	B_e3b_cds	B_tx1	chrB	synthetic_native_annotation	B	778	+	CDS
+1180	SYNTHETIC_GENE	B_gene	B_e4	B_tx1	chrB	synthetic_native_annotation	B	1001	+	exon
+1172	SYNTHETIC_GENE	B_gene	B_e4_cds	B_tx1	chrB	synthetic_native_annotation	B	1013	+	CDS
+770	SYNTHETIC_GENE	B_gene	B_antisense	other_gene	chrB	synthetic_context	B	725	-	exon
+930	SYNTHETIC_GENE	B_gene	B_snoRNA	other annotations	chrB	synthetic_context	B	900	+	ncRNA
+355	SYNTHETIC_GENE	B_gene	B_repeat	other annotations	chrB	synthetic_context	B	320	+	repeat_region
+250	SYNTHETIC_GENE	B_gene	B_alternative_first	B_tx2	chrB	synthetic_alternative_transcript	B	155	+	exon
+1300	SYNTHETIC_GENE	C_gene	C_gene	NA	chrC	synthetic_native_annotation	C	101	-	gene
+1300	SYNTHETIC_GENE	C_gene	C_e1	C_tx1	chrC	synthetic_native_annotation	C	1151	-	exon
+1288	SYNTHETIC_GENE	C_gene	C_e1_cds	C_tx1	chrC	synthetic_native_annotation	C	1159	-	CDS
+1300	SYNTHETIC_GENE	C_gene	C_e1_utr	C_tx1	chrC	synthetic_native_annotation	C	1289	-	five_prime_UTR
+1000	SYNTHETIC_GENE	C_gene	C_e2	C_tx1	chrC	synthetic_native_annotation	C	851	-	exon
+988	SYNTHETIC_GENE	C_gene	C_e2_cds	C_tx1	chrC	synthetic_native_annotation	C	859	-	CDS
+840	SYNTHETIC_GENE	C_gene	C_q	DNA context	chrC	synthetic_native_annotation	C	721	-	intron
+700	SYNTHETIC_GENE	C_gene	C_e3	C_tx1	chrC	synthetic_native_annotation	C	581	-	exon
+688	SYNTHETIC_GENE	C_gene	C_e3_cds	C_tx1	chrC	synthetic_native_annotation	C	589	-	CDS
+676	SYNTHETIC_GENE	C_gene	C_antisense	other_gene	chrC	synthetic_context	C	631	+	exon
+501	SYNTHETIC_GENE	C_gene	C_snoRNA	other annotations	chrC	synthetic_context	C	471	-	ncRNA
+1081	SYNTHETIC_GENE	C_gene	C_repeat	other annotations	chrC	synthetic_context	C	1046	-	repeat_region
+1246	SYNTHETIC_GENE	C_gene	C_alternative_first	C_tx2	chrC	synthetic_alternative_transcript	C	1151	-	exon
+1300	SYNTHETIC_GENE	D_gene	D_gene	NA	chrD	synthetic_native_annotation	D	101	+	gene
+250	SYNTHETIC_GENE	D_gene	D_e1	D_tx1	chrD	synthetic_native_annotation	D	101	+	exon
+242	SYNTHETIC_GENE	D_gene	D_e1_cds	D_tx1	chrD	synthetic_native_annotation	D	113	+	CDS
+112	SYNTHETIC_GENE	D_gene	D_e1_utr	D_tx1	chrD	synthetic_native_annotation	D	101	+	five_prime_UTR
+550	SYNTHETIC_GENE	D_gene	D_e2	D_tx1	chrD	synthetic_native_annotation	D	401	+	exon
+542	SYNTHETIC_GENE	D_gene	D_e2_cds	D_tx1	chrD	synthetic_native_annotation	D	413	+	CDS
+680	SYNTHETIC_GENE	D_gene	D_q	DNA context	chrD	synthetic_native_annotation	D	561	+	intron
+820	SYNTHETIC_GENE	D_gene	D_e3	D_tx1	chrD	synthetic_native_annotation	D	701	+	exon
+812	SYNTHETIC_GENE	D_gene	D_e3_cds	D_tx1	chrD	synthetic_native_annotation	D	713	+	CDS
+770	SYNTHETIC_GENE	D_gene	D_antisense	other_gene	chrD	synthetic_context	D	725	-	exon
+930	SYNTHETIC_GENE	D_gene	D_snoRNA	other annotations	chrD	synthetic_context	D	900	+	ncRNA
+355	SYNTHETIC_GENE	D_gene	D_repeat	other annotations	chrD	synthetic_context	D	320	+	repeat_region
+250	SYNTHETIC_GENE	D_gene	D_alternative_first	D_tx2	chrD	synthetic_alternative_transcript	D	155	+	exon

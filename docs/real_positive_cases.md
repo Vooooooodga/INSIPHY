@@ -1,6 +1,6 @@
 # Real Positive Case Preparation
 
-This document records genome resources and gene identifiers for INSIPHY
+This document records genome resources and gene identifiers for IntraPhy
 real-data evaluation. Published event expectations are external scoring metadata,
 documented here and in the separate `truth_events.tsv` files linked below.
 Analysis receives the resource manifest and tree, without those scoring files.
@@ -400,7 +400,7 @@ inspect all FDPS-like loci and pseudogenes in the genome, and review the
 single-copy orthogroup and gene tree before supplying a species tree. Multiple
 transcripts at one locus do not by themselves mean gene-level duplication.
 
-**Question INSIPHY can test.** Given verified single-copy gene orthology and
+**Question IntraPhy can test.** Given verified single-copy gene orthology and
 genome/annotation inputs, do the coding sequence blocks corresponding to human
 exons 5, 6 and 7 map in order and with complementary coverage to one continuous
 rat exon? Are both homologous internal splice boundaries absent from the rat
@@ -414,7 +414,7 @@ explicitly represents their dependence.
 for a historical intron-loss / exon-joining test because the literature names
 the sequence interval and compares multiple mammals. The predicted
 processed-transcript recombination in the CESAR caption is a proposed
-mechanism, not a structural observation; INSIPHY can score sequence
+mechanism, not a structural observation; IntraPhy can score sequence
 correspondence and boundary states, not establish that mechanism. A
 single-species difference alone cannot fix direction; human, mouse and rat
 plus suitable outgroups are needed. No event coordinate or branch is frozen
@@ -462,7 +462,7 @@ taxon, then reviewed for additional MAMSTR-like copies and gene-tree
 consistency. The number of isoforms in each annotation is not the gene copy
 number.
 
-**Question INSIPHY can test.** Does the exon-3 coding sequence align across
+**Question IntraPhy can test.** Does the exon-3 coding sequence align across
 species while the cow acceptor coordinate differs by approximately 30 bp?
 Can the alignment distinguish a shifted boundary from loss of the entire
 homologous exon, and does a broader tree localize the observed boundary state
@@ -493,7 +493,7 @@ They do not date the duplication or show a species-tree branch where it
 occurred. [Wang et al. 2012, Figs. 1A-C](https://doi.org/10.1093/jmcb/mjr030).
 Independent equine work explicitly characterized and measured M1/M2
 pyruvate-kinase transcripts in horse; it is external validation for the
-existence of the alternative forms in that species, not an INSIPHY input.
+existence of the alternative forms in that species, not an IntraPhy input.
 [Echigoya et al. 2008, PubMed record](https://pubmed.ncbi.nlm.nih.gov/18602015/).
 
 **Species and names.** Human (*Homo sapiens*), mouse (*Mus musculus*), rat
@@ -525,7 +525,7 @@ exon-10 instances even though their sequences are homologous. Transcript
 isoforms are separate paths through these repeated units; collapsing them to
 one canonical protein would erase the case's defining structure.
 
-**Question INSIPHY can test.** Can the two internally homologous exon units
+**Question IntraPhy can test.** Can the two internally homologous exon units
 be detected as two distinct ordered genomic instances, and can the observed
 transcript annotations retain exon-9 and exon-10 paths as mutually exclusive
 alternatives? Across orthologous species, are both units and their flanking

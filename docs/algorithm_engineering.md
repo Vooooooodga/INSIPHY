@@ -2,7 +2,7 @@
 
 ## Architecture
 
-INSIPHY is a Python package with library modules and CLI commands over the same implementation. The package analyzes prepared gene sets; it does not embed a scheduler or workflow engine.
+IntraPhy is a Python package with library modules and CLI commands over the same implementation. The package analyzes prepared gene sets; it does not embed a scheduler or workflow engine.
 
 Core modules:
 
@@ -32,7 +32,7 @@ After those checks, internal functions rely on clear invariants. Repeating broad
 
 ## Alignment adapters
 
-INSIPHY should use mature tools for mature alignment problems:
+IntraPhy should use mature tools for mature alignment problems:
 
 - MAFFT for exon-level multiple/pair projection where appropriate;
 - minimap2 for genomic local context and long nucleotide intervals;
@@ -41,7 +41,7 @@ INSIPHY should use mature tools for mature alignment problems:
 
 Each adapter returns a common alignment-statistics record with identity, coverage, strand, coordinates, paired blocks and backend identity. If a requested backend fails or is unavailable, the result is reported as unavailable for that evidence class. Hidden replacement by another algorithm is avoided.
 
-INSIPHY does not try to become a new general-purpose alignment package. The method contribution is the structural interpretation and phylogenetic use of the evidence.
+IntraPhy does not try to become a new general-purpose alignment package. The method contribution is the structural interpretation and phylogenetic use of the evidence.
 
 ## Correspondence graph
 

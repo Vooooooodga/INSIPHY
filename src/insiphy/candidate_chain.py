@@ -43,6 +43,8 @@ class ChainPathMembership:
     target_contig: str
     query_strand: str
     target_strand: str
+    query_parent_id: str = ""
+    target_parent_id: str = ""
 
     def __post_init__(self):
         if not self.query_path_id or not self.target_path_id:
@@ -123,6 +125,14 @@ class CoverageClassification:
     uncovered_bases: Optional[int]
 
 
+def _parent_order_compatible(left_order, right_order, left_parent, right_parent):
+    # Equal ranks are only allowed for complementary, disjoint subintervals of
+    # the same explicitly identified parent. Geometry is checked by the caller.
+    return left_order < right_order or (
+        left_order == right_order and bool(left_parent) and left_parent == right_parent
+    )
+
+
 def _ordered_before(left, right, left_path=None, right_path=None):
     path_compatible = True
     if left_path is not None or right_path is not None:
@@ -130,8 +140,10 @@ def _ordered_before(left, right, left_path=None, right_path=None):
             left_path is not None
             and right_path is not None
             and left_path.context == right_path.context
-            and left_path.query_order < right_path.query_order
-            and left_path.target_order < right_path.target_order
+            and _parent_order_compatible(left_path.query_order, right_path.query_order,
+                                         left_path.query_parent_id, right_path.query_parent_id)
+            and _parent_order_compatible(left_path.target_order, right_path.target_order,
+                                         left_path.target_parent_id, right_path.target_parent_id)
         )
     return (
         path_compatible
@@ -552,6 +564,19 @@ def ordered_candidate_chain(
         ambiguous_ids=frozenset(ambiguous_ids),
         context_summaries=tuple(context_summaries),
     )
+
+
+def genomic_candidate_chain(candidates, score_delta, start_ids=None, end_ids=None):
+    """Physical DNA channel, independent of annotation/transcript membership.
+
+    Requires one locus pair and one score scheme, with coordinates already
+    oriented by the caller. It does not construct an RNA path or validate exons.
+    Non-collinear candidates remain descriptive, never an absence call.
+    """
+    from dataclasses import replace
+    physical = tuple(replace(candidate, path_memberships=()) for candidate in candidates)
+    return ordered_candidate_chain(physical, score_delta, start_ids, end_ids,
+                                   configuration_name="genomic_DNA_channel_v017")
 
 
 def classify_reference_coverage(

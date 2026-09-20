@@ -1,0 +1,2 @@
+CDS exception is not automatic structure-gain evidence.
+Synthetic native input only; not a certified evolutionary reconstruction.

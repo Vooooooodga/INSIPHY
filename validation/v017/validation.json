@@ -1,0 +1,125 @@
+{
+  "release": "0.17.0",
+  "base": "delivered IntraPhy 0.16.0 source archive",
+  "github_modified": false,
+  "source_tests": {
+    "total": 365,
+    "passed": 355,
+    "skipped": 10,
+    "failed": 0,
+    "errors": 0
+  },
+  "installed_wheel_tests": {
+    "total": 365,
+    "passed": 355,
+    "skipped": 10,
+    "failed": 0,
+    "errors": 0
+  },
+  "new_tests": 68,
+  "new_test_breakdown": {
+    "scope_candidate_visual_contracts": 56,
+    "native_FASTA_GFF_extraction_cases": 12
+  },
+  "model_CLI": [
+    {
+      "model": "parsimony",
+      "threads": [
+        1,
+        2
+      ],
+      "exactly_equal_result_tables": [
+        "node_structural_states.tsv",
+        "branch_structural_events.tsv",
+        "structural_site_summary.tsv",
+        "compound_structural_events.tsv"
+      ],
+      "valid_svg_files": 33
+    },
+    {
+      "model": "er-ard",
+      "threads": [
+        1,
+        2
+      ],
+      "exactly_equal_result_tables": [
+        "model_fits.tsv",
+        "model_tests.tsv",
+        "node_state_posteriors.tsv",
+        "branch_transition_posteriors.tsv",
+        "structural_changes.tsv"
+      ],
+      "valid_svg_files": 33
+    },
+    {
+      "model": "foreground",
+      "threads": [
+        1,
+        2
+      ],
+      "exactly_equal_result_tables": [
+        "model_fits.tsv",
+        "model_tests.tsv",
+        "node_state_posteriors.tsv",
+        "branch_transition_posteriors.tsv",
+        "structural_changes.tsv"
+      ],
+      "valid_svg_files": 33
+    }
+  ],
+  "python_runtime": "3.13.5",
+  "python39_syntax_only": true,
+  "dependencies": {
+    "numpy": "2.3.5",
+    "scipy": "1.17.0",
+    "biopython": "1.86",
+    "networkx": "3.6.1"
+  },
+  "external_programs": {
+    "mafft": false,
+    "minimap2": false,
+    "miniprot": false,
+    "lastz": false
+  },
+  "installation_scope": "wheel in separate venv; third-party numeric dependencies exposed from existing runtime; not a network clean dependency install",
+  "initial_install_issue": "initial test environment omitted numeric dependencies; log retained; no source changes needed to correct environment",
+  "new_package_files": [
+    "src/insiphy/observations/eligibility.py",
+    "src/insiphy/reporting/target_model.py",
+    "src/insiphy/reporting/target_scene.py",
+    "src/insiphy/reporting/target_views.py"
+  ],
+  "modified_package_files": [
+    "src/insiphy/__init__.py",
+    "src/insiphy/candidate_chain.py",
+    "src/insiphy/cli.py",
+    "src/insiphy/commands/parser.py",
+    "src/insiphy/inference/inputs.py",
+    "src/insiphy/inference/parsimony_export.py",
+    "src/insiphy/mapping/chains.py",
+    "src/insiphy/mapping/fields.py",
+    "src/insiphy/mapping/policies.py",
+    "src/insiphy/mapping/short_context.py",
+    "src/insiphy/observations/junctions.py",
+    "src/insiphy/observations/matrix.py",
+    "src/insiphy/parsimony.py",
+    "src/insiphy/phylogeny.py",
+    "src/insiphy/preparation/transcripts.py",
+    "src/insiphy/structural_phylogeny.py",
+    "src/insiphy/visualize.py",
+    "src/insiphy/workflow.py"
+  ],
+  "total_package_py_files": 108,
+  "examples": {
+    "native_inputs": "12 synthetic pairs, extraction tests only",
+    "integrated": "4 fictitious taxa; prepared homology/character inputs; all/high-coverage parsimony and 24 SVGs"
+  },
+  "statistical_calibration": false,
+  "new_real_biological_case_runs": false,
+  "verification_limits": [
+    "MAFFT-dependent tests skipped",
+    "external aligner integration not newly exercised",
+    "no proof of full 28-case capability",
+    "no transcript activity, selection or multi-copy inference added"
+  ]
+}

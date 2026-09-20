@@ -1,10 +1,10 @@
-> **0.16.0 source distribution:** see [migration notes](docs/MIGRATION_0.16.md), [architecture](docs/architecture.md), and [local validation scope](validation/README.md). Existing demo outputs are historical; this refactor does not certify new biological conclusions.
+> **0.17.0：可判定范围与单目标组图。** 见[迁移说明](docs/MIGRATION_0.17.md)、[范围政策](docs/scope_policy.md)、[绘图说明](docs/target_views.md)及[本轮验证](validation/v017/README.md)。旧demo结果是历史记录；合成例子不是生物学准确性验证。
 
 # IntraPhy
 
 **IntraPhy** (*Phylogenetic inference of intragenic structure*；原项目名 **INSIPHY**) 是一个面向单拷贝直系同源基因的基因内部结构比较和系统发育事件定位软件包。它接收上游已经确定的同源基因集合、基因组序列、注释文件和一棵有根物种树，在固定系统发育框架下分析同源基因内部结构如何保持、获得、丢失、分裂或融合。
 
-> **兼容性：** Python import namespace 仍为 `insiphy`；旧命令 `insiphy` 继续作为 `intraphy` 的兼容别名。0.16.0 不要求现有脚本立即改名。
+> **兼容性：** Python import namespace 仍为 `insiphy`；旧命令 `insiphy` 继续作为 `intraphy` 的兼容别名。
 
 ## 方法边界
 
@@ -63,7 +63,7 @@ python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
 
-INSIPHY 调用成熟比对库和外部工具：Biopython `PairwiseAligner` 用于受限短序列，MAFFT/minimap2/miniprot 用于相应的序列问题。软件包内部不包含 workflow engine。
+IntraPhy 调用成熟比对库和外部工具：Biopython `PairwiseAligner` 用于受限短序列，MAFFT/minimap2/miniprot 用于相应的序列问题。软件包内部不包含 workflow engine。
 
 ## OrthoFinder 导入
 
@@ -76,7 +76,7 @@ species	genome_fasta	annotation_file	assembly	annotation	release
 导入 single-copy orthogroup：
 
 ```bash
-intraphy import-orthofinder \
+insiphy import-orthofinder \
   --orthofinder-dir path/to/OrthoFinder/Results \
   --orthogroup OG0001234 \
   --genome-manifest genomes.tsv \
@@ -91,7 +91,7 @@ intraphy import-orthofinder \
 构建 case：
 
 ```bash
-intraphy build-case \
+insiphy build-case \
   --manifest prepared/OG0001234/manifest.tsv \
   --species-tree prepared/OG0001234/species_tree.tsv \
   --output-dir work/OG0001234 \
@@ -108,7 +108,7 @@ intraphy build-case \
 先生成并冻结默认 repertoire 观察矩阵，同时完成默认简约事件定位：
 
 ```bash
-intraphy run \
+insiphy run \
   --input-dir work/OG0001234 \
   --output-dir results/OG0001234 \
   --analysis-scope single-copy \
@@ -121,7 +121,7 @@ intraphy run \
 将 `results/OG0001234/structural_site_matrix.tsv` 作为本次分析的冻结 repertoire 矩阵。ER/ARD 和 foreground 必须通过 `--structural-site-matrix` 读取这一份文件，避免重新构造观察状态：
 
 ```bash
-intraphy infer-phylogeny \
+insiphy infer-phylogeny \
   --input-dir work/OG0001234 \
   --output-dir results/OG0001234_erard \
   --analysis-scope single-copy \
@@ -132,7 +132,7 @@ intraphy infer-phylogeny \
 ```
 
 ```bash
-intraphy infer-phylogeny \
+insiphy infer-phylogeny \
   --input-dir work/OG0001234 \
   --output-dir results/OG0001234_foreground \
   --analysis-scope single-copy \
@@ -146,7 +146,7 @@ intraphy infer-phylogeny \
 `canonical` 是独立的 view-specific 敏感性分析。它应在单独结果目录生成并冻结自己的矩阵；该矩阵不能与 repertoire 矩阵混用。
 
 ```bash
-intraphy run \
+insiphy run \
   --input-dir work/OG0001234 \
   --output-dir results/OG0001234_canonical \
   --analysis-scope single-copy \
@@ -159,13 +159,27 @@ intraphy run \
 可视化：
 
 ```bash
-intraphy visualize \
+insiphy visualize \
   --input-dir work/OG0001234 \
   --result-dir results/OG0001234 \
   --output-dir figures/OG0001234
 ```
 
-默认图使用色盲友好颜色表示外显子同源组成员，保留完整注释盒子和各条转录本路径。带状连线仅覆盖直接比对支持的碱基区间；蛋白对应使用投影回 CDS 的区间，不延伸到 UTR。只有同源分组、没有直接比对区间时保留盒子颜色，不绘制碱基对应带。候选、预测和未知结构使用不同边框和浅色样式，不接入确认外显子的连线。`--correspondence-encoding pattern` 提供纹理和线型版本。
+默认每个目标单独输出结构、目标ribbon与条件历史三张图。所有图复用完整灰色原生注释背景；只高亮当前目标，其余区域保持灰色。不同target不同颜色、同一target三图同色并有图例。支持`--target FAMILY/layer/site`与`--target-manifest targets.tsv`。ribbon仅覆盖该目标实际匹配块，不从相同ID虚构连线。需要旧混合总览时使用`--layout legacy-overview`；`--correspondence-encoding pattern`仍适用于旧总览。
+
+
+### 可判定范围（0.17）
+
+默认不丢低覆盖字符；明确0与1均属于可判定观测。`--analysis-range high-coverage --min-callable-fraction 0.7`仅选择本次推断子集，不改变坐标或背景。完整矩阵、实际子集、逐物种原因及树上覆盖分别输出。
+
+### 可运行合成示例
+
+```bash
+python tools/build_v017_example.py examples/synthetic_v017
+# 解压后的浏览器打开 examples/synthetic_v017/figures_all/index.html
+```
+
+示例含负链、E3分段对应、E4有无与等简约历史、无转录本归属DNA、低覆盖、重叠／反链／UTR／ncRNA背景。对应块与状态是人工给定输入，检验范围、推断与绘图契约，不声称aligner独立恢复了这些真值。
 
 ## 主要输出
 
@@ -199,9 +213,9 @@ intraphy visualize \
 
 旧的 `ancestral_element_graph.tsv` 和 `ancestral_intragenic_paths.tsv` 已从当前接口中移除。当前输出只描述现生观察和模型条件下的节点/分支状态，不宣称完整祖先转录本图已经联合重建。
 
-## v0.15 状态
+## 历史：v0.15 状态（非本次版本）
 
-当前软件包版本为 **0.15.0**。v0.15 的五案例正式运行尚未执行，结果状态记为 **pending**。在正式运行完成前，README 不提供 v0.15 的案例数值、恢复率、线程一致性或模型检验结论。
+以下段落描述原0.15开发阶段；当前软件包为**0.17.0**。v0.15 的五案例正式运行尚未执行，结果状态记为 **pending**。在正式运行完成前，README 不提供 v0.15 的案例数值、恢复率、线程一致性或模型检验结论。
 
 RpL32 预定作为定性保守对照；spo5、rec8 和 Hdac3 作为可观察结构差异的阳性 benchmark；dsx 只作描述性案例。三个阳性案例现有 manifests 使用人工整理的基因分组，尚无独立的上游全基因组单拷贝资格判定，因此正式结果必须在这一条件下解释。
 

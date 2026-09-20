@@ -6,6 +6,7 @@ from insiphy.candidate_chain import ChainCandidate
 from insiphy.candidate_chain import ChainPathMembership
 from insiphy.candidate_chain import DEFAULT_CHAIN_CONFIGURATION
 from insiphy.candidate_chain import ordered_candidate_chain
+from insiphy.candidate_chain import genomic_candidate_chain
 from insiphy.coordinates import ClosedInterval1
 from insiphy.coordinates import Interval0
 from insiphy.coordinates import local_interval_to_genome
@@ -110,6 +111,7 @@ def _candidate_path_memberships(
                     for field in ("family_id", "species", "gene_copy_id", "transcript_id")
                 ),
                 "order": query_order,
+                "parent_id": query_path.get("occurrence_id", query.get("occurrence_id", "")),
                 "contig": query_path.get("contig", query.get("contig", "NA")),
                 "strand": query_path.get("strand", query.get("strand", "NA")),
             }
@@ -119,6 +121,7 @@ def _candidate_path_memberships(
                     for field in ("family_id", "species", "gene_copy_id", "transcript_id")
                 ),
                 "order": subject_order,
+                "parent_id": subject_path.get("occurrence_id", subject.get("occurrence_id", "")),
                 "contig": subject_path.get("contig", subject.get("contig", "NA")),
                 "strand": subject_path.get("strand", subject.get("strand", "NA")),
             }
@@ -141,6 +144,8 @@ def _candidate_path_memberships(
                     target_contig=subject_membership["contig"],
                     query_strand=query_membership["strand"],
                     target_strand=subject_membership["strand"],
+                    query_parent_id=query_membership["parent_id"],
+                    target_parent_id=subject_membership["parent_id"],
                 )
             )
     return tuple(sorted(set(memberships), key=lambda item: (item.context, item.query_order, item.target_order)))
@@ -321,7 +326,20 @@ def _apply_ordered_candidate_chains(rows, occurrence_by_id, occurrences, transcr
             anchors[context] = (start_ids, end_ids)
         return anchors
 
+    physical_retained = set()
+    physical_best = set()
+    physical_metadata = {}
     for group in groups.values():
+        dna_candidates = [c for c in group if c.relative_strand == "+"]
+        if dna_candidates:
+            exact_dna = genomic_candidate_chain(dna_candidates, 0.0)
+            dna_delta = DEFAULT_CHAIN_CONFIGURATION.score_delta(
+                exact_dna.best_score, dna_candidates[0].score_scheme)
+            dna = genomic_candidate_chain(dna_candidates, dna_delta)
+            physical_retained.update(dna.retained_ids)
+            physical_best.update(dna.best_path_member_ids)
+            for c in dna_candidates:
+                physical_metadata[c.candidate_id] = (dna, dna_delta)
         collinear = [
             candidate
             for candidate in group
@@ -476,12 +494,38 @@ def _apply_ordered_candidate_chains(rows, occurrence_by_id, occurrences, transcr
                     "no_independent_homologous_flanks_on_same_path"
                 )
 
+    for candidate_id in physical_retained:
+        candidate = candidate_by_id[candidate_id]
+        if candidate.path_memberships:
+            continue
+        dna, delta = physical_metadata[candidate_id]
+        retained_ids.add(candidate_id)
+        if candidate_id in physical_best:
+            best_ids.add(candidate_id)
+        chain_metadata[candidate_id] = {
+            "status": "genomic_DNA_only", "best_score": f"{dna.best_score:.6g}",
+            "score_delta": f"{delta:.6g}", "local_mode": 1,
+            "configuration": dna.configuration_name, "ambiguity": dna.ambiguity_status,
+            "candidate_ambiguous": candidate_id in dna.ambiguous_ids,
+            "start_anchor_ids": "NA", "end_anchor_ids": "NA",
+            "retained_edges": ";".join(f"{a}>{b}" for a,b in sorted(dna.retained_edges)) or "NA",
+            "best_path_count_capped": dna.best_path_count_capped,
+            "near_optimal_path_count_capped": dna.near_optimal_path_count_capped,
+        }
+
     partners_by_query = defaultdict(set)
     partners_by_subject = defaultdict(set)
     for row in rows:
         own_ids = {record["candidate_id"] for record in row.get("_candidate_records", ())}
         retained = own_ids & retained_ids
         best = own_ids & best_ids
+        row["genomic_retained_candidate_ids"] = ";".join(sorted(own_ids & physical_retained)) or "NA"
+        row["transcript_retained_candidate_ids"] = ";".join(sorted(
+            cid for cid in retained if candidate_by_id[cid].path_memberships)) or "NA"
+        row["correspondence_channels"] = (
+            "DNA_and_annotated_paths" if row["transcript_retained_candidate_ids"] != "NA"
+            else "DNA_only_no_observed_transcript_path" if row["genomic_retained_candidate_ids"] != "NA"
+            else "unresolved_correspondence")
         row["retained_candidate_ids"] = ";".join(sorted(retained)) or "NA"
         row["best_path_candidate_ids"] = ";".join(sorted(best)) or "NA"
         metadata = [chain_metadata[candidate_id] for candidate_id in retained if candidate_id in chain_metadata]
