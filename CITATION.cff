@@ -1,9 +1,9 @@
 cff-version: 1.2.0
-title: "INSIPHY: intragenic synteny phylogenetics"
-message: "If you use INSIPHY, please cite the repository and the associated paper when available."
+title: "IntraPhy: phylogenetic inference of intragenic structure"
+message: "If you use IntraPhy, please cite the repository and the associated paper when available."
 type: software
-version: 0.15.0
+version: 0.16.0
 authors:
-  - name: "INSIPHY contributors"
-date-released: 2026-09-18
-repository-code: "https://github.com/Vooooooodga/PhyloExon"
+  - name: "IntraPhy contributors"
+date-released: 2026-09-20
+repository-code: "https://github.com/Vooooooodga/INSIPHY"

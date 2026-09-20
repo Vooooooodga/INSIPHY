@@ -222,7 +222,7 @@ class ParsimonySemanticsTests(unittest.TestCase):
             (input_dir / "species_tree.tsv").write_text(
                 "node_id\tparent_id\tlabel\nroot\t\troot\na\troot\tA\nb\troot\tB\n"
             )
-            with patch("insiphy.parsimony.build_structural_site_matrix", return_value=(rows, [])):
+            with patch("insiphy.structural_sites.build_structural_site_matrix", return_value=(rows, [])):
                 infer_single_copy_parsimony(input_dir, output_dir)
             summaries = {row["site_id"]: row for row in read_tsv(output_dir / "structural_site_summary.tsv")}
             self.assertEqual(summaries["unknown"]["unavailable_reason"], "no_observed_states")
@@ -387,7 +387,7 @@ class ParsimonySemanticsTests(unittest.TestCase):
             (input_dir / "species_tree.tsv").write_text(
                 "node_id\tparent_id\tlabel\nroot\t\troot\na\troot\tA\nb\troot\tB\n"
             )
-            with patch("insiphy.parsimony.build_structural_site_matrix") as build:
+            with patch("insiphy.structural_sites.build_structural_site_matrix") as build:
                 infer_single_copy_parsimony(
                     input_dir, output_dir, structural_site_matrix_path=matrix
                 )
@@ -797,13 +797,13 @@ class AscertainmentTests(unittest.TestCase):
             ]
         )
         observations = {"A": 0, "B": 1}
-        with patch("insiphy.structural_phylogeny._pattern_log_likelihood", return_value=-1e-20):
+        with patch("insiphy.inference.ctmc._pattern_log_likelihood", return_value=-1e-20):
             selected = _ascertainment_log_probability(
                 tree, observations, 0.2, 0.3, 1.0, frozenset(), 0.5, "observed-at-least-one"
             )
         self.assertAlmostEqual(selected, math.log(1e-20), places=12)
         with patch(
-            "insiphy.structural_phylogeny._pattern_log_likelihood",
+            "insiphy.inference.ctmc._pattern_log_likelihood",
             side_effect=[-2e-20, math.log(1e-20)],
         ):
             selected = _ascertainment_log_probability(
@@ -1044,8 +1044,8 @@ class ProfileIntervalTests(unittest.TestCase):
 
             return scipy_brentq(evaluate, lower, upper)
 
-        with patch("insiphy.structural_phylogeny.minimize", side_effect=optimizer), patch(
-            "insiphy.structural_phylogeny.brentq", side_effect=root_finder
+        with patch("insiphy.inference.fitting.minimize", side_effect=optimizer), patch(
+            "insiphy.inference.fitting.brentq", side_effect=root_finder
         ):
             interval = _profile_interval(
                 lambda theta: 0.5 * float(theta @ theta), np.zeros(2), 0,
@@ -1060,7 +1060,7 @@ class ProfileIntervalTests(unittest.TestCase):
     def test_failed_or_nonfinite_profile_optimization_has_no_bounds(self):
         for success in (False, True):
             with self.subTest(success=success), patch(
-                "insiphy.structural_phylogeny.minimize",
+                "insiphy.inference.fitting.minimize",
                 return_value=SimpleNamespace(success=success, fun=math.inf),
             ):
                 interval = _profile_interval(
@@ -1074,7 +1074,7 @@ class ProfileIntervalTests(unittest.TestCase):
             self.assertEqual(interval["status"], "profile_optimization_failed")
 
     def test_failed_root_search_has_no_bounds(self):
-        with patch("insiphy.structural_phylogeny.brentq", side_effect=ValueError("no root")):
+        with patch("insiphy.inference.fitting.brentq", side_effect=ValueError("no root")):
             interval = _profile_interval(
                 lambda theta: float(theta[0] ** 2), [0.0], 0, [(-4.0, 4.0)], 0.0,
             )
@@ -1130,17 +1130,17 @@ class EstimatedRateInferenceTests(unittest.TestCase):
             ({"A": 1, "B": 1, "C": 1, "D": 1}, 1),
         ]
         self.optimizer = patch(
-            "insiphy.structural_phylogeny.minimize",
+            "insiphy.inference.fitting.minimize",
             side_effect=lambda objective, start, **kwargs: SimpleNamespace(
                 x=np.asarray(start, dtype=float), fun=1e-6, success=True, message="numerical convergence",
             ),
         )
         self.information = patch(
-            "insiphy.structural_phylogeny._observed_information",
+            "insiphy.inference.fitting._observed_information",
             side_effect=lambda objective, theta: (True, np.ones(len(theta)), 1.0),
         )
         self.profiles = patch(
-            "insiphy.structural_phylogeny._profile_interval", side_effect=self._flat_profile,
+            "insiphy.inference.fitting._profile_interval", side_effect=self._flat_profile,
         )
 
     @staticmethod
@@ -1216,7 +1216,7 @@ class EstimatedRateInferenceTests(unittest.TestCase):
                     foreground = input_dir / "foreground.tsv"
                     foreground.write_text("parent_id\tchild_id\nroot\ta\n")
                     with patch(
-                        "insiphy.structural_phylogeny.build_structural_site_matrix", return_value=(site_rows, []),
+                        "insiphy.structural_sites.build_structural_site_matrix", return_value=(site_rows, []),
                     ), patch("insiphy.structural_phylogeny._posterior_messages") as posterior:
                         infer_single_copy_phylogeny(
                             input_dir, output_dir, model=model,
@@ -1336,7 +1336,7 @@ class PosteriorStatusTests(unittest.TestCase):
                     "root\t\troot\tNA\na\troot\tA\t1\nb\troot\tB\t1\n"
                 )
                 with patch(
-                    "insiphy.structural_phylogeny.build_structural_site_matrix",
+                    "insiphy.structural_sites.build_structural_site_matrix",
                     return_value=(site_rows, []),
                 ), patch(
                     "insiphy.structural_phylogeny.fit_model",
@@ -1393,7 +1393,7 @@ class PosteriorStatusTests(unittest.TestCase):
                 "b\troot\tB\t1\n"
             )
             with patch(
-                "insiphy.structural_phylogeny.build_structural_site_matrix",
+                "insiphy.structural_sites.build_structural_site_matrix",
                 return_value=(site_rows, []),
             ), patch(
                 "insiphy.structural_phylogeny.fit_model",
@@ -1442,7 +1442,7 @@ class PosteriorStatusTests(unittest.TestCase):
                 "root\t\troot\tNA\na\troot\tA\t1\nb\troot\tB\t1\n"
             )
             with patch(
-                "insiphy.structural_phylogeny.build_structural_site_matrix",
+                "insiphy.structural_sites.build_structural_site_matrix",
                 return_value=(site_rows, []),
             ), patch("insiphy.structural_phylogeny.fit_model") as fit:
                 infer_single_copy_phylogeny(input_dir, output_dir)
@@ -1480,7 +1480,7 @@ class PosteriorStatusTests(unittest.TestCase):
                 "node_id\tparent_id\tlabel\tbranch_length\n"
                 "root\t\troot\tNA\na\troot\tA\t1\nb\troot\tB\t1\n"
             )
-            with patch("insiphy.structural_phylogeny.build_structural_site_matrix") as build:
+            with patch("insiphy.structural_sites.build_structural_site_matrix") as build:
                 infer_single_copy_phylogeny(
                     input_dir, output_dir, structural_site_matrix_path=matrix
                 )
@@ -1518,7 +1518,7 @@ class PosteriorStatusTests(unittest.TestCase):
                 "root\t\troot\tNA\na\troot\tA\t1\nb\troot\tB\t1\n"
             )
             with patch(
-                "insiphy.structural_phylogeny.build_structural_site_matrix",
+                "insiphy.structural_sites.build_structural_site_matrix",
                 return_value=(site_rows, []),
             ), patch(
                 "insiphy.structural_phylogeny.fit_model",
@@ -1558,7 +1558,7 @@ class PosteriorStatusTests(unittest.TestCase):
                 "root\t\troot\tNA\na\troot\tA\t1\nb\troot\tB\t1\n"
             )
             with patch(
-                "insiphy.structural_phylogeny.build_structural_site_matrix",
+                "insiphy.structural_sites.build_structural_site_matrix",
                 return_value=(site_rows, []),
             ), patch(
                 "insiphy.structural_phylogeny.fit_model",
@@ -1605,7 +1605,7 @@ class PosteriorStatusTests(unittest.TestCase):
                 "root\t\troot\tNA\na\troot\tA\t1\nb\troot\tB\t1\n"
             )
             with patch(
-                "insiphy.structural_phylogeny.build_structural_site_matrix",
+                "insiphy.structural_sites.build_structural_site_matrix",
                 return_value=(site_rows, []),
             ), patch(
                 "insiphy.structural_phylogeny.fit_model",
@@ -1646,7 +1646,7 @@ class PosteriorStatusTests(unittest.TestCase):
                 "root\t\troot\tNA\na\troot\tA\t1\nb\troot\tB\t1\n"
             )
             with patch(
-                "insiphy.structural_phylogeny.build_structural_site_matrix",
+                "insiphy.structural_sites.build_structural_site_matrix",
                 return_value=(site_rows, []),
             ), patch(
                 "insiphy.structural_phylogeny.fit_model",
@@ -1688,7 +1688,7 @@ class PosteriorStatusTests(unittest.TestCase):
                 "family_id\tlayer\tsite_id\nfam\texon_presence\tS1\n"
             )
             with patch(
-                "insiphy.structural_phylogeny.build_structural_site_matrix",
+                "insiphy.structural_sites.build_structural_site_matrix",
                 return_value=(site_rows, []),
             ), self.assertRaises(SystemExit):
                 infer_single_copy_phylogeny(
@@ -1717,7 +1717,7 @@ class PosteriorStatusTests(unittest.TestCase):
                 "root\t\troot\tNA\na\troot\tA\t1\nb\troot\tB\t1\n"
             )
             with patch(
-                "insiphy.structural_phylogeny.build_structural_site_matrix",
+                "insiphy.structural_sites.build_structural_site_matrix",
                 return_value=(site_rows, []),
             ), self.assertRaises(SystemExit):
                 infer_single_copy_phylogeny(
@@ -1761,7 +1761,7 @@ class PosteriorStatusTests(unittest.TestCase):
                 "b\troot\tB\t0\n"
             )
             with patch(
-                "insiphy.structural_phylogeny.build_structural_site_matrix",
+                "insiphy.structural_sites.build_structural_site_matrix",
                 return_value=(site_rows, []),
             ), patch(
                 "insiphy.structural_phylogeny.fit_model",

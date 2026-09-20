@@ -1,10 +1,10 @@
-node_id	parent_id	label
-root		
-mel_group	root	
-Dmel	mel_group	Dmel
-Dsim	mel_group	Dsim
-yak_tei	root	
-Dere	yak_tei	Dere
-jgw_clade	yak_tei	
-Dyak	jgw_clade	Dyak
-Dtei	jgw_clade	Dtei
+node_id	parent_id	label	branch_length
+root			0
+mel_group	root		1
+Dmel	mel_group	Dmel	1
+Dsim	mel_group	Dsim	1
+yak_tei	root		1
+Dere	yak_tei	Dere	1
+jgw_clade	yak_tei		1
+Dyak	jgw_clade	Dyak	1
+Dtei	jgw_clade	Dtei	1

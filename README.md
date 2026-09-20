@@ -1,10 +1,14 @@
-# INSIPHY
+> **0.16.0 source distribution:** see [migration notes](docs/MIGRATION_0.16.md), [architecture](docs/architecture.md), and [local validation scope](validation/README.md). Existing demo outputs are historical; this refactor does not certify new biological conclusions.
 
-**INSIPHY** (**IN**tragenic **SI**nteny **PHY**logenetics) 是一个面向单拷贝直系同源基因的基因内部结构比较和系统发育事件定位软件包。它接收上游已经确定的同源基因集合、基因组序列、注释文件和一棵有根物种树，在固定系统发育框架下分析同源基因内部结构如何保持、获得、丢失、分裂或融合。
+# IntraPhy
+
+**IntraPhy** (*Phylogenetic inference of intragenic structure*；原项目名 **INSIPHY**) 是一个面向单拷贝直系同源基因的基因内部结构比较和系统发育事件定位软件包。它接收上游已经确定的同源基因集合、基因组序列、注释文件和一棵有根物种树，在固定系统发育框架下分析同源基因内部结构如何保持、获得、丢失、分裂或融合。
+
+> **兼容性：** Python import namespace 仍为 `insiphy`；旧命令 `insiphy` 继续作为 `intraphy` 的兼容别名。0.16.0 不要求现有脚本立即改名。
 
 ## 方法边界
 
-当前正式范围是单拷贝直系同源基因。推荐上游使用 OrthoFinder 或人工整理得到每个物种一个目标基因的输入集合。输入仅使用基因组序列和已有注释，以及上游同源分组和有根树；不接收转录组数据。由基因组和注释提取的转录本、CDS 或蛋白 FASTA 可作为比对中间序列。INSIPHY 不重新做全基因组 orthology 推断，不做 pathway 富集，不推断组织或条件特异的转录本使用，不联合重建完整祖先转录本，也不替用户判定转座、选择、基因转换等分子机制。
+当前正式范围是单拷贝直系同源基因。推荐上游使用 OrthoFinder 或人工整理得到每个物种一个目标基因的输入集合。输入仅使用基因组序列和已有注释，以及上游同源分组和有根树；不接收转录组数据。由基因组和注释提取的转录本、CDS 或蛋白 FASTA 可作为比对中间序列。IntraPhy 不重新做全基因组 orthology 推断，不做 pathway 富集，不推断组织或条件特异的转录本使用，不联合重建完整祖先转录本，也不替用户判定转座、选择、基因转换等分子机制。
 
 多拷贝代码保留在 `--analysis-scope experimental-multicopy`，用于后续开发。正式解释先围绕单拷贝基因。
 
@@ -17,7 +21,7 @@
 
 ## 核心生物学观察
 
-INSIPHY 把基因内部结构拆成三类可观察对象。三类对象分开建模，避免把一个注释缺失或预测候选直接解释成确定事件。
+IntraPhy 把基因内部结构拆成三类可观察对象。三类对象分开建模，避免把一个注释缺失或预测候选直接解释成确定事件。
 
 1. `exon_presence`：同源序列单元是否存在。这里关注 DNA 序列层面的存在、明确缺失或未知。
 2. `exon_role`：存在的同源序列是否具有外显子角色。仅有 DNA 命中或蛋白投影候选不能自动成为确认外显子。
@@ -72,7 +76,7 @@ species	genome_fasta	annotation_file	assembly	annotation	release
 导入 single-copy orthogroup：
 
 ```bash
-insiphy import-orthofinder \
+intraphy import-orthofinder \
   --orthofinder-dir path/to/OrthoFinder/Results \
   --orthogroup OG0001234 \
   --genome-manifest genomes.tsv \
@@ -87,7 +91,7 @@ insiphy import-orthofinder \
 构建 case：
 
 ```bash
-insiphy build-case \
+intraphy build-case \
   --manifest prepared/OG0001234/manifest.tsv \
   --species-tree prepared/OG0001234/species_tree.tsv \
   --output-dir work/OG0001234 \
@@ -104,7 +108,7 @@ insiphy build-case \
 先生成并冻结默认 repertoire 观察矩阵，同时完成默认简约事件定位：
 
 ```bash
-insiphy run \
+intraphy run \
   --input-dir work/OG0001234 \
   --output-dir results/OG0001234 \
   --analysis-scope single-copy \
@@ -117,7 +121,7 @@ insiphy run \
 将 `results/OG0001234/structural_site_matrix.tsv` 作为本次分析的冻结 repertoire 矩阵。ER/ARD 和 foreground 必须通过 `--structural-site-matrix` 读取这一份文件，避免重新构造观察状态：
 
 ```bash
-insiphy infer-phylogeny \
+intraphy infer-phylogeny \
   --input-dir work/OG0001234 \
   --output-dir results/OG0001234_erard \
   --analysis-scope single-copy \
@@ -128,7 +132,7 @@ insiphy infer-phylogeny \
 ```
 
 ```bash
-insiphy infer-phylogeny \
+intraphy infer-phylogeny \
   --input-dir work/OG0001234 \
   --output-dir results/OG0001234_foreground \
   --analysis-scope single-copy \
@@ -142,7 +146,7 @@ insiphy infer-phylogeny \
 `canonical` 是独立的 view-specific 敏感性分析。它应在单独结果目录生成并冻结自己的矩阵；该矩阵不能与 repertoire 矩阵混用。
 
 ```bash
-insiphy run \
+intraphy run \
   --input-dir work/OG0001234 \
   --output-dir results/OG0001234_canonical \
   --analysis-scope single-copy \
@@ -155,7 +159,7 @@ insiphy run \
 可视化：
 
 ```bash
-insiphy visualize \
+intraphy visualize \
   --input-dir work/OG0001234 \
   --result-dir results/OG0001234 \
   --output-dir figures/OG0001234

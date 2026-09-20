@@ -206,58 +206,63 @@ def _top_complete_paths(candidates, candidate_indices, predecessors, terminal_in
     )
 
 
-def _solve_context(candidates, context, start_ids, end_ids, score_delta):
-    candidate_indices = [
-        index
-        for index, candidate in enumerate(candidates)
-        if context is None or _path_membership_for_context(candidate, context) is not None
-    ]
-    if start_ids and not any(candidates[index].candidate_id in start_ids for index in candidate_indices):
-        return None
-    if end_ids and not any(candidates[index].candidate_id in end_ids for index in candidate_indices):
-        return None
-
-    predecessors = {index: [] for index in candidate_indices}
-    successors = {index: [] for index in candidate_indices}
-    for offset, left_index in enumerate(candidate_indices):
-        left = candidates[left_index]
-        left_path = _path_membership_for_context(left, context)
-        for right_index in candidate_indices[offset + 1 :]:
-            right = candidates[right_index]
-            right_path = _path_membership_for_context(right, context)
-            if _ordered_before(left, right, left_path, right_path):
-                predecessors[right_index].append(left_index)
-                successors[left_index].append(right_index)
-
+def _solve_context(candidates, context, start_ids, end_ids, score_delta, *, prepared=None):
     negative_infinity = float("-inf")
-    forward = {index: negative_infinity for index in candidate_indices}
-    for index in candidate_indices:
-        candidate = candidates[index]
-        starts_here = not start_ids or candidate.candidate_id in start_ids
-        previous = max((forward[item] for item in predecessors[index]), default=negative_infinity)
-        if starts_here:
-            previous = max(0.0, previous)
-        if previous != negative_infinity:
-            forward[index] = float(candidate.score) + previous
+    if prepared is None:
+        candidate_indices = [
+            index
+            for index, candidate in enumerate(candidates)
+            if context is None or _path_membership_for_context(candidate, context) is not None
+        ]
+        if start_ids and not any(candidates[index].candidate_id in start_ids for index in candidate_indices):
+            return None
+        if end_ids and not any(candidates[index].candidate_id in end_ids for index in candidate_indices):
+            return None
 
-    terminal_indices = [
-        index for index in candidate_indices
-        if not end_ids or candidates[index].candidate_id in end_ids
-    ]
-    reachable_terminal = [index for index in terminal_indices if forward[index] != negative_infinity]
-    if not reachable_terminal:
-        return None
-    best_score = max(forward[index] for index in reachable_terminal)
+        predecessors = {index: [] for index in candidate_indices}
+        successors = {index: [] for index in candidate_indices}
+        for offset, left_index in enumerate(candidate_indices):
+            left = candidates[left_index]
+            left_path = _path_membership_for_context(left, context)
+            for right_index in candidate_indices[offset + 1 :]:
+                right = candidates[right_index]
+                right_path = _path_membership_for_context(right, context)
+                if _ordered_before(left, right, left_path, right_path):
+                    predecessors[right_index].append(left_index)
+                    successors[left_index].append(right_index)
 
-    backward = {index: negative_infinity for index in candidate_indices}
-    for index in reversed(candidate_indices):
-        candidate = candidates[index]
-        ends_here = not end_ids or candidate.candidate_id in end_ids
-        following = max((backward[item] for item in successors[index]), default=negative_infinity)
-        if ends_here:
-            following = max(0.0, following)
-        if following != negative_infinity:
-            backward[index] = float(candidate.score) + following
+        negative_infinity = float("-inf")
+        forward = {index: negative_infinity for index in candidate_indices}
+        for index in candidate_indices:
+            candidate = candidates[index]
+            starts_here = not start_ids or candidate.candidate_id in start_ids
+            previous = max((forward[item] for item in predecessors[index]), default=negative_infinity)
+            if starts_here:
+                previous = max(0.0, previous)
+            if previous != negative_infinity:
+                forward[index] = float(candidate.score) + previous
+
+        terminal_indices = [
+            index for index in candidate_indices
+            if not end_ids or candidates[index].candidate_id in end_ids
+        ]
+        reachable_terminal = [index for index in terminal_indices if forward[index] != negative_infinity]
+        if not reachable_terminal:
+            return None
+        best_score = max(forward[index] for index in reachable_terminal)
+
+        backward = {index: negative_infinity for index in candidate_indices}
+        for index in reversed(candidate_indices):
+            candidate = candidates[index]
+            ends_here = not end_ids or candidate.candidate_id in end_ids
+            following = max((backward[item] for item in successors[index]), default=negative_infinity)
+            if ends_here:
+                following = max(0.0, following)
+            if following != negative_infinity:
+                backward[index] = float(candidate.score) + following
+
+    else:
+        candidate_indices, predecessors, successors, forward, backward, reachable_terminal, best_score = prepared
 
     tolerance = 1e-12 * max(1.0, abs(best_score))
     threshold = best_score - float(score_delta) - tolerance
@@ -294,16 +299,29 @@ def _solve_context(candidates, context, start_ids, end_ids, score_delta):
         1 for score, _path in complete_paths if abs(score - best_score) <= tolerance
     )
     near_path_count = sum(1 for score, _path in complete_paths if score >= threshold)
-    near_paths = [
-        frozenset(path)
-        for score, path in complete_paths
-        if score >= threshold
-    ]
-    shared_near_ids = (
-        set.intersection(*(set(path) for path in near_paths))
-        if near_paths else set()
-    )
+    # A node is mandatory iff removing it eliminates *all* near-optimal paths.
+    # Work on the existing DAG: do not introduce new edges across a removed node.
+    shared_near_ids = set()
+    for excluded in candidate_indices:
+        candidate_id = candidates[excluded].candidate_id
+        if candidate_id not in retained:
+            continue
+        without = {}
+        for index in candidate_indices:
+            if index == excluded:
+                without[index] = negative_infinity
+                continue
+            previous = max((without.get(item, negative_infinity) for item in predecessors[index]),
+                           default=negative_infinity)
+            if not start_ids or candidates[index].candidate_id in start_ids:
+                previous = max(0.0, previous)
+            without[index] = previous + float(candidates[index].score)
+        alternative = max((without.get(index, negative_infinity) for index in reachable_terminal),
+                          default=negative_infinity)
+        if alternative < threshold:
+            shared_near_ids.add(candidate_id)
     return {
+        "_prepared": (candidate_indices, predecessors, successors, forward, backward, reachable_terminal, best_score),
         "best_score": best_score,
         "retained": retained,
         "best": best,
@@ -439,8 +457,9 @@ def ordered_candidate_chain(
             retained_edges=frozenset(),
             start_anchor_ids=used_start_ids,
             end_anchor_ids=used_end_ids,
-            ambiguity_status="multiple_near_optimal_chains",
+            ambiguity_status="no_connecting_chain",
             configuration_name=configuration_name,
+            ambiguous_ids=all_ids,
         )
     best_score = max(solution["best_score"] for _context, solution in exact_solutions)
     solutions = []
@@ -455,6 +474,7 @@ def ordered_candidate_chain(
                 context,
                 _solve_context(
                     candidates, context, context_start, context_end, remaining_delta,
+                    prepared=exact_solution["_prepared"],
                 ),
             )
         )
@@ -489,6 +509,12 @@ def ordered_candidate_chain(
             near_optimal_path_count_capped=solution["near_optimal_path_count_capped"],
             ambiguous_ids=frozenset(solution["ambiguous_ids"]),
         ))
+    # A candidate must occur in every retained context, not merely be
+    # obligatory in the context where it happens to occur.
+    if context_summaries:
+        mandatory = set.intersection(*(set(item.retained_ids - item.ambiguous_ids)
+                                       for item in context_summaries))
+        ambiguous_ids = retained - mandatory
     ambiguity = (
         "multiple_near_optimal_chains"
         if ambiguous_ids

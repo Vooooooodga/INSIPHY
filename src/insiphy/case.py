@@ -18,34 +18,17 @@ def split_aliases(value):
 
 
 def infer_manifest_source_label(row):
+    """Scientific source roles come only from the manifest, never gene names."""
     explicit = row.get("source_label", "")
-    if explicit and explicit not in {"NA", "unknown", "unknown_source"}:
-        return explicit
-    text = " ".join([row.get("role_hint", ""), row.get("gene_symbol", ""), row.get("gene_copy_id", "")]).lower()
-    if "derived" in text or "sdic" in text or "jgw" in text or "jingwei" in text:
-        return "unknown_source"
-    if "anxb10" in text or "annexin" in text:
-        return "AnxB10"
-    if "short_wing" in text or text.endswith(" sw") or "_sw" in text or " sw_" in text:
-        return "sw"
-    if "ymp" in text or "yande" in text or "yellow_emperor" in text or "yellow emperor" in text:
-        return "ymp"
-    if "adh" in text:
-        return "Adh"
-    return "unknown_source"
+    return explicit if explicit and explicit not in {"NA", "unknown"} else "unknown_source"
 
 
 def infer_manifest_copy_role(row):
     explicit = row.get("copy_role", "")
     if explicit and explicit != "NA":
+        if explicit not in {"source", "background", "derived", "candidate"}:
+            raise ValueError(f"invalid copy_role: {explicit!r}")
         return explicit
-    text = " ".join([row.get("role_hint", ""), row.get("gene_symbol", ""), row.get("gene_copy_id", "")]).lower()
-    if "derived" in text or "sdic" in text or "jgw" in text or "jingwei" in text:
-        return "derived"
-    if "source" in text:
-        return "source"
-    if "background" in text or "ortholog" in text:
-        return "background"
     return "candidate"
 
 
@@ -181,11 +164,12 @@ def write_provenance(manifest_rows, output_dir):
 
 
 def copy_optional_tree(tree_path, output_dir, output_name):
-    if not tree_path:
+    if tree_path is None or str(tree_path) == "":
         return
     path = Path(tree_path)
-    if path.exists():
-        (Path(output_dir) / output_name).write_text(path.read_text())
+    if not path.is_file():
+        raise FileNotFoundError(f"explicit tree input does not exist: {path}")
+    (Path(output_dir) / output_name).write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def build_case(
@@ -212,14 +196,14 @@ def build_case(
     write_provenance(rows, output_dir)
     report = []
     appended = False
+    previous_count = 0
     for row in rows:
         required_paths = [row.get("genome_fasta", ""), row.get("annotation_file", "")]
         missing_path = [path for path in required_paths if not path or path == "TBD" or not Path(path).exists()]
         if missing_path or row.get("gene_id", "") in {"", "TBD"}:
             message = ";".join(missing_path) or "missing_gene_id"
             raise SystemExit(f"manifest row has incomplete required input for {row.get('gene_copy_id', row.get('gene_id', 'unknown'))}: {message}")
-        before = len(read_tsv(output_dir / "segment_occurrences.tsv", optional=True))
-        extract_gene(
+        extracted_rows = extract_gene(
             row["genome_fasta"],
             row["annotation_file"],
             row["gene_id"],
@@ -236,7 +220,8 @@ def build_case(
             max_extension=max_extension,
         )
         appended = True
-        after = len(read_tsv(output_dir / "segment_occurrences.tsv", optional=True))
+        segment_count = len(extracted_rows) - previous_count
+        previous_count = len(extracted_rows)
         report.append(
             {
                 "case_id": row.get("case_id", "NA"),
@@ -244,7 +229,7 @@ def build_case(
                 "gene_id": row.get("gene_id", "NA"),
                 "gene_copy_id": row.get("gene_copy_id", "NA"),
                 "status": "extracted",
-                "segment_count": after - before,
+                "segment_count": segment_count,
                 "message": "ok",
             }
         )

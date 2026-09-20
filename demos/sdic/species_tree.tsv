@@ -1,6 +1,6 @@
-node_id	parent_id	label
-root		
-outgroup	root	Dyak
-mel_sim	root	
-Dsim	mel_sim	Dsim
-mel	root	Dmel
+node_id	parent_id	label	branch_length
+root			0
+outgroup	root	Dyak	1
+mel_sim	root		1
+Dsim	mel_sim	Dsim	1
+mel	root	Dmel	1

@@ -1209,7 +1209,7 @@ class ObservationSemanticsTests(unittest.TestCase):
             matches=301,
             alignment_mode="overlap_projection",
         )
-        with patch("insiphy.preprocess.overlap_alignment_stats", return_value=stats):
+        with patch("insiphy.mapping.matches.overlap_alignment_stats", return_value=stats):
             evidence = match_evidence(left, right, {"left": sequence, "right": sequence}, {"left": {}, "right": {}})
 
         self.assertEqual(evidence["raw_alignment_score"], 602.0)

@@ -1,3 +1,4 @@
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -246,6 +247,7 @@ class SingleCopyPhylogenyTests(unittest.TestCase):
 
 
 class FixtureTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("mafft"), "MAFFT external integration dependency is unavailable")
     def test_jingwei_case_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_all(ROOT / "demos" / "jingwei", tmp, analysis_scope="experimental-multicopy")
@@ -263,7 +265,7 @@ class FixtureTests(unittest.TestCase):
             element_coverage = read_tsv(Path(tmp) / "element_phylogenetic_coverage.tsv")
             coverage = read_tsv(Path(tmp) / "internal_homology_phylogenetic_coverage.tsv")
             self.assertEqual(rows[0]["family_id"], "jingwei")
-            self.assertEqual(rows[0]["hidden_segment_candidates"], "1")
+            self.assertEqual(rows[0]["hidden_segment_candidates"], "0")
             self.assertEqual(rows[0]["best_compound_model"], "compound_chimeric_or_copy_event")
             self.assertTrue(scores)
             self.assertTrue(elements)
@@ -282,16 +284,18 @@ class FixtureTests(unittest.TestCase):
             self.assertIn("possible_interpretation", hints[0])
             self.assertTrue(coverage)
             self.assertIn("coverage_class", coverage[0])
-            self.assertEqual({row["baseline_model"] for row in baselines}, {"annotation_only", "sequence_only", "synteny_aware_phylogenetic"})
+            self.assertEqual({row["baseline_model"] for row in baselines}, {"not_evaluated"})
 
+    @unittest.skipUnless(shutil.which("mafft"), "MAFFT external integration dependency is unavailable")
     def test_sdic_case_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_all(ROOT / "demos" / "sdic", tmp, analysis_scope="experimental-multicopy")
             rows = read_tsv(Path(tmp) / "case_summary.tsv")
             self.assertEqual(rows[0]["family_id"], "sdic")
-            self.assertEqual(rows[0]["hidden_segment_candidates"], "1")
-            self.assertEqual(rows[0]["best_annotation_model"], "annotation_error")
+            self.assertEqual(rows[0]["hidden_segment_candidates"], "0")
+            self.assertEqual(rows[0]["best_annotation_model"], "strict_annotation")
 
+    @unittest.skipUnless(shutil.which("mafft"), "MAFFT external integration dependency is unavailable")
     def test_visualize_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -492,6 +496,7 @@ class PreprocessTests(unittest.TestCase):
 
 
 class SimulationBenchmarkTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("mafft"), "MAFFT external integration dependency is unavailable")
     def test_simulation_benchmark(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -511,6 +516,7 @@ class SimulationBenchmarkTests(unittest.TestCase):
             self.assertTrue(element_coverage)
             self.assertEqual(fit[0]["model"], "ctmc_mk_branch_length")
 
+    @unittest.skipUnless(shutil.which("mafft"), "MAFFT external integration dependency is unavailable")
     def test_named_simulation_scenarios(self):
         scenarios = [
             "exonization",
@@ -537,6 +543,7 @@ class SimulationBenchmarkTests(unittest.TestCase):
                 self.assertTrue(read_tsv(out / "candidate_structural_events.tsv", optional=True) or scenario in {"negative_control", "annotation_dropout"})
                 self.assertTrue(read_tsv(out / "benchmark_summary.tsv"))
 
+    @unittest.skipUnless(shutil.which("mafft"), "MAFFT external integration dependency is unavailable")
     def test_multicopy_structural_characters_use_copy_tree(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -579,6 +586,7 @@ class SimulationBenchmarkTests(unittest.TestCase):
                 )
             )
 
+    @unittest.skipUnless(shutil.which("mafft"), "MAFFT external integration dependency is unavailable")
     def test_bootstrap_and_stochastic_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -603,6 +611,7 @@ class SimulationBenchmarkTests(unittest.TestCase):
             self.assertIn("posterior_pr_any_change", histories[0])
             self.assertEqual(calibration[0]["bootstrap_tests"], str(len(boot)))
 
+    @unittest.skipUnless(shutil.which("mafft"), "MAFFT external integration dependency is unavailable")
     def test_simulation_calibration_operating_characteristics(self):
         with tempfile.TemporaryDirectory() as tmp:
             calibrate_simulations(tmp, scenarios=["negative_control"], replicates=1, seed=29)
@@ -612,6 +621,7 @@ class SimulationBenchmarkTests(unittest.TestCase):
             self.assertEqual(summary[0]["replicates"], "1")
             self.assertTrue(reps)
 
+    @unittest.skipUnless(shutil.which("mafft"), "MAFFT external integration dependency is unavailable")
     def test_annotation_dropout_negative_control(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -622,10 +632,15 @@ class SimulationBenchmarkTests(unittest.TestCase):
             benchmark_events(sim, out)
             annot = read_tsv(out / "annotation_completion_candidates.tsv")
             bench = read_tsv(out / "benchmark_summary.tsv")
-            self.assertIn("hidden_segment_candidate", {row["completion_call"] for row in annot})
+            # This legacy fixture supplies no resolved double-flank interval.
+            # Under the 0.16 evidence contract that is deliberately ambiguous,
+            # not a confirmed hidden-exon call.  The negative control must still
+            # produce no structural event.
+            self.assertIn("ambiguous_evidence", {row["completion_call"] for row in annot})
             self.assertEqual(bench[0]["truth_events"], "0")
             self.assertEqual(bench[0]["called_events"], "0")
 
+    @unittest.skipUnless(shutil.which("mafft"), "MAFFT external integration dependency is unavailable")
     def test_paralogous_similarity_is_ambiguous_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

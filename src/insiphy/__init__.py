@@ -1,3 +1,6 @@
-"""INSIPHY: intragenic synteny phylogenetics."""
+"""IntraPhy: phylogenetic inference of intragenic structure.
 
-__version__ = "0.15.0"
+The historical import namespace ``insiphy`` is retained for compatibility.
+"""
+
+__version__ = "0.16.0"
