@@ -9,10 +9,20 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Install and record alignment tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mafft minimap2
+          mafft --version 2>&1 | tee native-tool-versions.txt
+          minimap2 --version | tee -a native-tool-versions.txt
+          tar czf native-tools.tar.gz /usr/bin/mafft* /usr/lib/mafft /usr/bin/minimap2
       - name: Export source for reproducible validation
         run: git archive --format=zip --output=intraphy-source.zip HEAD
       - uses: actions/upload-artifact@v4
         with:
           name: intraphy-source
-          path: intraphy-source.zip
+          path: |
+            intraphy-source.zip
+            native-tools.tar.gz
+            native-tool-versions.txt
           retention-days: 7
