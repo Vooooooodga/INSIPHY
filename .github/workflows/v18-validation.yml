@@ -16,6 +16,10 @@ jobs:
           mafft --version 2>&1 | tee native-tool-versions.txt
           minimap2 --version | tee -a native-tool-versions.txt
           tar czf native-tools.tar.gz /usr/bin/mafft* /usr/lib/mafft /usr/bin/minimap2
+      - name: Obtain release-only refactoring utilities
+        run: |
+          python -m pip download rope==1.14.0 --dest release-wheels
+          tar czf release-wheels.tar.gz release-wheels
       - name: Export source for reproducible validation
         run: git archive --format=zip --output=intraphy-source.zip HEAD
       - uses: actions/upload-artifact@v4
@@ -25,4 +29,5 @@ jobs:
             intraphy-source.zip
             native-tools.tar.gz
             native-tool-versions.txt
+            release-wheels.tar.gz
           retention-days: 7
