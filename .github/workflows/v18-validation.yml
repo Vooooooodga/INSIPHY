@@ -1,0 +1,18 @@
+name: V18 validation
+on:
+  push:
+    branches: [release/v0.18.0]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export source for reproducible validation
+        run: git archive --format=zip --output=intraphy-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: intraphy-source
+          path: intraphy-source.zip
+          retention-days: 7
