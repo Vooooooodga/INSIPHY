@@ -354,14 +354,16 @@ def simulate_dataset(output_dir, seed=7, scenario="compound"):
             [
                 {"family_id": family, "event_class": "segment_gain", "branch_scope": structural_branch, "object_id": "EG_sim_C", "notes": "simulated derived EG C appears in the derived copy lineage"},
                 {"family_id": family, "event_class": "exonization_candidate", "branch_scope": structural_branch, "object_id": "EG_sim_C", "notes": "simulated hidden source segment becomes CDS"},
-                {"family_id": family, "event_class": "segment_fusion_or_new_adjacency", "branch_scope": structural_branch, "object_id": "EG_sim_A__EG_sim_C", "notes": "simulated new internal adjacency"},
+                {"family_id": family, "event_class": "segment_fusion_or_new_adjacency", "branch_scope": structural_branch, "object_id": "EG_sim_A__EG_sim_C", "notes": "simulated new left internal adjacency"},
+                {"family_id": family, "event_class": "segment_fusion_or_new_adjacency", "branch_scope": structural_branch, "object_id": "EG_sim_C__EG_sim_B", "notes": "simulated new right internal adjacency"},
                 {"family_id": family, "event_class": "segment_split_or_adjacency_loss", "branch_scope": structural_branch, "object_id": "EG_sim_A__EG_sim_B", "notes": "simulated ancestral A-B adjacency is split by a derived internal segment"},
             ]
         )
     if scenario in {"source_join", "compound"}:
         truth.extend(
             [
-                {"family_id": family, "event_class": "chimeric_source_join_candidate", "branch_scope": structural_branch, "object_id": "EG_sim_A__EG_sim_C", "notes": "simulated derived adjacency joins different informative source labels"},
+                {"family_id": family, "event_class": "chimeric_source_join_candidate", "branch_scope": structural_branch, "object_id": "EG_sim_A__EG_sim_C", "notes": "simulated left derived adjacency joins different informative source labels"},
+                {"family_id": family, "event_class": "chimeric_source_join_candidate", "branch_scope": structural_branch, "object_id": "EG_sim_C__EG_sim_B", "notes": "simulated right derived adjacency joins different informative source labels"},
                 {"family_id": family, "event_class": "chimeric_origin_or_source_mixing", "branch_scope": structural_branch, "object_id": family, "notes": "simulated derived copy contains multiple informative source labels"},
             ]
         )

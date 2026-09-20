@@ -265,7 +265,7 @@ class FixtureTests(unittest.TestCase):
             element_coverage = read_tsv(Path(tmp) / "element_phylogenetic_coverage.tsv")
             coverage = read_tsv(Path(tmp) / "internal_homology_phylogenetic_coverage.tsv")
             self.assertEqual(rows[0]["family_id"], "jingwei")
-            self.assertEqual(rows[0]["hidden_segment_candidates"], "1")
+            self.assertEqual(rows[0]["hidden_segment_candidates"], "0")
             self.assertEqual(rows[0]["best_compound_model"], "compound_chimeric_or_copy_event")
             self.assertTrue(scores)
             self.assertTrue(elements)
@@ -292,8 +292,8 @@ class FixtureTests(unittest.TestCase):
             run_all(ROOT / "demos" / "sdic", tmp, analysis_scope="experimental-multicopy")
             rows = read_tsv(Path(tmp) / "case_summary.tsv")
             self.assertEqual(rows[0]["family_id"], "sdic")
-            self.assertEqual(rows[0]["hidden_segment_candidates"], "1")
-            self.assertEqual(rows[0]["best_annotation_model"], "annotation_error")
+            self.assertEqual(rows[0]["hidden_segment_candidates"], "0")
+            self.assertEqual(rows[0]["best_annotation_model"], "strict_annotation")
 
     @unittest.skipUnless(shutil.which("mafft"), "MAFFT external integration dependency is unavailable")
     def test_visualize_outputs(self):
