@@ -22,7 +22,23 @@ Earlier release notes and unchanged historical validation remain in repository h
 - Export paired locus FASTA/GFF with automatic flanks, strand/phase preservation
   and reversible source-coordinate mapping.
 - Add optional, explicit AGAT normalization with command/failure provenance.
-- Add five original tree/structure/ribbon teaching plates and `intraphy explain`;
+- Add original tree/structure/ribbon teaching plates and `intraphy explain`;
   keep synthetic guide and data-derived target figures clearly separate.
 - Test file contracts, coordinate round-trips, conservative rejection and the
   illustrated parsimony examples. No new biological/statistical calibration.
+
+### Biology-facing method figures and explicit model explanation
+
+- Replace the previous five teaching plates with three focused figures: overview,
+  homology inference, and gene structures to a phylogenetic probability model.
+- Show the species tree and gene structures together, including sequence loss,
+  intron loss, missing annotation and uncertainty rather than only exon splitting.
+- Explain compatible-match chain selection and distinguish complementary coverage
+  from competing copies. Use named biological characters instead of internal keys.
+- Calculate illustrative ancestral-state probabilities and test them against the
+  production pruning and posterior algorithms; fixed teaching parameters are explicit.
+- Document likelihood construction, missing-state treatment, rate-sharing scope,
+  character dependence and conditional inference in `docs/model_bridge.md`.
+- Record which primary methods, figure captions and image assets were examined.
+- Local full-suite validation: 446 tests passed with real MAFFT and minimap2; this
+  is implementation validation, not a biological benchmark or statistical calibration.
