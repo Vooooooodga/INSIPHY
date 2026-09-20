@@ -1,0 +1,4 @@
+scope	tree_file	tree_scope	layers	note
+structural_characters	species_tree.tsv	species_tree	element_presence;element_role_state;element_adjacency_state;source_mixture	EG structural characters are evaluated on copy_tree.tsv or gene_tree.tsv when supplied; species_tree.tsv is the fallback for single-copy cases.
+copy_multiplicity	species_tree.tsv	species_tree	copy_multiplicity	Copy multiplicity is a species-level character and remains evaluated on species_tree.tsv.
+warning	species_tree.tsv	species_tree_fallback	element_presence;element_role_state;element_adjacency_state;source_mixture	Multiple gene copies occur in at least one species, but no copy_tree.tsv or gene_tree.tsv was supplied; copy-specific structural histories are collapsed to species-level tips.

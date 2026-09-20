@@ -1,0 +1,4 @@
+case_id	species	gene_role	aliases
+sdic	Drosophila_melanogaster	derived_copy	Sdic
+sdic	any	source_anxb10	AnxB10;Annexin B10;AnnexinB10
+sdic	any	source_sw	sw;swallow

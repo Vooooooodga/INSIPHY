@@ -1,0 +1,13 @@
+element_id	family_id	homology_id	occurrence_id	species	gene_copy_id	element_class	display_role	source_label	support_type	confidence	membership_score	membership_call
+EG_Anx_A	sdic	H_Anx_A	Dyak_AnxB10_A	Dyak	AnxB10_source	exon_like	CDS	AnxB10_source	curated_alignment	high	0.7125	core_member
+EG_Anx_A	sdic	H_Anx_A	Dsim_AnxB10_A	Dsim	AnxB10_source	exon_like	CDS	AnxB10_source	curated_alignment	high	0.7125	core_member
+EG_Anx_A	sdic	H_Anx_A	Dmel_AnxB10_A	Dmel	AnxB10_source	exon_like	CDS	AnxB10_source	curated_alignment	high	0.9625	core_member
+EG_sw_S	sdic	H_sw_S	Dyak_sw_S	Dyak	sw_source	exon_like	CDS	sw_source	curated_alignment	high	0.7125	core_member
+EG_sw_S	sdic	H_sw_S	Dsim_sw_S	Dsim	sw_source	exon_like	CDS	sw_source	curated_alignment	high	0.7125	core_member
+EG_sw_S	sdic	H_sw_S	Dmel_sw_S	Dmel	sw_source	exon_like	CDS	sw_source	curated_alignment	high	0.9625	core_member
+EG_Anx_A	sdic	H_Anx_A	Dmel_sdic_A1	Dmel	Sdic_copy1	exon_like	CDS	AnxB10_source	curated_alignment	high	0.8375	core_member
+EG_sdic_I	sdic	H_sdic_I	Dmel_sdic_I1	Dmel	Sdic_copy1	exon_like	CDS	sw_intronic_source	sequence_synteny_hidden	medium	0.6875	ambiguous_member
+EG_sw_S	sdic	H_sw_S	Dmel_sdic_S1	Dmel	Sdic_copy1	exon_like	CDS	sw_source	curated_alignment	high	0.8375	core_member
+EG_Anx_A	sdic	H_Anx_A	Dmel_sdic_A2	Dmel	Sdic_copy2	exon_like	CDS	AnxB10_source	curated_alignment	medium	0.6875	ambiguous_member
+EG_sw_S	sdic	H_sw_S	Dmel_sdic_S2	Dmel	Sdic_copy2	exon_like	CDS	sw_source	curated_alignment	medium	0.6875	ambiguous_member
+EG_sdic_I	sdic	H_sdic_I	Dsim_hidden_I	Dsim	sw_source	candidate_source	absent	sw_intronic_source	sequence_synteny_hidden	medium	0.6875	ambiguous_member

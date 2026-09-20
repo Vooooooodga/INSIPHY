@@ -1,0 +1,9 @@
+family_id	species	gene_copy_id	copy_class	notes
+jingwei	Dmel	Adh_source_copy	single_copy	source_locus
+jingwei	Dmel	yande_source_copy	single_copy	source_locus
+jingwei	Dsim	Adh_source_copy	single_copy	source_locus
+jingwei	Dsim	yande_source_copy	single_copy	source_locus
+jingwei	Dere	Adh_source_copy	single_copy	source_locus
+jingwei	Dere	yande_source_copy	single_copy	source_locus
+jingwei	Dyak	jgw_copy	single_copy	derived_chimeric_copy
+jingwei	Dtei	jgw_copy	single_copy	derived_chimeric_copy

@@ -1,0 +1,6 @@
+match_id	query_occurrence_id	subject_occurrence_id	alignment_score	coverage_score	left_context_score	right_context_score	boundary_score	phase_score	order_score	strand_score	splice_score	total_score	distance_class	threshold	alignment_cigar	match_status	reciprocal_status	correspondence_call
+sm1	Dmel_sdic_A1	Dmel_AnxB10_A	0.91	1	0.72	0.62	0.7	0.5	0.5	0.5	0.5	0.793	NA	NA	NA	mapped	reciprocal_best	reciprocal_best
+sm2	Dmel_sdic_S1	Dmel_sw_S	0.9	1	0.64	0.73	0.705	0.5	0.5	0.5	0.5	0.7925	NA	NA	NA	mapped	reciprocal_best	reciprocal_best
+sm3	Dmel_sdic_I1	Dsim_hidden_I	0.78	1	0.8	0.78	0.685	0.5	0.5	0.5	0.5	0.7635	NA	NA	NA	mapped	reciprocal_best	reciprocal_best
+sm4	Dmel_sdic_A2	Dmel_AnxB10_A	0.82	1	0.4	0.42	0.6	0.5	0.5	0.5	0.5	0.695	NA	NA	NA	mapped	query_best_only	best_unique
+sm5	Dmel_sdic_S2	Dmel_sw_S	0.8	1	0.4	0.42	0.6	0.5	0.5	0.5	0.5	0.687	NA	NA	NA	mapped	query_best_only	best_unique

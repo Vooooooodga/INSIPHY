@@ -1,0 +1,4 @@
+baseline_model	evidence_used	family_count	event_candidates_detected	hidden_candidates_explained	score	delta_vs_best	interpretation
+annotation_only	annotated_roles_and_presence	1	5	0	8	4	penalizes events requiring sequence-supported annotation completion
+sequence_only	segment_sequence_similarity	1	6	1	6.2538	2.2538	uses sequence correspondence but lacks intragenic adjacency and copy context
+synteny_aware_phylogenetic	sequence_boundary_order_copy_context_species_tree	1	6	1	4	0	credits coordinated intragenic synteny and source joining on the tree

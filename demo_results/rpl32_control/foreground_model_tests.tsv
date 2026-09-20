@@ -1,0 +1,4 @@
+family_id	layer	test_id	null_model	alternative_model	null_log_likelihood	alternative_log_likelihood	lrt_statistic	df	p_value	q_value	q_value_method	test_status	reference_distribution	n_taxa	n_structural_sites	n_informative_patterns
+rpl32_control	exon_presence	homogeneous_vs_foreground	ARD	ARD_FOREGROUND	-1.493235e-06	-6.557876e-07	1.6748949e-06	1	NA	NA	not_available	parameters_not_estimable	not_available	5	2	0
+rpl32_control	exon_role	homogeneous_vs_foreground	ARD	ARD_FOREGROUND	-1.493235e-06	-6.557876e-07	1.6748949e-06	1	NA	NA	not_available	parameters_not_estimable	not_available	5	2	0
+rpl32_control	splice_junction	homogeneous_vs_foreground	ARD	ARD_FOREGROUND	-5.1940736e-06	-1.9432852e-06	6.5015767e-06	1	NA	NA	not_available	parameters_not_estimable	not_available	5	1	0

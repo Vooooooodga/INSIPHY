@@ -1,0 +1,26 @@
+[project]
+name = "intraphy"
+version = "0.16.0"
+description = "Phylogenetic inference of intragenic structure from genome sequence and annotation"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.23",
+    "biopython>=1.83",
+    "networkx>=3.0",
+    "scipy>=1.10",
+]
+
+[project.scripts]
+intraphy = "insiphy.cli:main"
+insiphy = "insiphy.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.urls]
+Homepage = "https://github.com/Vooooooodga/INSIPHY"
+Repository = "https://github.com/Vooooooodga/INSIPHY"

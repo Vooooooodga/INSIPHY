@@ -1,0 +1,2 @@
+case_id	species	assembly	annotation	gene_id	gene_copy_id	genome_fasta	annotation_file	notes
+case_name	Species_name	<assembly_accession>	<annotation_release>	<gene_id_from_annotation>	<species_gene_copy_id>	/data/db/genome/<species>/<version>/genome.fa.gz	/data/db/genome/<species>/<version>/annotation.gff3.gz	fill_with_curated_accession

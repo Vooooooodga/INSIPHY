@@ -1,0 +1,4 @@
+evidence_id	family_id	species	gene_copy_id	homology_id	interval	annotation_status	inferred_role	support_score	completion_call	evidence_status	inferred_event	frame_status
+sdic_seqsyn_1	sdic	Dsim	sw_source	H_sdic_I	chr2:760-800:+	missing_annotation	intron	0.6548	hidden_segment_candidate	supports_hidden_segment	NA	NA
+sdic_seqsyn_2	sdic	Dmel	Sdic_copy1	H_sdic_I	chr2:2120-2180:+	annotated	CDS	0.7664	supports_annotation	supports_annotation	NA	NA
+sdic_seqsyn_3	sdic	Dmel	Sdic_copy2	H_Anx_A	chr2:2400-2520:+	conflicting_annotation	CDS	0.6152	annotation_conflict_candidate	conflicts_annotation	NA	NA

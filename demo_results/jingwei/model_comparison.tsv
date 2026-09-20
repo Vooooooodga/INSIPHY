@@ -1,0 +1,5 @@
+comparison_id	model	score	delta_vs_best	interpretation
+annotation_error	strict_annotation	1	0.7106	penalizes hidden segments as missing_or_unknown
+annotation_error	annotation_error	0.2894	0	allows sequence_synteny_supported_hidden_segments
+compound_event	independent_character	6	3.5	counts source mixture and source joining separately
+compound_event	compound_chimeric_or_copy_event	2.5	0	one copy-level event explains coordinated source mixture and adjacency

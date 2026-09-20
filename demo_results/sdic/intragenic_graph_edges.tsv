@@ -1,0 +1,6 @@
+family_id	species	gene_copy_id	edge_id	left_element_id	right_element_id	left_occurrence_id	right_occurrence_id	adjacency_status	left_source_labels	right_source_labels
+sdic	Dmel	Sdic_copy1	Dmel_sdic_A_I	EG_Anx_A	EG_sdic_I	Dmel_sdic_A1	Dmel_sdic_I1	present	AnxB10_source	NA
+sdic	Dmel	Sdic_copy1	Dmel_sdic_I_S	EG_sdic_I	EG_sw_S	Dmel_sdic_I1	Dmel_sdic_S1	present	NA	sw_source
+sdic	Dmel	Sdic_copy2	Dmel_sdic_A2_S2	EG_Anx_A	EG_sw_S	Dmel_sdic_A2	Dmel_sdic_S2	present	AnxB10_source	sw_source
+sdic	Dyak	source_loci	Dyak_unjoined_A_S	EG_Anx_A	EG_sw_S	Dyak_AnxB10_A	Dyak_sw_S	absent	AnxB10_source	sw_source
+sdic	Dsim	source_loci	Dsim_unjoined_A_S	EG_Anx_A	EG_sw_S	Dsim_AnxB10_A	Dsim_sw_S	absent	AnxB10_source	sw_source

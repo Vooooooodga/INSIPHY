@@ -1,0 +1,6 @@
+adjacency_id	family_id	species	gene_copy_id	left_occurrence_id	right_occurrence_id	adjacency_status	evidence
+Dyak_jgw_Y_A	jingwei	Dyak	jgw_copy	Dyak_jgw_Y	Dyak_jgw_A	present	curated_coordinate
+Dtei_jgw_Y_A	jingwei	Dtei	jgw_copy	Dtei_jgw_Y	Dtei_jgw_A	present	curated_coordinate
+Dmel_unjoined_Y_A	jingwei	Dmel	source_loci	Dmel_yande_Y	Dmel_Adh_A	absent	separate_source_loci
+Dsim_unjoined_Y_A	jingwei	Dsim	source_loci	Dsim_yande_Y	Dsim_Adh_A	absent	separate_source_loci
+Dere_unjoined_Y_A	jingwei	Dere	source_loci	Dere_yande_Y	Dere_Adh_A	absent	separate_source_loci
