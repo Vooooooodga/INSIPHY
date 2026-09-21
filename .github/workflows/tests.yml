@@ -36,6 +36,11 @@ jobs:
         run: |
           set -o pipefail
           python -m unittest discover -s tests -v 2>&1 | tee validation/current/tests.log
+      - name: Scientific regression cases
+        run: |
+          python tools/validate_v19.py --output-dir validation/current/v19-raw
+          python tools/validate_v0191.py --output-dir validation/current/v0191-audit
+          python tools/render_method_figures.py --output-dir validation/current/current-guide --png
       - name: Build distributions
         run: python -m build
       - name: Isolated wheel smoke test
