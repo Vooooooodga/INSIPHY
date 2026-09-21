@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "$EXPECTED_BASE"
+          test "$(git merge-base "$EXPECTED_BASE" HEAD)" = "$EXPECTED_BASE"\n          test "$(git diff --name-only "$EXPECTED_BASE"...HEAD | sort)" = "$(printf '.github/v19.patch\\n.github/workflows/publish-v19.yml\\n' | sort)"
           test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"
       - name: Apply exact V19 patch
         shell: bash
