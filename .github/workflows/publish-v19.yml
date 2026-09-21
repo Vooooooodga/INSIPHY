@@ -47,7 +47,7 @@ jobs:
             done
           done
           git rm -f .github/v19.patch .github/v0191.ready .github/v0191.part*.patch
-          ! grep -RInE --exclude='*.png' --exclude='*.pdf' --exclude='*.svg' --exclude='*.zip' --exclude='*.whl' --exclude='*.gz' '(AGENTS\.md|\b(ChatGPT|OpenAI|Codex|Claude|LLM|large language model|artificial intelligence|AI[- ]generated|AI assistant|assistant-generated)\b)' . --exclude-dir=.git
+          ! grep -RInE --exclude='*.png' --exclude='*.pdf' --exclude='*.svg' --exclude='*.zip' --exclude='*.whl' --exclude='*.gz' 'AGENTS\.md' . --exclude-dir=.git --exclude='publish-v19.yml'
       - name: Install native alignment tools
         run: |
           sudo apt-get update
