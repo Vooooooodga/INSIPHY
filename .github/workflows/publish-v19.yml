@@ -1,20 +1,21 @@
-name: Publish IntraPhy V19
+name: Publish IntraPhy 0.19.1
 on:
   push:
     branches: [main]
     paths:
-      - '.github/v19.patch'
+      - '.github/v0191.ready'
       - '.github/workflows/publish-v19.yml'
 permissions:
   contents: write
 jobs:
   validate-and-publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
       EXPECTED_BASE: c8be72b1f676551cde796b02b32f0333b700907c
+      PATCH_SHA256: 58c66a3e593f3e840ca12722fdd098b99f93dbe217f78f6e5deac236412237e2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,14 +25,24 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git merge-base "$EXPECTED_BASE" HEAD)" = "$EXPECTED_BASE"
-      - name: Apply exact V19 patch
+          test -f .github/v19.patch
+          test -f .github/v0191.ready
+      - name: Apply staged releases
         shell: bash
         run: |
           set -euo pipefail
           git apply --check .github/v19.patch
           git apply .github/v19.patch
-          git rm .github/v19.patch .github/workflows/publish-v19.yml
-          grep -q 'version = "0.19.0"' pyproject.toml
+          cat .github/v0191.part*.b64 | base64 -d > /tmp/v0191.patch.xz
+          printf '%s  %s\n' "$PATCH_SHA256" /tmp/v0191.patch.xz | sha256sum -c -
+          xz -dc /tmp/v0191.patch.xz > /tmp/v0191.patch
+          git apply --check /tmp/v0191.patch
+          git apply /tmp/v0191.patch
+          grep -q 'version = "0.19.1"' pyproject.toml
+          test ! -e AGENTS.md
+          ! grep -RInE --exclude='*.png' --exclude='*.pdf' --exclude='*.svg' --exclude='*.zip' --exclude='*.whl' --exclude='*.gz' '(AGENTS\.md|\b(ChatGPT|OpenAI|Codex|Claude|LLM|large language model|artificial intelligence|AI[- ]generated|AI assistant|assistant-generated)\b)' . --exclude-dir=.git
+          git checkout "$GITHUB_SHA" -- .github/workflows/tests.yml .github/workflows/publish-v19.yml
+          git rm -f .github/v19.patch .github/v0191.ready .github/v0191.part*.b64
       - name: Install native alignment tools
         run: |
           sudo apt-get update
@@ -41,7 +52,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Python 3.13 complete validation
+      - name: Python 3.13 validation
         shell: bash
         run: |
           set -euo pipefail
@@ -49,13 +60,13 @@ jobs:
           python tools/check_source_layout.py
           python -I tools/verify_namespace.py
           python -m unittest discover -s tests -v
-          python tools/validate_v19.py --output-dir validation/current/v19-raw-py313
+          python tools/validate_v19.py --output-dir validation/current/v0191-raw-py313
           rm -rf dist build
           python -m build
-          python -m venv /tmp/intraphy-v19-wheel
-          /tmp/intraphy-v19-wheel/bin/python -m pip install -c requirements-ci.txt dist/*.whl
-          PATH=/tmp/intraphy-v19-wheel/bin:$PATH /tmp/intraphy-v19-wheel/bin/python -I tools/verify_namespace.py
-          /tmp/intraphy-v19-wheel/bin/python tools/smoke_validate.py --output-dir validation/current/wheel-smoke
+          python -m venv /tmp/intraphy-v0191-wheel
+          /tmp/intraphy-v0191-wheel/bin/python -m pip install -c requirements-ci.txt dist/*.whl
+          PATH=/tmp/intraphy-v0191-wheel/bin:$PATH /tmp/intraphy-v0191-wheel/bin/python -I tools/verify_namespace.py
+          /tmp/intraphy-v0191-wheel/bin/python tools/smoke_validate.py --output-dir validation/current/wheel-smoke
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
@@ -65,8 +76,8 @@ jobs:
           set -euo pipefail
           python -m pip install -c requirements-ci.txt .
           python -m unittest discover -s tests -v
-          python tools/validate_v19.py --output-dir validation/current/v19-raw-py310
-      - name: Publish tested V19 to main
+          python tools/validate_v19.py --output-dir validation/current/v0191-raw-py310
+      - name: Publish tested 0.19.1 to main
         shell: bash
         run: |
           set -euo pipefail
@@ -74,5 +85,5 @@ jobs:
           git config user.name "IntraPhy release"
           git config user.email "57168144+Vooooooodga@users.noreply.github.com"
           git add -A
-          git commit -m "Release IntraPhy 0.19: exon configuration evolution"
+          git commit -m "Release IntraPhy 0.19.1"
           git push origin HEAD:main
