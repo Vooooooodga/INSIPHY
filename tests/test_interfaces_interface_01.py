@@ -272,6 +272,7 @@ class InterfaceTests(InterfaceTestsSupport, unittest.TestCase):
                 "--input-dir", tmp,
                 "--output-dir", str(Path(tmp) / "out"),
                 "--structural-site-matrix", "matrix.tsv",
+                "--model", "parsimony",
                 "--annotation-view", "canonical",
             ])
         self.assertEqual(infer.call_args.kwargs["structural_site_matrix_path"], "matrix.tsv")
@@ -285,6 +286,7 @@ class InterfaceTests(InterfaceTestsSupport, unittest.TestCase):
                 "--input-dir", tmp,
                 "--output-dir", str(Path(tmp) / "out"),
                 "--structural-site-matrix", "matrix.tsv",
+                "--model", "parsimony",
             ])
         self.assertEqual(run.call_args.kwargs["annotation_view"], "repertoire")
         self.assertEqual(

@@ -1,3 +1,58 @@
+# 0.19.1 — V19 audit corrections (2026-09-21)
+
+- Replace asymmetric interval masks with source-qualified atomic structure alternatives:
+  single/double-end annotation changes and split/fusion alternatives use the same rule.
+- Use all supplied/extracted locus DNA; record planned and actually aligned search ranges.
+- Validate physical region overlap across writers, readers, inference and rate collections.
+- Collapse unobserved non-root unary nodes and preserve edge provenance; explicitly different
+  foreground regimes are not silently erased and unsupported comparisons are rejected.
+- Expose conditional root-opportunity sensitivity, with matching simulation priors.
+- Count geometry before enumeration, use sparse shortest paths, cache state indices and
+  bound CTMC kernel reuse; do not allocate marked matrices for likelihood-only evaluation.
+- Add explicitly evidenced multi-exon insertion payloads; deduplicate opportunities.
+- Allow legal repeated-gene bootstrap draws; seed nested alternatives at the null optimum
+  and diagnose genuinely worse nested fits rather than replacing them with zero LRT.
+- Replace current scientific and architecture plates; archive V18 images. Render actual
+  ancestral configuration probabilities and branch quantities separately from parsimony.
+- Configuration model/schema becomes v2. Old catalogues/results are rejected with a
+  regenerate-from-original-inputs message, never silently relabeled.
+- Add audit regressions and sequence-changing positive controls. Existing GFF-only
+  intronization test is explicitly reclassified as annotation sensitivity.
+
+No new biological benchmark, full alignment-error model, repair-pathway inference,
+complete source-immigration process or broad significance calibration is claimed.
+
+---
+
+# 0.19.0 — exon configurations and elementary edits (2026-09-21)
+
+- New native exon configuration schema; biological units are not P/R/J columns.
+- One edit registry for split/fusion, donor/acceptor shifts, exon appearance/
+  inactivation and source-aware genomic interval insertion/deletion.
+- Complete bounded candidate-state enumeration including ancestral intermediates;
+  incomplete spaces stop probability inference. Irreversible deletion and explicit
+  introduction-opportunity scenarios preserve material-source identity.
+- All-optimal generalized Sankoff histories, representative compatible paths and
+  non-additive possible placements. The legacy binary wrapper uses this kernel.
+- Arbitrary-state CTMC, log-space likelihood and ancestor/endpoint probabilities;
+  optional marked expected edit counts and probability of at least one edit.
+- Explicit rate files; pooled scalar/foreground fitting across genes; whole-gene
+  bootstrap and conditional parametric testing with discovery/validity gates.
+- Manifest-free `analyze`; inherited file inputs/flanks/coordinate export remain.
+- Genomic MSA, coding-projection corroboration, exon correspondence, copy/orientation
+  rejection, unknown gene-only loci and separate annotation-alternative scenarios.
+- Raw structural counterexamples include phase 0/1/2 fusion, insertion, deletion,
+  intronization, boundary changes, repeats, negative strand and observation damage.
+- Native CDS diagnostics preserve split codons, exceptions and noncoding exons.
+- Optional explicit CESAR2 prediction export; predictions never replace observations.
+- Read-only tree/exon reports and synthetic guide generated through the real engine.
+- V18 binary models remain explicit legacy baselines. No RNA usage analysis added.
+
+No independent biological benchmark or genome-wide discovery-aware statistical
+calibration is claimed by this release. See docs/v19_validation.md.
+
+---
+
 # 0.18.0 — structural characters and elementary changes (2026-09-20)
 
 - Remove the previous import namespace and executable alias; require Python 3.10+.

@@ -1,30 +1,46 @@
 # IntraPhy
 
-**Phylogenetic analysis of gene structure · version 0.18.0**
+**Exon structural evolution from genomes and annotations — version 0.19.1**
 
-Which homologous regions of a gene are retained? Which remain exonic, and
-where have intron positions changed? IntraPhy compares **single-copy orthologous
-genes** using genomic sequences, gene annotations and a rooted species phylogeny.
-It reconstructs local structural character changes, not physical mutation counts.
+IntraPhy compares **single-copy orthologous gene loci** using genomic FASTA,
+GFF3/GTF and a rooted species tree. It reconstructs local exon structures and
+possible histories of their changes. It does **not** require RNA-seq and does not
+estimate exon usage, PSI, differential splicing, expression or selection.
 
-![From homologous regions to ancestral gene-structure changes](docs/figures/method_overview.svg)
+![Exon structural evolution](docs/figures/method_overview.svg)
 
-*One gene family, three steps: establish local sequence correspondence; define
-comparable DNA, exonic-status and intron-position characters; reconstruct their
-evolution on the species tree. The example includes missing annotation, DNA loss
-and intron loss, not only exon splitting. Drawings are synthetic; branch labels
-illustrate minimum-change placements. [Detailed algorithm](docs/figures/homology_inference.svg)
-· [Probability model](docs/figures/phylogenetic_model.svg)
-· [Mathematical explanation and limits](docs/model_bridge.md).*
+**0.19.1 fixes the V19 audit regressions.** Whole-structure annotation alternatives,
+full available locus searches, shared physical-region validation, canonical tree
+branches, source-supported module insertion, weighted gene bootstrap and distinct
+CTMC figures are implemented. [Audit-to-code map](docs/v0191_audit_resolution.md).
+
+## What is a V19 model state?
+
+One state is the **ordered configuration of one exon or a dependent group of
+exons**: their boundaries and the sequence material needed to distinguish deletion
+from retained-but-unannotated sequence. An ancestral exon may correspond to two
+exons; two exons may correspond to one. Alignment fragments are not extra events.
+
+Elementary changes are split, fusion, donor/acceptor shift, exon appearance or
+inactivation on retained sequence, and source-aware interval insertion/deletion.
+A deletion affecting two exons is one interval edit in that explanation, not two
+independent losses. A split is not additionally counted as intron gain.
+**Structural edit counts are not identified molecular mutation counts.**
+
+V19 uses a new configuration schema and engine. The older independent
+DNA/exonic-status/junction analyses remain **explicit legacy baselines**, not the
+new model under a different name. See [model and assumptions](docs/exon_structure_model.md),
+[implementation map](docs/v0191_audit_resolution.md), and [validation scope](docs/v0191_validation.md).
 
 ## Install
 
-Python 3.10 or later, MAFFT and minimap2 are required for the standard workflow.
-On Ubuntu 24.04:
+Python 3.10+, MAFFT and minimap2 are required for raw inputs. For example, on Ubuntu:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y mafft minimap2
+unzip IntraPhy_v0.19.1_source.zip
+cd IntraPhy-v0.19.1
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -c requirements-ci.txt .
@@ -32,189 +48,193 @@ intraphy --version
 intraphy inspect-aligners
 ```
 
-The executable, Python package and module entry point are all `intraphy`.
-There is no previous-name runtime alias. AGAT and miniprot are optional;
-[installation details](docs/installation.md) describe their separate roles.
+The CI reference environment is Ubuntu 24.04 with MAFFT 7.505, minimap2 2.26,
+and Python 3.10 / 3.13. External tools are not silently replaced when unavailable.
+CairoSVG is optional for PNG previews. CESAR2 and AGAT are optional, explicit
+adapters; neither is required for the standard route.
 
-## Your inputs: FASTA + GFF + rooted tree
+## One command from genomic FASTA, GFF and a tree
 
-**No user-written manifest is required.** The standard input layout is:
+For one selected gene per species:
 
 ```text
-genomes/                 annotations/              orthologs/
-  Species_A.fa             Species_A.gff3            OG0001.fa
-  Species_B.fa             Species_B.gff3            OG0002.fa
-  Species_C.fa             Species_C.gff3
+loci/
+    Species_A.fa       Species_A.gff3
+    Species_B.fa       Species_B.gff3
+    Species_C.fa       Species_C.gff3
 species_tree.nwk
 ```
 
-FASTA/GFF file stems match the species-tree tip names. GFF sequence IDs and
-coordinates refer to the matching genomic FASTA. Each optional ortholog FASTA
-contains the selected upstream gene-family members, identified by exact gene,
-transcript or protein IDs present in the annotation. AGAT-style `gene=` metadata
-is accepted. Multiple isoforms of one locus are allowed; paralogous loci are not.
-
 ```bash
-intraphy check \
-  --fasta genomes/ --gff annotations/ --orthologs orthologs/ \
-  --species-tree species_tree.nwk
-
-intraphy build-case \
-  --fasta genomes/ --gff annotations/ --orthologs orthologs/ \
-  --species-tree species_tree.nwk --output-dir work/genes --threads 8
-
-intraphy run --input-dir work/genes --output-dir results/genes --threads 8
-
-intraphy visualize \
-  --input-dir work/genes --result-dir results/genes --output-dir figures/genes
+intraphy check --fasta loci/ --gff loci/ --species-tree species_tree.nwk
+intraphy analyze --fasta loci/ --gff loci/ --species-tree species_tree.nwk \
+    --output-dir results/my_gene --threads 8
+intraphy visualize --input-dir results/my_gene/prepared_inputs \
+    --result-dir results/my_gene --output-dir figures/my_gene
 ```
 
-If every species GFF already contains exactly one selected gene, omit
-`--orthologs`. A **combined genomic locus FASTA** is also accepted with separate
-species GFFs, provided different species use distinct FASTA record IDs and the
-GFF coordinates refer to those records:
+File stems identify species and must match tree tips. FASTA must contain
+**continuous genomic DNA** in the coordinate system used by the GFF. A spliced
+CDS or protein sequence cannot supply introns or flanking genomic sequence.
+
+For whole-genome inputs, select upstream ortholog families using FASTA identifiers:
 
 ```bash
-intraphy build-case \
-  --fasta orthologous_genomic_loci.fa --gff locus_annotations/ \
-  --species-tree species_tree.nwk --output-dir work/one_gene
+intraphy analyze --fasta genomes/ --gff annotations/ \
+    --orthologs orthologs/ --species-tree species_tree.nwk \
+    --output-dir results/families --threads 8
 ```
 
-Spliced CDS, transcripts and proteins **cannot provide introns or genomic
-flanks**. Such a FASTA can select members through `--orthologs`, but genomic DNA
-is still needed for structure analysis. IntraPhy does not infer gene orthology
-from FASTA similarity. [Input formats, ID matching and coordinate requirements](docs/inputs.md).
+Each ortholog FASTA identifies one family. Explicit gene/transcript/protein IDs
+select the GFF locus; its sequence may be coding/protein but is not used as
+substitute genomic DNA. Orthology itself is an upstream requirement. No hand-made
+manifest is required. The program writes its resolved target table for provenance.
+A selected gene-only GFF locus remains unknown in `analyze`; the gene span is not
+turned into an exon. A completely missing gene locus cannot be inferred from a
+missing input file.
 
-## Flanking regions are extracted automatically
+Automatic flanks (`--flank`, `--max-extension`) use available genomic sequence;
+truncation is recorded. Portable paired FASTA/GFF export remains available through
+`extract-loci`. See [file input details](docs/inputs.md).
 
-`build-case` reads the target gene and available flanks from genomic FASTA.
-There is no separate flank FASTA to prepare. `--flank 1000` and
-`--max-extension 10000` specify search limits, not homology or accuracy thresholds.
-Sequence beyond the supplied contig/crop is unavailable and is never invented.
+## Read the results
 
-For reusable small inputs, an optional export writes matching locus FASTA/GFF
-pairs with **rebased coordinates**, retaining strand and CDS phase:
-
-```bash
-intraphy extract-loci \
-  --fasta genomes/ --gff annotations/ --orthologs orthologs/ \
-  --species-tree species_tree.nwk --flank 1000 --output-dir loci
-```
-
-Each family directory can then be supplied directly to `build-case`. A source
-coordinate map records the actual available flanks. AGAT normalization is also
-available as an explicit, separately logged operation:
-
-```bash
-intraphy normalize-annotation --gff annotations/ --output-dir normalized_annotations
-```
-
-This command requires `agat_convert_sp_gxf2gxf.pl`. Annotation normalization may
-change IDs, boundaries or features; it is not independent biological evidence.
-[AGAT usage and limitations](docs/inputs.md#optional-agat-preparation).
-
-## Run the synthetic raw-input example
-
-```bash
-intraphy example --output-dir example
-intraphy check --fasta example/ --gff example/ --species-tree example/species_tree.nwk
-intraphy build-case \
-  --fasta example/ --gff example/ --species-tree example/species_tree.nwk \
-  --output-dir work/example --threads 2
-intraphy run --input-dir work/example --output-dir results/example --threads 2
-intraphy visualize \
-  --input-dir work/example --result-dir results/example --output-dir figures/example
-```
-
-Open `figures/example/index.html`. No inferred homology or observation matrix is
-supplied to this example. `--scenario conserved` and `--scenario
-annotation_dropout` provide additional controls. The example is an implementation
-test; it does not establish biological accuracy or statistical calibration.
-
-## See what each stage means
-
-[How sequence alignment establishes structural correspondence](docs/figures/homology_inference.svg) ·
-[How gene structures become a phylogenetic model](docs/figures/phylogenetic_model.svg) ·
-[Figure captions and literature](docs/figure.md)
-
-```bash
-# No genomic data or aligners needed for the teaching gallery.
-intraphy explain --output-dir method-guide
-```
-
-Every default result gallery links to a separate synthetic methods guide.
-Data-derived target figures are never replaced by teaching examples.
-
-The [software architecture](docs/architecture.md) is documented separately.
-The full character matrix retains unknown and inapplicable observations. Sequence
-correspondence is evaluated before ancestral reconstruction; the reference species
-is not assumed to be ancestral.
-
-
-## Principal results and interpretation
-
-| Output | Meaning |
+| File | Meaning |
 |---|---|
-| `input_targets.tsv` | Automatically resolved genes and source files; an output, not a required input table |
-| `character_catalogue.tsv` | Character identity, state definition, counting unit and dependence metadata |
-| `character_coordinates.tsv` | Actual aligned intervals or projected splice positions |
-| `structural_site_matrix.tsv` | Complete structural character matrix, including unknown and inapplicable observations |
-| `structural_character_eligibility.tsv` | Known 0/1 observations and their phylogenetic coverage |
-| `branch_structural_events.tsv` | Elementary changes in all or some minimum-change histories |
-| `gene_change_summary.tsv` | Minimum character changes per gene family and layer; no mutation count |
-| `minimum_change_history.tsv` | One globally compatible optimum, not a probability sample |
-| `ancestral_state_consistency.tsv` | Applicability conflicts across separately reconstructed layers |
+| `exon_correspondence.tsv` | Native exon identity, actual comparison coordinates, support and ambiguity |
+| `annotation_structure_candidates.tsv` | Predicted-only exon/boundary alternatives, kept separate from annotation |
+| `exon_configurations.jsonl` | Versioned observation catalogue, material provenance and coordinate scope |
+| `structural_history.tsv` | Elementary edits compatible with optimal histories; required/possible, not additive possibilities |
+| `representative_structural_history.tsv` | One explicitly conditional, jointly compatible history per scenario |
+| `exon_structure_summary.tsv` | Per-local-configuration status, observation sensitivity and minimum edits |
+| `gene_structure_summary.tsv` | Resolved/unresolved scope and minimum edits within resolved local units |
+| `exon_history.json` | State catalogue and detailed scenario results |
+| `model_diagnostics.json` | State-space completeness, assumptions, probability availability and limitations |
+| `native_cds_consequences.json` | Actual transcript-specific CDS and coding consequences, never an ORF filter |
 
-A single mutation can affect several characters; a single character can change
-repeatedly. Alternative possible placements are not added as separate changes.
-There is no formal compound-event summary. [Counting rules](docs/event_counting.md).
+The default `--observation-view evidence` permits sequence-supported annotation
+alternatives. The `annotation` view asks what follows **if the supplied boundaries
+are correct**. Both are reported. A boundary difference or missing GFF exon may
+therefore imply a change in the annotation-conditional analysis but no required
+change in the evidence-compatible analysis. This distinction is intentional.
 
-The default retains all characters. Optional coverage filtering does not trim
-DNA or connect previously separated exons. Seven present plus three explicitly
-absent observations are 100% callable, not 70%.
+True coexisting annotations are separate conditional scenarios, not a mixture
+with inferred usage weights. Large repeats, inversions, unresolved homology,
+ambiguous overlapping indels and exhausted candidate spaces are explicitly
+unresolved; a missing event is not proof of conservation.
 
-## Optional likelihood analysis
+## Optional finite-state probability calculation
 
-ER/ARD and foreground CTMC analyses use the same structural character matrix:
+Maximum parsimony is the default. The new CTMC uses the **same configurations and
+allowed edits**, not a legacy binary table. It needs explicit edit-rate parameters:
 
 ```bash
-intraphy infer-phylogeny \
-  --input-dir work/genes \
-  --structural-site-matrix results/genes/structural_site_matrix.tsv \
-  --output-dir results/genes_erard --model er-ard
+# Illustrative parameters only: this command does not estimate biological rates.
+intraphy exon-rate-template --output example_rates.json --rate 0.1
+intraphy infer-phylogeny --input-dir results/my_gene \
+    --exon-configurations results/my_gene/exon_configurations.jsonl \
+    --model exon-ctmc --exon-rates example_rates.json --expected-edits \
+    --output-dir results/my_gene_ctmc
 ```
 
-Known linked characters jointly included in a family-layer block the independent
-fit, AIC, intervals, test and posterior. Other invalid fits remain unavailable
-with explicit reasons. P values compare rate models; they do not establish a
-named historical event. Finite-sample calibration remains unassessed.
-[Statistical assumptions](docs/statistical_model.md).
+Output distinguishes ancestral configuration probabilities, different endpoints,
+at least one edit, and expected edit counts. `--expected-edits` is optional because
+marked-matrix integrals can be expensive. Re-reading a **0.19.1** catalogue requires no
+aligner and does not silently rebuild observations. 0.19.0 catalogues must be
+regenerated from their original FASTA/GFF/tree or explicit biological specification;
+the schema is now `intraphy.exon-configurations/2`. Do not relabel an old file.
 
-## Limits and reproducibility
+Probability is conditional on the sequence correspondence, annotation view,
+finite candidate catalogue, explicit root/origin assumptions, tree and rates.
+State-space exhaustion blocks probabilities; it is not fixed by renormalization.
+Unobserved non-root unary tree nodes are collapsed, preserving total branch lengths.
+Original-to-normalized edge mapping is saved in `tree_normalization.json`.
+`--origin-root-sensitivity 0.25 4` requests additional, explicitly conditional
+sensitivity runs for alternative root-opportunity weights. These are not a model
+selection exercise and do not implement continuous-time Dollo immigration.
+The default origin-opportunity prior is explicit in the model document. This is
+not a fitted joint model of annotation error, homology and sequence evolution.
 
-An unaligned interval is not automatically absent. Corresponding flanking exons
-do not establish homology of every intronic nucleotide. Supplied transcript
-repertoire does not measure tissue-specific usage. Formal inference excludes
-complete ancestral transcripts, exon-shuffling mechanisms, complex rearrangements,
-gene-duplication histories, selection and phenotypic causes.
-[Scope and the 28 cases](docs/scope_policy.md).
+## Pooled rate estimation and conditional model comparisons
 
-Primary commands write `intraphy.log`, `environment.json` and `execution.json`.
-Nonempty output directories are refused. `--force` preserves an identifiable old
-IntraPhy output in a timestamped backup. Run `intraphy COMMAND --help` for options.
+`fit-exon-rates` estimates a **shared scale** on explicitly fixed relative edit
+rates across a declared set of independent genes. It does not fit eight free
+rates to a gene with a few exons. Optional bootstrap resamples whole genes,
+retaining all local units and failed draws. Foreground comparison estimates one
+additional multiplier and does not diagnose a mutation mechanism or selection.
 
-[Method](docs/method.md) · [Architecture](docs/architecture.md) ·
-[CLI](docs/cli.md) · [Outputs](docs/outputs.md) ·
-[Migration](docs/MIGRATION_0.18.md) · [Validation](docs/validation.md) ·
-[References](docs/references.md)
+```bash
+intraphy fit-exon-rates --exon-configurations results/families/exon_configurations.jsonl \
+    --species-tree results/families/species_tree.tsv --exon-rates example_rates.json \
+    --gene-bootstrap 100 --output-dir results/rate_fit
+```
+
+The automatically discovered catalogue is **not genome-wide calibrated**. The
+foreground wrapper never emits an asymptotic P value. Conditional Monte Carlo
+P values require an independently declared complete catalogue, compatible masks,
+valid fits and valid refits for every requested simulation. Do not relabel a
+discovered catalogue as independent merely to obtain a P value.
+
+## Reproduce a structural example
+
+```bash
+intraphy example-exons --scenario fusion_phase1 --output-dir example_raw
+intraphy analyze --fasta example_raw/ --gff example_raw/ \
+    --species-tree example_raw/species_tree.nwk --output-dir example_result
+intraphy explain --output-dir model_guide
+```
+
+`example-exons --help` lists 20 raw structural/observation-damage scenarios.
+The analysis never reads their separate truth file. The `intronization` example
+changes annotation only: its annotation-condition history is one split, while the
+evidence-condition retains a whole-exon alternative. It is not a biological
+intronization validation. Nine extra raw audit cases include signal-changing
+controls, terminal annotation dropouts and an exact exon deletion.
+
+`intraphy explain` generates three current scientific plates plus an architecture
+plate, with computed example histories, parameters and separate parsimony/CTMC
+result figures. PNG previews require `pip install cairosvg` and `--png`.
+The static SVG/PNG versions are in [docs/figures](docs/figures/index.html).
+Old binary-layer figures are explicitly archived under `docs/figures/legacy_v018/`.
 
 ```bash
 python tools/check_source_layout.py
 python -m unittest discover -s tests -v
-python tools/render_method_figures.py --png
-python -m build
+python tools/validate_v19.py --output-dir validation/current/v19-raw
+python tools/validate_v0191.py --output-dir validation/current/v0191-audit
+python tools/smoke_validate.py --output-dir validation/current/wheel-smoke
 ```
 
-Historical v16/v17 evidence remains labelled as historical. Current verification
-distinguishes unit tests, real alignment-tool integration, synthetic raw inputs,
-and unperformed biological/statistical calibration.
+Tests and synthetic scenarios are implementation checks, **not independent
+biological benchmarking or validated operating characteristics**. Real-case
+benchmarks and discovery-aware calibration remain necessary for a methods paper.
+
+## Optional adapters and legacy analyses
+
+`normalize-annotation` explicitly invokes AGAT and records its outputs. It does
+not turn annotation repair into independent validation. `realign-exons` exports
+and executes CESAR2 gene-mode input with explicitly chosen profiles and codon
+matrix. Its prediction remains separate and is never automatically promoted to a
+confirmed exon or substituted into the primary history.
+
+The old `run --model parsimony`, `er-ard`, `foreground` models and
+`explain --legacy-v18` are documented historical baselines. V19 defaults are
+`exon-parsimony` and `exon-ctmc`; legacy-only flags are rejected in those models.
+The removed former package name and executable alias are not restored.
+
+## Practical limits and supplied source modules
+
+The default finite-state cap is 1024. An exact geometry-count preflight and a
+material-state upper bound are saved; four adjacent exons with three variable
+spacers (the audit case) now enumerate all 556 states. Sparse shortest paths and
+bounded run-local CTMC kernel reuse reduce unnecessary work. This does not remove
+combinatorial growth: over-budget catalogues still stop, without truncation and
+renormalization. Only states in the declared finite catalogue are modeled.
+
+A multi-exon insertion can be one edit **only with an explicit source-supported
+`insertion_payloads` entry**. This is a conditional input, not automatic discovery
+of exon shuffling or copy genealogy. See the model specification for the schema.
+Mere appearance of several exons does not qualify them as one inserted module.
+
+Files in this local distribution are not evidence of a GitHub release. Installation
+from the supplied source/wheel does not require pushing or modifying a repository.

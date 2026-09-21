@@ -56,7 +56,7 @@ def _single_locus_targets(resources, family: str) -> tuple[Target, ...]:
     return tuple(targets)
 
 
-def _validate_rows(rows, panel):
+def _validate_rows(rows, panel, *, allow_unannotated=False):
     for row in rows:
         for field in ("family_id", "species"):
             name = row[field]
@@ -82,8 +82,10 @@ def _validate_rows(rows, panel):
         if gene.get("strand") not in {"+", "-"}:
             raise ValueError(f"Target gene {row['gene_id']} lacks a resolved genomic strand")
         target_features = FeatureHierarchy(features).transcript_features(gene["id"])
-        if not any(f.get("type", "").lower() in {"exon", "cds", "utr", "five_prime_utr", "three_prime_utr"}
-                   for f in target_features):
+        has_structure = any(f.get("type", "").lower() in {"exon", "cds", "utr", "five_prime_utr", "three_prime_utr"}
+                            for f in target_features)
+        row["annotation_structure_status"] = "provided" if has_structure else "gene_only_unknown"
+        if not has_structure and not allow_unannotated:
             raise ValueError(f"Target gene {row['gene_id']} has no extractable exon, CDS or UTR annotation. "
                              "Genomic sequence alone does not define a complete gene model.")
         record = (row["genome_fasta"], gene["seqid"])
@@ -138,5 +140,6 @@ def resolve_inputs(args) -> InputSelection:
                  "annotation_file": str(by_species[t.species].gff),
                  "ortholog_fasta": t.source, "source_member_ids": ";".join(t.members),
                  "input_mode": mode} for t in targets]
-    _validate_rows(rows, panel)
+    _validate_rows(rows, panel, allow_unannotated=getattr(args, "command", "") in {"analyze", "check"}
+                   or getattr(args, "allow_unannotated_loci", False))
     return InputSelection(tuple(rows), mode, panel)

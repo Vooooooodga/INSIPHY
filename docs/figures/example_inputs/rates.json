@@ -1,0 +1,14 @@
+{
+  "provenance": "Illustrative fixed parameters for software-generated teaching figures; not fitted to biology",
+  "rates": {
+    "acceptor_shift": 0.04,
+    "dna_deletion": 0.04,
+    "dna_insertion": 0.04,
+    "donor_shift": 0.04,
+    "exon_inactivation": 0.04,
+    "exonization": 0.04,
+    "fusion": 0.7,
+    "split": 0.7
+  },
+  "schema": "intraphy.exon-rates/1"
+}

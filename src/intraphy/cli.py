@@ -24,12 +24,41 @@ from .workflow import run_all, _record_evidence_aligner
 
 
 def _dispatch(args):
-    if args.command == "example":
+    if args.command == "realign-exons":
+        from .aligners.cesar_adapter import realign
+        realign(args)
+    elif args.command == "fit-exon-rates":
+        from .commands.exon_statistics import fit_command
+        fit_command(args)
+    elif args.command == "analyze":
+        from .commands.exons import dispatch_analyze
+        dispatch_analyze(args)
+    elif args.command == "example-exons":
+        from .verification.exon_cases import write_exon_example
+        write_exon_example(args.output_dir, args.scenario, args.seed)
+    elif args.command == "exon-rate-template":
+        from .structure.edits import EDIT_KINDS
+        from .structure.serialization import write_json
+        import math
+        if not math.isfinite(args.rate) or args.rate < 0:
+            raise ValueError("Rate must be finite and nonnegative")
+        if Path(args.output).exists():
+            raise ValueError("Rate output already exists")
+        write_json(args.output, {"schema": "intraphy.exon-rates/1", "rates": {k: args.rate for k in EDIT_KINDS},
+                               "provenance": "user-requested illustrative fixed rates; not fitted biological estimates"})
+    elif args.command in {"run", "infer-phylogeny"} and args.model.startswith("exon-"):
+        from .commands.exons import configuration_arguments
+        from .inference.configuration_run import infer_configurations
+        infer_configurations(args.input_dir, args.output_dir, **configuration_arguments(args))
+    elif args.command == "example":
         from .verification.native_cases import build_native_example
         manifest = build_native_example(args.output_dir, args.scenario, args.seed)
         print(f"Synthetic FASTA/GFF/tree inputs written: {Path(manifest).parent}")
     elif args.command == "explain":
-        from .reporting.methods import render_guide
+        if args.legacy_v18:
+            from .reporting.methods import render_guide
+        else:
+            from .reporting.exon_guide import render_guide
         render_guide(args.output_dir, png=args.png)
     elif args.command == "check":
         from .commands.environment import environment_report
@@ -38,6 +67,7 @@ def _dispatch(args):
                           "species": list(selection.tree_species),
                           "families": sorted({r["family_id"] for r in selection.rows}),
                           "selected_gene_loci": len(selection.rows),
+                          "gene_only_unknown_loci": sum(r.get("annotation_structure_status") == "gene_only_unknown" for r in selection.rows),
                           "environment": environment_report()}, indent=2))
     elif args.command == "extract-loci":
         from .inputs.loci import export_loci
@@ -67,6 +97,11 @@ def _dispatch(args):
     elif args.command == "calibrate":
         calibrate_simulations(args.output_dir, args.scenario, args.replicates, args.bootstrap_replicates, args.stochastic_maps, args.seed)
     elif args.command == "visualize":
+        from .run_result import result_model
+        if str(result_model(args.result_dir)).startswith("exon-"):
+            from .reporting.exon_results import render_exon_results
+            render_exon_results(args.result_dir, args.output_dir)
+            return
         encoding = args.correspondence_encoding or "color"
         visualize_results(args.input_dir, args.result_dir, args.output_dir, encoding,
                           layout=args.layout, targets=args.target,
@@ -98,6 +133,7 @@ def _dispatch(args):
             coding_msa_mode=args.coding_msa_mode,
             short_context_max_length=args.short_context_max_length,
             target_rows=args._input_selection.rows,
+            allow_unannotated=args.allow_unannotated_loci,
         )
     elif args.command == "import-orthofinder":
         import_orthofinder(args.orthofinder_dir, args.orthogroup, args.genome_manifest, args.output_dir, args.species_tree)

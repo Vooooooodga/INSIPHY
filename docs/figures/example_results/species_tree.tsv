@@ -1,0 +1,8 @@
+node_id	parent_id	label	branch_length
+root		root	NA
+AB	root	AB	0.5
+A	AB	A	0.5
+B	AB	B	0.5
+CD	root	CD	0.5
+C	CD	C	0.5
+D	CD	D	0.5

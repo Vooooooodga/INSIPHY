@@ -1,3 +1,8 @@
+> V19 uses these genomic file contracts. The recommended one-command route is
+> `intraphy analyze --fasta ... --gff ... --species-tree ... --output-dir ...`.
+> Gene-only selected loci remain unknown, not exons. For staged `build-case`, use
+> `--allow-unannotated-loci` explicitly when retaining such loci.
+
 # Genomic FASTA, annotation and a rooted tree
 
 ## Standard file inputs

@@ -1,0 +1,224 @@
+{
+  "biological_accuracy_calibrated": false,
+  "branch_length_mode": "supplied",
+  "deletion_reversible": false,
+  "engine": "exon-ctmc",
+  "finite_sample_significance_calibrated": false,
+  "formal_pvalues": "not_produced_by_single_family_analysis",
+  "material_origin_prior": "declared_root_weight_and_unit_branch_opportunities_on_canonical_tree",
+  "model_version": "exon_configuration_v2",
+  "observation_view": "evidence",
+  "origin_root_sensitivity_weights": [
+    0.25,
+    4.0
+  ],
+  "parameters": {
+    "foreground": [],
+    "foreground_multiplier": 1.0,
+    "origin_root_weight": 1.0,
+    "rates": {
+      "acceptor_shift": 0.04,
+      "dna_deletion": 0.04,
+      "dna_insertion": 0.04,
+      "donor_shift": 0.04,
+      "exon_inactivation": 0.04,
+      "exonization": 0.04,
+      "fusion": 0.7,
+      "split": 0.7
+    },
+    "scale": 1.0
+  },
+  "preparation": [],
+  "purpose": "exon_structure_evolution_only",
+  "rate_unit": "per_eligible_edit_opportunity_per_branch_length_unit",
+  "root_structure_prior": "uniform_valid_configurations_given_material_origin_scenario",
+  "transcript_usage_modelled": false,
+  "tree_normalization": {
+    "collapsed_unobserved_unary_nodes": [],
+    "foreground_children": [],
+    "normalized_edge_to_input_children": {
+      "A": [
+        "A"
+      ],
+      "AB": [
+        "AB"
+      ],
+      "B": [
+        "B"
+      ],
+      "C": [
+        "C"
+      ],
+      "CD": [
+        "CD"
+      ],
+      "D": [
+        "D"
+      ]
+    },
+    "origin_process": "finite_branch_opportunities_not_continuous_immigration",
+    "root_preserved": true
+  },
+  "units": [
+    {
+      "annotation_sensitivity": false,
+      "coexisting_taxa": 0,
+      "discovery": "annotation_discovered",
+      "family_id": "Example_gene",
+      "inference_status": "conditional_structure_inference",
+      "input_taxa": 4,
+      "known_structure_taxa": 4,
+      "log_likelihood": -4.070832090378847,
+      "probability_status": "conditional_on_fixed_parameters_and_declared_catalogue",
+      "reasons": [],
+      "state_count": 5,
+      "state_limit": 1024,
+      "state_space_complete": true,
+      "state_space_estimate": {
+        "actual_state_count": 5,
+        "candidate_span_count": 3,
+        "dense_matrix_bytes": 200,
+        "dense_matrix_bytes_at_limit": 8388608,
+        "elementary_edges": 16,
+        "finite_declared_catalogue_only": true,
+        "geometry_count_exact": 5,
+        "material_combinations": 1,
+        "state_count_upper_bound": 5,
+        "state_limit": 1024
+      },
+      "state_space_reason": "candidate_catalogue_closed",
+      "state_space_scope": "closed_declared_candidate_catalogue_not_all_possible_historical_exons",
+      "status": "qualified",
+      "unit_id": "split",
+      "unknown_taxa": 0
+    },
+    {
+      "annotation_sensitivity": false,
+      "coexisting_taxa": 0,
+      "discovery": "annotation_discovered",
+      "family_id": "Example_gene",
+      "inference_status": "conditional_structure_inference",
+      "input_taxa": 4,
+      "known_structure_taxa": 4,
+      "log_likelihood": -4.016357214548007,
+      "probability_status": "conditional_on_fixed_parameters_and_declared_catalogue",
+      "reasons": [],
+      "state_count": 5,
+      "state_limit": 1024,
+      "state_space_complete": true,
+      "state_space_estimate": {
+        "actual_state_count": 5,
+        "candidate_span_count": 3,
+        "dense_matrix_bytes": 200,
+        "dense_matrix_bytes_at_limit": 8388608,
+        "elementary_edges": 16,
+        "finite_declared_catalogue_only": true,
+        "geometry_count_exact": 5,
+        "material_combinations": 1,
+        "state_count_upper_bound": 5,
+        "state_limit": 1024
+      },
+      "state_space_reason": "candidate_catalogue_closed",
+      "state_space_scope": "closed_declared_candidate_catalogue_not_all_possible_historical_exons",
+      "status": "qualified",
+      "unit_id": "fusion",
+      "unknown_taxa": 0
+    },
+    {
+      "annotation_sensitivity": false,
+      "coexisting_taxa": 0,
+      "discovery": "annotation_discovered",
+      "family_id": "Example_gene",
+      "inference_status": "conditional_structure_inference",
+      "input_taxa": 4,
+      "known_structure_taxa": 4,
+      "log_likelihood": -5.196461005576525,
+      "probability_status": "conditional_on_fixed_parameters_and_declared_catalogue",
+      "reasons": [],
+      "state_count": 3,
+      "state_limit": 1024,
+      "state_space_complete": true,
+      "state_space_estimate": {
+        "actual_state_count": 3,
+        "candidate_span_count": 2,
+        "dense_matrix_bytes": 72,
+        "dense_matrix_bytes_at_limit": 8388608,
+        "elementary_edges": 6,
+        "finite_declared_catalogue_only": true,
+        "geometry_count_exact": 3,
+        "material_combinations": 1,
+        "state_count_upper_bound": 3,
+        "state_limit": 1024
+      },
+      "state_space_reason": "candidate_catalogue_closed",
+      "state_space_scope": "closed_declared_candidate_catalogue_not_all_possible_historical_exons",
+      "status": "qualified",
+      "unit_id": "boundary",
+      "unknown_taxa": 0
+    },
+    {
+      "annotation_sensitivity": false,
+      "coexisting_taxa": 0,
+      "discovery": "annotation_discovered",
+      "family_id": "Example_gene",
+      "inference_status": "conditional_structure_inference",
+      "input_taxa": 4,
+      "known_structure_taxa": 4,
+      "log_likelihood": -6.758840809497071,
+      "probability_status": "conditional_on_fixed_parameters_and_declared_catalogue",
+      "reasons": [],
+      "state_count": 4,
+      "state_limit": 1024,
+      "state_space_complete": true,
+      "state_space_estimate": {
+        "actual_state_count": 4,
+        "candidate_span_count": 1,
+        "dense_matrix_bytes": 128,
+        "dense_matrix_bytes_at_limit": 8388608,
+        "elementary_edges": 6,
+        "finite_declared_catalogue_only": true,
+        "geometry_count_exact": 2,
+        "material_combinations": 3,
+        "state_count_upper_bound": 6,
+        "state_limit": 1024
+      },
+      "state_space_reason": "candidate_catalogue_closed",
+      "state_space_scope": "closed_declared_candidate_catalogue_not_all_possible_historical_exons",
+      "status": "qualified",
+      "unit_id": "deletion",
+      "unknown_taxa": 0
+    },
+    {
+      "annotation_sensitivity": true,
+      "coexisting_taxa": 0,
+      "discovery": "annotation_discovered",
+      "family_id": "Annotation_control",
+      "inference_status": "conditional_structure_inference",
+      "input_taxa": 4,
+      "known_structure_taxa": 4,
+      "log_likelihood": -3.0171678771758907,
+      "probability_status": "conditional_on_fixed_parameters_and_declared_catalogue",
+      "reasons": [],
+      "state_count": 5,
+      "state_limit": 1024,
+      "state_space_complete": true,
+      "state_space_estimate": {
+        "actual_state_count": 5,
+        "candidate_span_count": 3,
+        "dense_matrix_bytes": 200,
+        "dense_matrix_bytes_at_limit": 8388608,
+        "elementary_edges": 16,
+        "finite_declared_catalogue_only": true,
+        "geometry_count_exact": 5,
+        "material_combinations": 1,
+        "state_count_upper_bound": 5,
+        "state_limit": 1024
+      },
+      "state_space_reason": "candidate_catalogue_closed",
+      "state_space_scope": "closed_declared_candidate_catalogue_not_all_possible_historical_exons",
+      "status": "qualified",
+      "unit_id": "uncertainty",
+      "unknown_taxa": 0
+    }
+  ]
+}

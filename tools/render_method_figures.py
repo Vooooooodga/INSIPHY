@@ -5,7 +5,7 @@ import argparse
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from intraphy.reporting.methods import render_guide
+from intraphy.reporting.exon_guide import render_guide
 
 
 def main():

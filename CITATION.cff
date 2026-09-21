@@ -1,9 +1,9 @@
 cff-version: 1.2.0
-title: "IntraPhy: phylogenetic inference of intragenic structure"
+title: "IntraPhy: phylogenetic reconstruction of exon configurations"
 message: "If you use IntraPhy, please cite the repository and the associated paper when available."
 type: software
-version: 0.18.0
+version: 0.19.1
 authors:
   - name: "IntraPhy contributors"
-date-released: 2026-09-20
+date-released: 2026-09-21
 repository-code: "https://github.com/Vooooooodga/IntraPhy"

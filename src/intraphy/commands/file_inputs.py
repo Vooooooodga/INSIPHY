@@ -2,6 +2,8 @@
 
 
 def add_file_inputs(command):
+    command.add_argument("--allow-unannotated-loci", action="store_true",
+                         help="Keep gene-only loci as unknown; never treat a gene span as an exon.")
     source = command.add_mutually_exclusive_group(required=True)
     source.add_argument("--fasta", nargs="+", metavar="PATH",
                         help="Genomic FASTA files or a flat directory; Species.fa matches Species.gff3.")

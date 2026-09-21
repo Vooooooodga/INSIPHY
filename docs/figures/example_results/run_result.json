@@ -1,0 +1,18 @@
+{
+  "analysis_scope": "exon-configurations",
+  "artifacts": [
+    "exon_configurations.jsonl",
+    "exon_history.json",
+    "structural_history.tsv",
+    "representative_structural_history.tsv",
+    "exon_structure_summary.tsv",
+    "gene_structure_summary.tsv",
+    "exon_ancestral_states.tsv",
+    "exon_branch_posteriors.tsv",
+    "model_diagnostics.json"
+  ],
+  "model": "exon-ctmc",
+  "schema_version": 1,
+  "status": "completed",
+  "tree_file": "species_tree.tsv"
+}

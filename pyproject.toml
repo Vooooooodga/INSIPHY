@@ -1,7 +1,7 @@
 [project]
 name = "intraphy"
-version = "0.18.0"
-description = "Phylogenetic inference of intragenic structure from genome sequence and annotation"
+version = "0.19.1"
+description = "Exon configuration evolution from genomic sequence, annotation and a species tree"
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.23",

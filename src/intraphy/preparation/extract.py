@@ -48,6 +48,7 @@ def extract_gene(
     copy_role="candidate",
     flank=1000,
     max_extension=10000,
+    allow_unannotated=False,
 ):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -97,9 +98,11 @@ def extract_gene(
     }
     selected = select_transcripts(transcripts, features_by_tx, transcript_policy, canonical_rule)
     if not selected or any(not features_by_tx.get(tx.get("id", "")) for tx in selected):
-        raise SystemExit(
-            f"gene {gene_id} has no resolvable exon/CDS/UTR structure; the gene span is not treated as an exon"
-        )
+        if not allow_unannotated:
+            raise SystemExit(
+                f"gene {gene_id} has no resolvable exon/CDS/UTR structure; the gene span is not treated as an exon"
+            )
+        selected = [tx for tx in selected if features_by_tx.get(tx.get("id", ""))]
 
     rows = list(load_existing_segments(output_dir) if append else [])
     tx_path_rows = list(read_tsv(output_dir / "transcript_paths.tsv", optional=True) if append else [])

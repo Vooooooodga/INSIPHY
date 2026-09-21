@@ -189,7 +189,7 @@ def build_case(
     context_aligner="minimap2",
     coding_msa_mode="linsi",
     short_context_max_length=300,
-    *, target_rows=None,
+    *, target_rows=None, allow_unannotated=False,
 ):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -220,6 +220,7 @@ def build_case(
             copy_role=infer_manifest_copy_role(row),
             flank=flank,
             max_extension=max_extension,
+            allow_unannotated=allow_unannotated,
         )
         appended = True
         segment_count = len(extracted_rows) - previous_count
@@ -230,9 +231,9 @@ def build_case(
                 "species": row.get("species", "NA"),
                 "gene_id": row.get("gene_id", "NA"),
                 "gene_copy_id": row.get("gene_copy_id", "NA"),
-                "status": "extracted",
+                "status": "extracted" if segment_count else "gene_only_unknown",
                 "segment_count": segment_count,
-                "message": "ok",
+                "message": "ok" if segment_count else "No exon inferred from the gene span",
             }
         )
     if species_tree:

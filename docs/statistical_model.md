@@ -1,3 +1,7 @@
+> **V18 legacy documentation.** For the V19 exon configuration model, see
+> [exon_structure_model.md](exon_structure_model.md). The binary layers below are
+> retained historical baselines, not the current default model.
+
 # Statistical model and interpretation
 
 ## Observation and sampling units

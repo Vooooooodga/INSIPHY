@@ -1,0 +1,6 @@
+family_id	unit_id	status	minimum_structural_edits	observation_view	maximum_conditional_minimum	required_edit_placements	possible_edit_placements	possible_placements_are_not_additive	annotation_conditional_minima	evidence_compatible_minima	coexisting_structures	molecular_mutation_count
+Example_gene	split	conditional_structure_inference	1	evidence	1	1	0	True	[1]	[1]	0	not_identified
+Example_gene	fusion	conditional_structure_inference	1	evidence	1	1	0	True	[1]	[1]	0	not_identified
+Example_gene	boundary	conditional_structure_inference	1	evidence	1	1	0	True	[1]	[1]	0	not_identified
+Example_gene	deletion	conditional_structure_inference	1	evidence	1	1	0	True	[1]	[1]	0	not_identified
+Annotation_control	uncertainty	conditional_structure_inference	0	evidence	0	0	0	True	[1]	[0]	0	not_identified

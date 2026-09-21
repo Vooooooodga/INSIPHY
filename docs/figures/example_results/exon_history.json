@@ -1,0 +1,4664 @@
+{
+  "engine": "exon-ctmc",
+  "model": "exon_configuration_v2",
+  "observation_view": "evidence",
+  "tree": [
+    {
+      "branch_length": "NA",
+      "label": "root",
+      "node_id": "root",
+      "parent_id": ""
+    },
+    {
+      "branch_length": 0.5,
+      "label": "AB",
+      "node_id": "AB",
+      "parent_id": "root"
+    },
+    {
+      "branch_length": 0.5,
+      "label": "A",
+      "node_id": "A",
+      "parent_id": "AB"
+    },
+    {
+      "branch_length": 0.5,
+      "label": "B",
+      "node_id": "B",
+      "parent_id": "AB"
+    },
+    {
+      "branch_length": 0.5,
+      "label": "CD",
+      "node_id": "CD",
+      "parent_id": "root"
+    },
+    {
+      "branch_length": 0.5,
+      "label": "C",
+      "node_id": "C",
+      "parent_id": "CD"
+    },
+    {
+      "branch_length": 0.5,
+      "label": "D",
+      "node_id": "D",
+      "parent_id": "CD"
+    }
+  ],
+  "units": [
+    {
+      "catalogue": {
+        "alignment_offset": 0,
+        "boundary_candidates": [
+          {
+            "end": 60,
+            "start": 0
+          },
+          {
+            "end": 180,
+            "start": 0
+          },
+          {
+            "end": 180,
+            "start": 90
+          }
+        ],
+        "discovery": "annotation_discovered",
+        "exon_instances": [],
+        "family": "Example_gene",
+        "insertion_payloads": [],
+        "junctions": [
+          [
+            60,
+            90
+          ]
+        ],
+        "length": 180,
+        "material": [],
+        "observations": [
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "A",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "B",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "C",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 60,
+                    "start": 0
+                  },
+                  {
+                    "end": 180,
+                    "start": 90
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "D",
+            "unknown_intervals": []
+          }
+        ],
+        "reasons": [],
+        "spans": [
+          {
+            "end": 60,
+            "start": 0
+          },
+          {
+            "end": 180,
+            "start": 0
+          },
+          {
+            "end": 180,
+            "start": 90
+          }
+        ],
+        "status": "qualified",
+        "unit": "split"
+      },
+      "ctmc": {
+        "branches": [
+          {
+            "child": "AB",
+            "endpoint_probabilities": [
+              [
+                1.0289195105881286e-05,
+                2.740145540211332e-07,
+                6.959040625475346e-06,
+                0.0003279144004799467,
+                2.740145540211332e-07
+              ],
+              [
+                4.1952172322772554e-07,
+                2.7387696678649832e-05,
+                8.783707309668319e-05,
+                0.000760116699817244,
+                1.6536041857360486e-08
+              ],
+              [
+                1.6134022941144337e-06,
+                1.3301184903802363e-05,
+                0.07979724756110987,
+                0.23032383886288774,
+                1.3301184903802363e-05
+              ],
+              [
+                8.58002791003265e-06,
+                1.2990553685785539e-05,
+                0.025994041226613272,
+                0.661724829721971,
+                1.2990553685785539e-05
+              ],
+              [
+                4.1952172322772554e-07,
+                1.6536041857360486e-08,
+                8.783707309668319e-05,
+                0.000760116699817244,
+                2.7387696678649832e-05
+              ]
+            ],
+            "expected_acceptor_shift": 0.0012037201663663776,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0012037201663663778,
+            "expected_edits": 0.3585335553832785,
+            "expected_exon_inactivation": 0.0006293156634140356,
+            "expected_exonization": 0.0010310683734579436,
+            "expected_fusion": 0.2793592374743561,
+            "expected_split": 0.07510649353931771,
+            "parent": "root",
+            "probability_at_least_one_edit": 0.3023494668188892,
+            "probability_different_endpoints": 0.25841285812845594
+          },
+          {
+            "child": "A",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                2.132166875648384e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                5.39699858641162e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.10597392197454193,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.8938968163849735,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                5.39699858641162e-05,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0005632621349600862,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0005632621349600863,
+            "expected_edits": 0.21794082929816047,
+            "expected_exon_inactivation": 0.0004087942803400624,
+            "expected_exonization": 0.0003098573861889543,
+            "expected_fusion": 0.16097465838667283,
+            "expected_split": 0.05512099497503848,
+            "parent": "AB",
+            "probability_at_least_one_edit": 0.15915905655995377,
+            "probability_different_endpoints": 0.10610318361502646
+          },
+          {
+            "child": "B",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                2.132166875648384e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                5.39699858641162e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.10597392197454193,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.8938968163849735,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                5.39699858641162e-05,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0005632621349600862,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0005632621349600863,
+            "expected_edits": 0.21794082929816047,
+            "expected_exon_inactivation": 0.0004087942803400624,
+            "expected_exonization": 0.0003098573861889543,
+            "expected_fusion": 0.16097465838667283,
+            "expected_split": 0.05512099497503848,
+            "parent": "AB",
+            "probability_at_least_one_edit": 0.15915905655995377,
+            "probability_different_endpoints": 0.10610318361502646
+          },
+          {
+            "child": "CD",
+            "endpoint_probabilities": [
+              [
+                4.847138224299199e-06,
+                7.028883283040985e-07,
+                5.351968053942685e-05,
+                0.00028593806989901183,
+                7.028883283040985e-07
+              ],
+              [
+                1.228549179728991e-07,
+                4.3671921523252335e-05,
+                0.00041992921175857594,
+                0.0004120271710871641,
+                2.6368070698797553e-08
+              ],
+              [
+                2.893818590227457e-07,
+                1.2990553685785539e-05,
+                0.23365586258381968,
+                0.07646716912304885,
+                1.2990553685785539e-05
+              ],
+              [
+                3.5777058250725966e-06,
+                2.9495264066685444e-05,
+                0.17694971580590382,
+                0.5107411480440035,
+                2.9495264066685444e-05
+              ],
+              [
+                1.228549179728991e-07,
+                2.6368070698797553e-08,
+                0.00041992921175857594,
+                0.0004120271710871641,
+                4.3671921523252335e-05
+              ]
+            ],
+            "expected_acceptor_shift": 0.0009003046496929777,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0009003046496929777,
+            "expected_edits": 0.35559725113867857,
+            "expected_exon_inactivation": 0.0004560616256865904,
+            "expected_exonization": 0.0017341010782250912,
+            "expected_fusion": 0.12559905678033173,
+            "expected_split": 0.22600742235504925,
+            "parent": "root",
+            "probability_at_least_one_edit": 0.29947280655452146,
+            "probability_different_endpoints": 0.25551079839090607
+          },
+          {
+            "child": "C",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                8.959935744340346e-06,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                8.688699567472635e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.4114989564937803,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.5883183095791253,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                8.688699567472635e-05,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0006848227347067072,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0006848227347067074,
+            "expected_edits": 0.49984986968838285,
+            "expected_exon_inactivation": 0.0007884875534949552,
+            "expected_exonization": 0.00029598775247128824,
+            "expected_fusion": 0.4541966228350078,
+            "expected_split": 0.043199126077995496,
+            "parent": "CD",
+            "probability_at_least_one_edit": 0.44660042031459624,
+            "probability_different_endpoints": 0.41168169042087466
+          },
+          {
+            "child": "D",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                8.959935744340346e-06,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                8.688699567472635e-05,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.4114989564937803,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.5883183095791253,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                8.688699567472635e-05,
+                0.0,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0004993067574169311,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0004993067574169312,
+            "expected_edits": 0.6621860466988228,
+            "expected_exon_inactivation": 0.00033905568206495936,
+            "expected_exonization": 0.0012500413223388712,
+            "expected_fusion": 0.035999659188947784,
+            "expected_split": 0.6235986769906374,
+            "parent": "CD",
+            "probability_at_least_one_edit": 0.6125364458274458,
+            "probability_different_endpoints": 0.5885010435062197
+          }
+        ],
+        "kernel_cache": {
+          "hits": 5,
+          "limit_bytes": 134217728,
+          "misses": 1,
+          "retained_bytes": 2000
+        },
+        "log_likelihood": -4.070832090378847,
+        "nodes": {
+          "A": [
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "AB": [
+            2.132166875648384e-05,
+            5.39699858641162e-05,
+            0.10597392197454193,
+            0.8938968163849735,
+            5.39699858641162e-05
+          ],
+          "B": [
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "C": [
+            0.0,
+            0.0,
+            0.0,
+            0.9999999999999991,
+            0.0
+          ],
+          "CD": [
+            8.959935744340346e-06,
+            8.688699567472635e-05,
+            0.4114989564937803,
+            0.5883183095791253,
+            8.688699567472635e-05
+          ],
+          "D": [
+            0.0,
+            0.0,
+            0.9999999999999991,
+            0.0,
+            0.0
+          ],
+          "root": [
+            0.00034571066531934627,
+            0.0008757775273576635,
+            0.3101493021960993,
+            0.6877534320838659,
+            0.0008757775273576635
+          ]
+        },
+        "origin_prior": "declared_root_weight_and_unit_branch_opportunities_on_canonical_tree",
+        "origin_root_weight": 1.0,
+        "origins": [
+          {
+            "origins": {},
+            "posterior_weight": 1.0
+          }
+        ],
+        "root_prior": "uniform_valid_exon_geometries_given_origin_opportunities",
+        "tree_normalization": {
+          "collapsed_unobserved_unary_nodes": [],
+          "foreground_children": [],
+          "normalized_edge_to_input_children": {
+            "A": [
+              "A"
+            ],
+            "AB": [
+              "AB"
+            ],
+            "B": [
+              "B"
+            ],
+            "C": [
+              "C"
+            ],
+            "CD": [
+              "CD"
+            ],
+            "D": [
+              "D"
+            ]
+          },
+          "origin_process": "finite_branch_opportunities_not_continuous_immigration",
+          "root_preserved": true
+        }
+      },
+      "family_id": "Example_gene",
+      "origin_prior_sensitivity": [
+        {
+          "conditional_sensitivity_not_model_selection": true,
+          "log_likelihood": -4.070832090378847,
+          "origin_root_weight": 0.25,
+          "root_probabilities": [
+            0.00034571066531934627,
+            0.0008757775273576635,
+            0.3101493021960993,
+            0.6877534320838659,
+            0.0008757775273576635
+          ]
+        },
+        {
+          "conditional_sensitivity_not_model_selection": true,
+          "log_likelihood": -4.070832090378847,
+          "origin_root_weight": 4.0,
+          "root_probabilities": [
+            0.00034571066531934627,
+            0.0008757775273576635,
+            0.3101493021960993,
+            0.6877534320838659,
+            0.0008757775273576635
+          ]
+        }
+      ],
+      "probability_conditions": {
+        "origin_prior": "declared_root_weight_and_unit_branch_opportunities_on_canonical_tree",
+        "origin_scenarios": [
+          {
+            "origins": {},
+            "posterior_weight": 1.0
+          }
+        ],
+        "probability_status": "conditional_on_fixed_parameters_and_declared_catalogue",
+        "root_prior": "uniform_valid_exon_geometries_given_origin_opportunities"
+      },
+      "states": [
+        {
+          "exons": [],
+          "key": "empty|",
+          "material": [],
+          "state_id": "C0000"
+        },
+        {
+          "exons": [
+            [
+              0,
+              60
+            ]
+          ],
+          "key": "0:60|",
+          "material": [],
+          "state_id": "C0001"
+        },
+        {
+          "exons": [
+            [
+              0,
+              60
+            ],
+            [
+              90,
+              180
+            ]
+          ],
+          "key": "0:60,90:180|",
+          "material": [],
+          "state_id": "C0002"
+        },
+        {
+          "exons": [
+            [
+              0,
+              180
+            ]
+          ],
+          "key": "0:180|",
+          "material": [],
+          "state_id": "C0003"
+        },
+        {
+          "exons": [
+            [
+              90,
+              180
+            ]
+          ],
+          "key": "90:180|",
+          "material": [],
+          "state_id": "C0004"
+        }
+      ],
+      "unit_id": "split",
+      "views": {
+        "annotation": {
+          "events": [
+            {
+              "affected_spans": [
+                [
+                  0,
+                  180
+                ]
+              ],
+              "child": "D",
+              "consequences": [
+                "exon_count_plus_one"
+              ],
+              "edit_key": "split:60:90:",
+              "end": 90,
+              "maximum_count": 1,
+              "minimum_count": 1,
+              "molecular_mutation_count": "not_identified",
+              "observation_scenarios": 1,
+              "operation": "split",
+              "parent": "CD",
+              "start": 60,
+              "support": "required"
+            }
+          ],
+          "histories": [
+            {
+              "events": [
+                {
+                  "affected_spans": [
+                    [
+                      0,
+                      180
+                    ]
+                  ],
+                  "child": "D",
+                  "consequences": [
+                    "exon_count_plus_one"
+                  ],
+                  "edit_key": "split:60:90:",
+                  "end": 90,
+                  "maximum_count": 1,
+                  "minimum_count": 1,
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "split",
+                  "parent": "CD",
+                  "start": 60,
+                  "support": "required"
+                }
+              ],
+              "minimum_cost": 1.0,
+              "minimum_structural_edits": 1,
+              "nodes": {
+                "A": [
+                  3
+                ],
+                "AB": [
+                  3
+                ],
+                "B": [
+                  3
+                ],
+                "C": [
+                  3
+                ],
+                "CD": [
+                  3
+                ],
+                "D": [
+                  2
+                ],
+                "root": [
+                  3
+                ]
+              },
+              "observation_scenario": "single_structure",
+              "optimal_origin_scenarios": 1,
+              "pairs": [
+                {
+                  "child": "AB",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "A",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "B",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "CD",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "C",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "CD"
+                },
+                {
+                  "child": "D",
+                  "pairs": [
+                    [
+                      3,
+                      2
+                    ]
+                  ],
+                  "parent": "CD"
+                }
+              ],
+              "representative_edit_count": 1,
+              "representative_origins": {},
+              "representative_states": {
+                "A": 3,
+                "AB": 3,
+                "B": 3,
+                "C": 3,
+                "CD": 3,
+                "D": 2,
+                "root": 3
+              },
+              "status": "conditional_on_catalogue_and_observation",
+              "witness": [
+                {
+                  "child": "D",
+                  "consequences": [
+                    "exon_count_plus_one"
+                  ],
+                  "edit_key": "split:60:90:",
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "split",
+                  "order": 1,
+                  "parent": "CD",
+                  "source": 3,
+                  "target": 2
+                }
+              ]
+            }
+          ]
+        },
+        "evidence": {
+          "events": [
+            {
+              "affected_spans": [
+                [
+                  0,
+                  180
+                ]
+              ],
+              "child": "D",
+              "consequences": [
+                "exon_count_plus_one"
+              ],
+              "edit_key": "split:60:90:",
+              "end": 90,
+              "maximum_count": 1,
+              "minimum_count": 1,
+              "molecular_mutation_count": "not_identified",
+              "observation_scenarios": 1,
+              "operation": "split",
+              "parent": "CD",
+              "start": 60,
+              "support": "required"
+            }
+          ],
+          "histories": [
+            {
+              "events": [
+                {
+                  "affected_spans": [
+                    [
+                      0,
+                      180
+                    ]
+                  ],
+                  "child": "D",
+                  "consequences": [
+                    "exon_count_plus_one"
+                  ],
+                  "edit_key": "split:60:90:",
+                  "end": 90,
+                  "maximum_count": 1,
+                  "minimum_count": 1,
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "split",
+                  "parent": "CD",
+                  "start": 60,
+                  "support": "required"
+                }
+              ],
+              "minimum_cost": 1.0,
+              "minimum_structural_edits": 1,
+              "nodes": {
+                "A": [
+                  3
+                ],
+                "AB": [
+                  3
+                ],
+                "B": [
+                  3
+                ],
+                "C": [
+                  3
+                ],
+                "CD": [
+                  3
+                ],
+                "D": [
+                  2
+                ],
+                "root": [
+                  3
+                ]
+              },
+              "observation_scenario": "single_structure",
+              "optimal_origin_scenarios": 1,
+              "pairs": [
+                {
+                  "child": "AB",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "A",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "B",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "CD",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "C",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "CD"
+                },
+                {
+                  "child": "D",
+                  "pairs": [
+                    [
+                      3,
+                      2
+                    ]
+                  ],
+                  "parent": "CD"
+                }
+              ],
+              "representative_edit_count": 1,
+              "representative_origins": {},
+              "representative_states": {
+                "A": 3,
+                "AB": 3,
+                "B": 3,
+                "C": 3,
+                "CD": 3,
+                "D": 2,
+                "root": 3
+              },
+              "status": "conditional_on_catalogue_and_observation",
+              "witness": [
+                {
+                  "child": "D",
+                  "consequences": [
+                    "exon_count_plus_one"
+                  ],
+                  "edit_key": "split:60:90:",
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "split",
+                  "order": 1,
+                  "parent": "CD",
+                  "source": 3,
+                  "target": 2
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "catalogue": {
+        "alignment_offset": 250,
+        "boundary_candidates": [
+          {
+            "end": 60,
+            "start": 0
+          },
+          {
+            "end": 180,
+            "start": 0
+          },
+          {
+            "end": 180,
+            "start": 90
+          }
+        ],
+        "discovery": "annotation_discovered",
+        "exon_instances": [],
+        "family": "Example_gene",
+        "insertion_payloads": [],
+        "junctions": [
+          [
+            60,
+            90
+          ]
+        ],
+        "length": 180,
+        "material": [],
+        "observations": [
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 60,
+                    "start": 0
+                  },
+                  {
+                    "end": 180,
+                    "start": 90
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "A",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "B",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 60,
+                    "start": 0
+                  },
+                  {
+                    "end": 180,
+                    "start": 90
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "C",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 60,
+                    "start": 0
+                  },
+                  {
+                    "end": 180,
+                    "start": 90
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "D",
+            "unknown_intervals": []
+          }
+        ],
+        "reasons": [],
+        "spans": [
+          {
+            "end": 60,
+            "start": 0
+          },
+          {
+            "end": 180,
+            "start": 0
+          },
+          {
+            "end": 180,
+            "start": 90
+          }
+        ],
+        "status": "qualified",
+        "unit": "fusion"
+      },
+      "ctmc": {
+        "branches": [
+          {
+            "child": "AB",
+            "endpoint_probabilities": [
+              [
+                1.3455570280403377e-06,
+                1.9512056110465909e-07,
+                1.4856968989926244e-05,
+                7.937590424142088e-05,
+                1.9512056110465909e-07
+              ],
+              [
+                1.2019787197033006e-07,
+                4.2727406591148e-05,
+                0.00041084718841042457,
+                0.00040311604920494136,
+                2.5797794978446368e-08
+              ],
+              [
+                6.57312528998811e-07,
+                2.9507218334744877e-05,
+                0.5307344643822235,
+                0.17369032216252467,
+                2.9507218334744877e-05
+              ],
+              [
+                1.5278634164391187e-06,
+                1.2595986682271633e-05,
+                0.07556658108514377,
+                0.21811259883300083,
+                1.2595986682271633e-05
+              ],
+              [
+                1.2019787197033006e-07,
+                2.5797794978446368e-08,
+                0.00041084718841042457,
+                0.00040311604920494136,
+                4.2727406591148e-05
+              ]
+            ],
+            "expected_acceptor_shift": 0.0007473767412600836,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0007473767412600838,
+            "expected_edits": 0.3508804112701778,
+            "expected_exon_inactivation": 0.0006628500869842081,
+            "expected_exonization": 0.0013959489901035718,
+            "expected_fusion": 0.2226573107758969,
+            "expected_split": 0.12466954793467308,
+            "parent": "root",
+            "probability_at_least_one_edit": 0.29501180258312043,
+            "probability_different_endpoints": 0.2510661364145653
+          },
+          {
+            "child": "A",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                3.7711287174189193e-06,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                8.505152996424775e-05,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.6071375968131785,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.39268852899817663,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                8.505152996424775e-05,
+                0.0,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.00035445064468263336,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0003544506446826334,
+            "expected_edits": 0.48132607839938396,
+            "expected_exon_inactivation": 0.00038634491133620263,
+            "expected_exonization": 0.0010384365013751083,
+            "expected_fusion": 0.04348915648590318,
+            "expected_split": 0.4357032392114043,
+            "parent": "AB",
+            "probability_at_least_one_edit": 0.4283249388104512,
+            "probability_different_endpoints": 0.39286240318682153
+          },
+          {
+            "child": "B",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                3.7711287174189193e-06,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                8.505152996424775e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.6071375968131785,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.39268852899817663,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                8.505152996424775e-05,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0007432021160569024,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0007432021160569026,
+            "expected_edits": 0.6803201382860982,
+            "expected_exon_inactivation": 0.0010312074130404115,
+            "expected_exonization": 0.00028301684271299534,
+            "expected_fusion": 0.6419525724561823,
+            "expected_split": 0.035566937342048764,
+            "parent": "AB",
+            "probability_at_least_one_edit": 0.6306188956615448,
+            "probability_different_endpoints": 0.6073114710018234
+          },
+          {
+            "child": "CD",
+            "endpoint_probabilities": [
+              [
+                3.286289855673629e-07,
+                2.5948693279289213e-07,
+                5.923714413349144e-05,
+                3.5883924396952134e-05,
+                2.5948693279289213e-07
+              ],
+              [
+                1.3399201483602459e-08,
+                2.5935664011689025e-05,
+                0.0007476917637532592,
+                8.318015356806747e-05,
+                1.5659338962595495e-08
+              ],
+              [
+                5.153082955184861e-08,
+                1.2595986682271633e-05,
+                0.6792547004150415,
+                0.025204514374711266,
+                1.2595986682271633e-05
+              ],
+              [
+                2.7403949863891554e-07,
+                1.2301824416764051e-05,
+                0.22126796632224413,
+                0.07241305574434923,
+                1.2301824416764051e-05
+              ],
+              [
+                1.3399201483602459e-08,
+                1.5659338962595495e-08,
+                0.0007476917637532592,
+                8.318015356806747e-05,
+                2.5935664011689025e-05
+              ]
+            ],
+            "expected_acceptor_shift": 0.00045432763449896897,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0004543276344989691,
+            "expected_edits": 0.34806725354444595,
+            "expected_exon_inactivation": 0.00046721910424123587,
+            "expected_exonization": 0.0021026860584740935,
+            "expected_fusion": 0.07426802163916096,
+            "expected_split": 0.2703206714735718,
+            "parent": "root",
+            "probability_at_least_one_edit": 0.29225289265563525,
+            "probability_different_endpoints": 0.24828004388360037
+          },
+          {
+            "child": "C",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                6.809977167253312e-07,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                5.110862138248018e-05,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.9020772874089253,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.09781981435059355,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                5.110862138248018e-05,
+                0.0,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0001317761218776587,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.00013177612187765872,
+            "expected_edits": 0.2086626126051681,
+            "expected_exon_inactivation": 0.00045757329447051245,
+            "expected_exonization": 0.000671136438195225,
+            "expected_fusion": 0.054780260091839894,
+            "expected_split": 0.15249009053690715,
+            "parent": "CD",
+            "probability_at_least_one_edit": 0.15061249511799957,
+            "probability_different_endpoints": 0.09792271259107466
+          },
+          {
+            "child": "D",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                6.809977167253312e-07,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                5.110862138248018e-05,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.9020772874089253,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.09781981435059355,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                5.110862138248018e-05,
+                0.0,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0001317761218776587,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.00013177612187765872,
+            "expected_edits": 0.2086626126051681,
+            "expected_exon_inactivation": 0.00045757329447051245,
+            "expected_exonization": 0.000671136438195225,
+            "expected_fusion": 0.054780260091839894,
+            "expected_split": 0.15249009053690715,
+            "parent": "CD",
+            "probability_at_least_one_edit": 0.15061249511799957,
+            "probability_different_endpoints": 0.09792271259107466
+          }
+        ],
+        "kernel_cache": {
+          "hits": 5,
+          "limit_bytes": 134217728,
+          "misses": 1,
+          "retained_bytes": 2000
+        },
+        "log_likelihood": -4.016357214548007,
+        "nodes": {
+          "A": [
+            0.0,
+            0.0,
+            1.0000000000000009,
+            0.0,
+            0.0
+          ],
+          "AB": [
+            3.7711287174189193e-06,
+            8.50515299642476e-05,
+            0.6071375968131785,
+            0.39268852899817663,
+            8.50515299642476e-05
+          ],
+          "B": [
+            0.0,
+            0.0,
+            0.0,
+            1.0000000000000009,
+            0.0
+          ],
+          "C": [
+            0.0,
+            0.0,
+            1.0000000000000009,
+            0.0,
+            0.0
+          ],
+          "CD": [
+            6.809977167253312e-07,
+            5.110862138248018e-05,
+            0.9020772874089253,
+            0.09781981435059355,
+            5.110862138248018e-05
+          ],
+          "D": [
+            0.0,
+            0.0,
+            1.0000000000000009,
+            0.0,
+            0.0
+          ],
+          "root": [
+            9.596867138159683e-05,
+            0.0008568366398734636,
+            0.7044844582939465,
+            0.2937058997549254,
+            0.0008568366398734636
+          ]
+        },
+        "origin_prior": "declared_root_weight_and_unit_branch_opportunities_on_canonical_tree",
+        "origin_root_weight": 1.0,
+        "origins": [
+          {
+            "origins": {},
+            "posterior_weight": 1.0
+          }
+        ],
+        "root_prior": "uniform_valid_exon_geometries_given_origin_opportunities",
+        "tree_normalization": {
+          "collapsed_unobserved_unary_nodes": [],
+          "foreground_children": [],
+          "normalized_edge_to_input_children": {
+            "A": [
+              "A"
+            ],
+            "AB": [
+              "AB"
+            ],
+            "B": [
+              "B"
+            ],
+            "C": [
+              "C"
+            ],
+            "CD": [
+              "CD"
+            ],
+            "D": [
+              "D"
+            ]
+          },
+          "origin_process": "finite_branch_opportunities_not_continuous_immigration",
+          "root_preserved": true
+        }
+      },
+      "family_id": "Example_gene",
+      "origin_prior_sensitivity": [
+        {
+          "conditional_sensitivity_not_model_selection": true,
+          "log_likelihood": -4.016357214548007,
+          "origin_root_weight": 0.25,
+          "root_probabilities": [
+            9.596867138159683e-05,
+            0.0008568366398734636,
+            0.7044844582939465,
+            0.2937058997549254,
+            0.0008568366398734636
+          ]
+        },
+        {
+          "conditional_sensitivity_not_model_selection": true,
+          "log_likelihood": -4.016357214548007,
+          "origin_root_weight": 4.0,
+          "root_probabilities": [
+            9.596867138159683e-05,
+            0.0008568366398734636,
+            0.7044844582939465,
+            0.2937058997549254,
+            0.0008568366398734636
+          ]
+        }
+      ],
+      "probability_conditions": {
+        "origin_prior": "declared_root_weight_and_unit_branch_opportunities_on_canonical_tree",
+        "origin_scenarios": [
+          {
+            "origins": {},
+            "posterior_weight": 1.0
+          }
+        ],
+        "probability_status": "conditional_on_fixed_parameters_and_declared_catalogue",
+        "root_prior": "uniform_valid_exon_geometries_given_origin_opportunities"
+      },
+      "states": [
+        {
+          "exons": [],
+          "key": "empty|",
+          "material": [],
+          "state_id": "C0000"
+        },
+        {
+          "exons": [
+            [
+              0,
+              60
+            ]
+          ],
+          "key": "0:60|",
+          "material": [],
+          "state_id": "C0001"
+        },
+        {
+          "exons": [
+            [
+              0,
+              60
+            ],
+            [
+              90,
+              180
+            ]
+          ],
+          "key": "0:60,90:180|",
+          "material": [],
+          "state_id": "C0002"
+        },
+        {
+          "exons": [
+            [
+              0,
+              180
+            ]
+          ],
+          "key": "0:180|",
+          "material": [],
+          "state_id": "C0003"
+        },
+        {
+          "exons": [
+            [
+              90,
+              180
+            ]
+          ],
+          "key": "90:180|",
+          "material": [],
+          "state_id": "C0004"
+        }
+      ],
+      "unit_id": "fusion",
+      "views": {
+        "annotation": {
+          "events": [
+            {
+              "affected_spans": [
+                [
+                  0,
+                  60
+                ],
+                [
+                  90,
+                  180
+                ]
+              ],
+              "child": "B",
+              "consequences": [
+                "exon_count_minus_one",
+                "intervening_DNA_retained"
+              ],
+              "edit_key": "fusion:60:90:",
+              "end": 90,
+              "maximum_count": 1,
+              "minimum_count": 1,
+              "molecular_mutation_count": "not_identified",
+              "observation_scenarios": 1,
+              "operation": "fusion",
+              "parent": "AB",
+              "start": 60,
+              "support": "required"
+            }
+          ],
+          "histories": [
+            {
+              "events": [
+                {
+                  "affected_spans": [
+                    [
+                      0,
+                      60
+                    ],
+                    [
+                      90,
+                      180
+                    ]
+                  ],
+                  "child": "B",
+                  "consequences": [
+                    "exon_count_minus_one",
+                    "intervening_DNA_retained"
+                  ],
+                  "edit_key": "fusion:60:90:",
+                  "end": 90,
+                  "maximum_count": 1,
+                  "minimum_count": 1,
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "fusion",
+                  "parent": "AB",
+                  "start": 60,
+                  "support": "required"
+                }
+              ],
+              "minimum_cost": 1.0,
+              "minimum_structural_edits": 1,
+              "nodes": {
+                "A": [
+                  2
+                ],
+                "AB": [
+                  2
+                ],
+                "B": [
+                  3
+                ],
+                "C": [
+                  2
+                ],
+                "CD": [
+                  2
+                ],
+                "D": [
+                  2
+                ],
+                "root": [
+                  2
+                ]
+              },
+              "observation_scenario": "single_structure",
+              "optimal_origin_scenarios": 1,
+              "pairs": [
+                {
+                  "child": "AB",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "A",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "B",
+                  "pairs": [
+                    [
+                      2,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "CD",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "C",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "CD"
+                },
+                {
+                  "child": "D",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "CD"
+                }
+              ],
+              "representative_edit_count": 1,
+              "representative_origins": {},
+              "representative_states": {
+                "A": 2,
+                "AB": 2,
+                "B": 3,
+                "C": 2,
+                "CD": 2,
+                "D": 2,
+                "root": 2
+              },
+              "status": "conditional_on_catalogue_and_observation",
+              "witness": [
+                {
+                  "child": "B",
+                  "consequences": [
+                    "exon_count_minus_one",
+                    "intervening_DNA_retained"
+                  ],
+                  "edit_key": "fusion:60:90:",
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "fusion",
+                  "order": 1,
+                  "parent": "AB",
+                  "source": 2,
+                  "target": 3
+                }
+              ]
+            }
+          ]
+        },
+        "evidence": {
+          "events": [
+            {
+              "affected_spans": [
+                [
+                  0,
+                  60
+                ],
+                [
+                  90,
+                  180
+                ]
+              ],
+              "child": "B",
+              "consequences": [
+                "exon_count_minus_one",
+                "intervening_DNA_retained"
+              ],
+              "edit_key": "fusion:60:90:",
+              "end": 90,
+              "maximum_count": 1,
+              "minimum_count": 1,
+              "molecular_mutation_count": "not_identified",
+              "observation_scenarios": 1,
+              "operation": "fusion",
+              "parent": "AB",
+              "start": 60,
+              "support": "required"
+            }
+          ],
+          "histories": [
+            {
+              "events": [
+                {
+                  "affected_spans": [
+                    [
+                      0,
+                      60
+                    ],
+                    [
+                      90,
+                      180
+                    ]
+                  ],
+                  "child": "B",
+                  "consequences": [
+                    "exon_count_minus_one",
+                    "intervening_DNA_retained"
+                  ],
+                  "edit_key": "fusion:60:90:",
+                  "end": 90,
+                  "maximum_count": 1,
+                  "minimum_count": 1,
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "fusion",
+                  "parent": "AB",
+                  "start": 60,
+                  "support": "required"
+                }
+              ],
+              "minimum_cost": 1.0,
+              "minimum_structural_edits": 1,
+              "nodes": {
+                "A": [
+                  2
+                ],
+                "AB": [
+                  2
+                ],
+                "B": [
+                  3
+                ],
+                "C": [
+                  2
+                ],
+                "CD": [
+                  2
+                ],
+                "D": [
+                  2
+                ],
+                "root": [
+                  2
+                ]
+              },
+              "observation_scenario": "single_structure",
+              "optimal_origin_scenarios": 1,
+              "pairs": [
+                {
+                  "child": "AB",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "A",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "B",
+                  "pairs": [
+                    [
+                      2,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "CD",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "C",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "CD"
+                },
+                {
+                  "child": "D",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "CD"
+                }
+              ],
+              "representative_edit_count": 1,
+              "representative_origins": {},
+              "representative_states": {
+                "A": 2,
+                "AB": 2,
+                "B": 3,
+                "C": 2,
+                "CD": 2,
+                "D": 2,
+                "root": 2
+              },
+              "status": "conditional_on_catalogue_and_observation",
+              "witness": [
+                {
+                  "child": "B",
+                  "consequences": [
+                    "exon_count_minus_one",
+                    "intervening_DNA_retained"
+                  ],
+                  "edit_key": "fusion:60:90:",
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "fusion",
+                  "order": 1,
+                  "parent": "AB",
+                  "source": 2,
+                  "target": 3
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "catalogue": {
+        "alignment_offset": 500,
+        "boundary_candidates": [
+          {
+            "end": 168,
+            "start": 0
+          },
+          {
+            "end": 180,
+            "start": 0
+          }
+        ],
+        "discovery": "annotation_discovered",
+        "exon_instances": [],
+        "family": "Example_gene",
+        "insertion_payloads": [],
+        "junctions": [],
+        "length": 180,
+        "material": [],
+        "observations": [
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "A",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "B",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 168,
+                    "start": 0
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "C",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "D",
+            "unknown_intervals": []
+          }
+        ],
+        "reasons": [],
+        "spans": [
+          {
+            "end": 168,
+            "start": 0
+          },
+          {
+            "end": 180,
+            "start": 0
+          }
+        ],
+        "status": "qualified",
+        "unit": "boundary"
+      },
+      "ctmc": {
+        "branches": [
+          {
+            "child": "AB",
+            "endpoint_probabilities": [
+              [
+                2.3695490969063025e-05,
+                4.785517802630053e-07,
+                0.001173282214009042
+              ],
+              [
+                8.061235844503936e-06,
+                0.00039915208558612207,
+                0.01976401515859075
+              ],
+              [
+                8.061235844503936e-06,
+                8.061235844503936e-06,
+                0.9786151927915313
+              ]
+            ],
+            "expected_acceptor_shift": 0.0,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.019985030863314407,
+            "expected_edits": 0.021968769636687962,
+            "expected_exon_inactivation": 0.000413050239636629,
+            "expected_exonization": 0.0015706885337369257,
+            "expected_fusion": 0.0,
+            "expected_split": 0.0,
+            "parent": "root",
+            "probability_at_least_one_edit": 0.021356066331190915,
+            "probability_different_endpoints": 0.020961959631913496
+          },
+          {
+            "child": "A",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                3.9817962658070895e-05
+              ],
+              [
+                0.0,
+                0.0,
+                0.00040769187321088946
+              ],
+              [
+                0.0,
+                0.0,
+                0.9995524901641322
+              ]
+            ],
+            "expected_acceptor_shift": 0.0,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0008065011282821458,
+            "expected_edits": 0.0012595936885297617,
+            "expected_exon_inactivation": 0.00020663729879477258,
+            "expected_exonization": 0.0002464552614528434,
+            "expected_fusion": 0.0,
+            "expected_split": 0.0,
+            "parent": "AB",
+            "probability_at_least_one_edit": 0.0008498745208037617,
+            "probability_different_endpoints": 0.000447509835867832
+          },
+          {
+            "child": "B",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                3.9817962658070895e-05
+              ],
+              [
+                0.0,
+                0.0,
+                0.00040769187321088946
+              ],
+              [
+                0.0,
+                0.0,
+                0.9995524901641322
+              ]
+            ],
+            "expected_acceptor_shift": 0.0,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0008065011282821458,
+            "expected_edits": 0.0012595936885297617,
+            "expected_exon_inactivation": 0.00020663729879477258,
+            "expected_exonization": 0.0002464552614528434,
+            "expected_fusion": 0.0,
+            "expected_split": 0.0,
+            "parent": "AB",
+            "probability_at_least_one_edit": 0.0008498745208037617,
+            "probability_different_endpoints": 0.000447509835867832
+          },
+          {
+            "child": "CD",
+            "endpoint_probabilities": [
+              [
+                0.0003991520855861228,
+                0.0003991520855861228,
+                0.00039915208558612207
+              ],
+              [
+                8.061235844503936e-06,
+                0.01976401515859075,
+                0.00039915208558612207
+              ],
+              [
+                0.00039110051452580463,
+                0.01936534162478489,
+                0.9588748731239096
+              ]
+            ],
+            "expected_acceptor_shift": 0.0,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.019977448179250176,
+            "expected_edits": 0.02196876963668797,
+            "expected_exon_inactivation": 0.0007960895183179299,
+            "expected_exonization": 0.0011952319391198658,
+            "expected_fusion": 0.0,
+            "expected_split": 0.0,
+            "parent": "root",
+            "probability_at_least_one_edit": 0.021356066331190804,
+            "probability_different_endpoints": 0.020961959631913496
+          },
+          {
+            "child": "C",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0007983138359564311,
+                0.0
+              ],
+              [
+                0.0,
+                0.039528508868961754,
+                0.0
+              ],
+              [
+                0.0,
+                0.9596731772950824,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.9503242786354418,
+            "expected_edits": 0.9703962627561219,
+            "expected_exon_inactivation": 0.00963683514236191,
+            "expected_exonization": 0.01043514897831834,
+            "expected_fusion": 0.0,
+            "expected_split": 0.0,
+            "parent": "CD",
+            "probability_at_least_one_edit": 0.9604874031278303,
+            "probability_different_endpoints": 0.9604714911310382
+          },
+          {
+            "child": "D",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0007983138359564311
+              ],
+              [
+                0.0,
+                0.0,
+                0.039528508868961754
+              ],
+              [
+                0.0,
+                0.0,
+                0.9596731772950824
+              ]
+            ],
+            "expected_acceptor_shift": 0.0,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.03953679355472306,
+            "expected_edits": 0.041517446816817204,
+            "expected_exon_inactivation": 0.0005911697130688539,
+            "expected_exonization": 0.0013894835490252848,
+            "expected_fusion": 0.0,
+            "expected_split": 0.0,
+            "parent": "CD",
+            "probability_at_least_one_edit": 0.040713134178725685,
+            "probability_different_endpoints": 0.04032682270491761
+          }
+        ],
+        "kernel_cache": {
+          "hits": 5,
+          "limit_bytes": 134217728,
+          "misses": 1,
+          "retained_bytes": 720
+        },
+        "log_likelihood": -5.196461005576525,
+        "nodes": {
+          "A": [
+            0.0,
+            0.0,
+            1.0000000000000009
+          ],
+          "AB": [
+            3.9817962658070895e-05,
+            0.00040769187321088946,
+            0.9995524901641313
+          ],
+          "B": [
+            0.0,
+            0.0,
+            1.0000000000000009
+          ],
+          "C": [
+            0.0,
+            1.0000000000000009,
+            0.0
+          ],
+          "CD": [
+            0.0007983138359564311,
+            0.039528508868961754,
+            0.9596731772950824
+          ],
+          "D": [
+            0.0,
+            0.0,
+            1.0000000000000009
+          ],
+          "root": [
+            0.0011974562567583697,
+            0.020171228480021373,
+            0.97863131526322
+          ]
+        },
+        "origin_prior": "declared_root_weight_and_unit_branch_opportunities_on_canonical_tree",
+        "origin_root_weight": 1.0,
+        "origins": [
+          {
+            "origins": {},
+            "posterior_weight": 1.0
+          }
+        ],
+        "root_prior": "uniform_valid_exon_geometries_given_origin_opportunities",
+        "tree_normalization": {
+          "collapsed_unobserved_unary_nodes": [],
+          "foreground_children": [],
+          "normalized_edge_to_input_children": {
+            "A": [
+              "A"
+            ],
+            "AB": [
+              "AB"
+            ],
+            "B": [
+              "B"
+            ],
+            "C": [
+              "C"
+            ],
+            "CD": [
+              "CD"
+            ],
+            "D": [
+              "D"
+            ]
+          },
+          "origin_process": "finite_branch_opportunities_not_continuous_immigration",
+          "root_preserved": true
+        }
+      },
+      "family_id": "Example_gene",
+      "origin_prior_sensitivity": [
+        {
+          "conditional_sensitivity_not_model_selection": true,
+          "log_likelihood": -5.196461005576525,
+          "origin_root_weight": 0.25,
+          "root_probabilities": [
+            0.0011974562567583697,
+            0.020171228480021373,
+            0.97863131526322
+          ]
+        },
+        {
+          "conditional_sensitivity_not_model_selection": true,
+          "log_likelihood": -5.196461005576525,
+          "origin_root_weight": 4.0,
+          "root_probabilities": [
+            0.0011974562567583697,
+            0.020171228480021373,
+            0.97863131526322
+          ]
+        }
+      ],
+      "probability_conditions": {
+        "origin_prior": "declared_root_weight_and_unit_branch_opportunities_on_canonical_tree",
+        "origin_scenarios": [
+          {
+            "origins": {},
+            "posterior_weight": 1.0
+          }
+        ],
+        "probability_status": "conditional_on_fixed_parameters_and_declared_catalogue",
+        "root_prior": "uniform_valid_exon_geometries_given_origin_opportunities"
+      },
+      "states": [
+        {
+          "exons": [],
+          "key": "empty|",
+          "material": [],
+          "state_id": "C0000"
+        },
+        {
+          "exons": [
+            [
+              0,
+              168
+            ]
+          ],
+          "key": "0:168|",
+          "material": [],
+          "state_id": "C0001"
+        },
+        {
+          "exons": [
+            [
+              0,
+              180
+            ]
+          ],
+          "key": "0:180|",
+          "material": [],
+          "state_id": "C0002"
+        }
+      ],
+      "unit_id": "boundary",
+      "views": {
+        "annotation": {
+          "events": [
+            {
+              "affected_spans": [
+                [
+                  0,
+                  180
+                ]
+              ],
+              "child": "C",
+              "consequences": [],
+              "edit_key": "donor_shift:180:168:",
+              "end": 168,
+              "maximum_count": 1,
+              "minimum_count": 1,
+              "molecular_mutation_count": "not_identified",
+              "observation_scenarios": 1,
+              "operation": "donor_shift",
+              "parent": "CD",
+              "start": 180,
+              "support": "required"
+            }
+          ],
+          "histories": [
+            {
+              "events": [
+                {
+                  "affected_spans": [
+                    [
+                      0,
+                      180
+                    ]
+                  ],
+                  "child": "C",
+                  "consequences": [],
+                  "edit_key": "donor_shift:180:168:",
+                  "end": 168,
+                  "maximum_count": 1,
+                  "minimum_count": 1,
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "donor_shift",
+                  "parent": "CD",
+                  "start": 180,
+                  "support": "required"
+                }
+              ],
+              "minimum_cost": 1.0,
+              "minimum_structural_edits": 1,
+              "nodes": {
+                "A": [
+                  2
+                ],
+                "AB": [
+                  2
+                ],
+                "B": [
+                  2
+                ],
+                "C": [
+                  1
+                ],
+                "CD": [
+                  2
+                ],
+                "D": [
+                  2
+                ],
+                "root": [
+                  2
+                ]
+              },
+              "observation_scenario": "single_structure",
+              "optimal_origin_scenarios": 1,
+              "pairs": [
+                {
+                  "child": "AB",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "A",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "B",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "CD",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "C",
+                  "pairs": [
+                    [
+                      2,
+                      1
+                    ]
+                  ],
+                  "parent": "CD"
+                },
+                {
+                  "child": "D",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "CD"
+                }
+              ],
+              "representative_edit_count": 1,
+              "representative_origins": {},
+              "representative_states": {
+                "A": 2,
+                "AB": 2,
+                "B": 2,
+                "C": 1,
+                "CD": 2,
+                "D": 2,
+                "root": 2
+              },
+              "status": "conditional_on_catalogue_and_observation",
+              "witness": [
+                {
+                  "child": "C",
+                  "consequences": [],
+                  "edit_key": "donor_shift:180:168:",
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "donor_shift",
+                  "order": 1,
+                  "parent": "CD",
+                  "source": 2,
+                  "target": 1
+                }
+              ]
+            }
+          ]
+        },
+        "evidence": {
+          "events": [
+            {
+              "affected_spans": [
+                [
+                  0,
+                  180
+                ]
+              ],
+              "child": "C",
+              "consequences": [],
+              "edit_key": "donor_shift:180:168:",
+              "end": 168,
+              "maximum_count": 1,
+              "minimum_count": 1,
+              "molecular_mutation_count": "not_identified",
+              "observation_scenarios": 1,
+              "operation": "donor_shift",
+              "parent": "CD",
+              "start": 180,
+              "support": "required"
+            }
+          ],
+          "histories": [
+            {
+              "events": [
+                {
+                  "affected_spans": [
+                    [
+                      0,
+                      180
+                    ]
+                  ],
+                  "child": "C",
+                  "consequences": [],
+                  "edit_key": "donor_shift:180:168:",
+                  "end": 168,
+                  "maximum_count": 1,
+                  "minimum_count": 1,
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "donor_shift",
+                  "parent": "CD",
+                  "start": 180,
+                  "support": "required"
+                }
+              ],
+              "minimum_cost": 1.0,
+              "minimum_structural_edits": 1,
+              "nodes": {
+                "A": [
+                  2
+                ],
+                "AB": [
+                  2
+                ],
+                "B": [
+                  2
+                ],
+                "C": [
+                  1
+                ],
+                "CD": [
+                  2
+                ],
+                "D": [
+                  2
+                ],
+                "root": [
+                  2
+                ]
+              },
+              "observation_scenario": "single_structure",
+              "optimal_origin_scenarios": 1,
+              "pairs": [
+                {
+                  "child": "AB",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "A",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "B",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "CD",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "C",
+                  "pairs": [
+                    [
+                      2,
+                      1
+                    ]
+                  ],
+                  "parent": "CD"
+                },
+                {
+                  "child": "D",
+                  "pairs": [
+                    [
+                      2,
+                      2
+                    ]
+                  ],
+                  "parent": "CD"
+                }
+              ],
+              "representative_edit_count": 1,
+              "representative_origins": {},
+              "representative_states": {
+                "A": 2,
+                "AB": 2,
+                "B": 2,
+                "C": 1,
+                "CD": 2,
+                "D": 2,
+                "root": 2
+              },
+              "status": "conditional_on_catalogue_and_observation",
+              "witness": [
+                {
+                  "child": "C",
+                  "consequences": [],
+                  "edit_key": "donor_shift:180:168:",
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "donor_shift",
+                  "order": 1,
+                  "parent": "CD",
+                  "source": 2,
+                  "target": 1
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "catalogue": {
+        "alignment_offset": 750,
+        "boundary_candidates": [
+          {
+            "end": 180,
+            "start": 0
+          }
+        ],
+        "discovery": "annotation_discovered",
+        "exon_instances": [],
+        "family": "Example_gene",
+        "insertion_payloads": [],
+        "junctions": [],
+        "length": 180,
+        "material": [
+          {
+            "end": 180,
+            "id": "source_exon",
+            "start": 0
+          }
+        ],
+        "observations": [
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": [
+                  1
+                ]
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [
+              1
+            ],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "A",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": [
+                  1
+                ]
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [
+              1
+            ],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "B",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": [
+                  1
+                ]
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [
+              1
+            ],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "C",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [],
+                "material": [
+                  0
+                ]
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [
+              0
+            ],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "D",
+            "unknown_intervals": []
+          }
+        ],
+        "reasons": [],
+        "spans": [
+          {
+            "end": 180,
+            "start": 0
+          }
+        ],
+        "status": "qualified",
+        "unit": "deletion"
+      },
+      "ctmc": {
+        "branches": [
+          {
+            "child": "AB",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                1.5974054846486768e-05,
+                0.0,
+                0.0007988092331835901
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                7.990221382456139e-06,
+                0.0,
+                0.999177226490588
+              ]
+            ],
+            "expected_acceptor_shift": 0.0,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0,
+            "expected_edits": 0.001206531023397357,
+            "expected_exon_inactivation": 0.0002078560057981116,
+            "expected_exonization": 0.0009986750175992455,
+            "expected_fusion": 0.0,
+            "expected_split": 0.0,
+            "parent": "root",
+            "probability_at_least_one_edit": 0.0010066047936514444,
+            "probability_different_endpoints": 0.000806799454565521
+          },
+          {
+            "child": "A",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                2.3964276228942873e-05
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.9999760357237715
+              ]
+            ],
+            "expected_acceptor_shift": 0.0,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0,
+            "expected_edits": 0.00042390456214658786,
+            "expected_exon_inactivation": 0.00019997014295882249,
+            "expected_exonization": 0.00022393441918776535,
+            "expected_fusion": 0.0,
+            "expected_split": 0.0,
+            "parent": "AB",
+            "probability_at_least_one_edit": 0.00022392615625999035,
+            "probability_different_endpoints": 2.396427622852748e-05
+          },
+          {
+            "child": "B",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                2.3964276228942873e-05
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.9999760357237715
+              ]
+            ],
+            "expected_acceptor_shift": 0.0,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0,
+            "expected_edits": 0.00042390456214658786,
+            "expected_exon_inactivation": 0.00019997014295882249,
+            "expected_exonization": 0.00022393441918776535,
+            "expected_fusion": 0.0,
+            "expected_split": 0.0,
+            "parent": "AB",
+            "probability_at_least_one_edit": 0.00022392615625999035,
+            "probability_different_endpoints": 2.396427622852748e-05
+          },
+          {
+            "child": "CD",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0004073916440150385,
+                0.0,
+                0.0004073916440150385
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.00039940781055100783,
+                0.0,
+                0.9987858089014191
+              ]
+            ],
+            "expected_acceptor_shift": 0.0,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0,
+            "expected_edits": 0.001206531023397357,
+            "expected_exon_inactivation": 0.0005992735949666633,
+            "expected_exonization": 0.000607257428430694,
+            "expected_fusion": 0.0,
+            "expected_split": 0.0,
+            "parent": "root",
+            "probability_at_least_one_edit": 0.0010066047936518885,
+            "probability_different_endpoints": 0.0008067994545658541
+          },
+          {
+            "child": "C",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.000806799454566047
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.9991932005454347
+              ]
+            ],
+            "expected_acceptor_shift": 0.0,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0,
+            "expected_edits": 0.001206531023397358,
+            "expected_exon_inactivation": 0.00019986578441565553,
+            "expected_exonization": 0.0010066652389817026,
+            "expected_fusion": 0.0,
+            "expected_split": 0.0,
+            "parent": "CD",
+            "probability_at_least_one_edit": 0.0010066047936513334,
+            "probability_different_endpoints": 0.000806799454565299
+          },
+          {
+            "child": "D",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.000806799454566047,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.9991932005454347,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0,
+            "expected_dna_deletion": 1.0000000000000009,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0,
+            "expected_edits": 1.0099666668888876,
+            "expected_exon_inactivation": 0.009893055613073366,
+            "expected_exonization": 7.361127581341701e-05,
+            "expected_fusion": 0.0,
+            "expected_split": 0.0,
+            "parent": "CD",
+            "probability_at_least_one_edit": 1.0,
+            "probability_different_endpoints": 1.0
+          }
+        ],
+        "kernel_cache": {
+          "hits": 5,
+          "limit_bytes": 134217728,
+          "misses": 1,
+          "retained_bytes": 1280
+        },
+        "log_likelihood": -6.758840809497071,
+        "nodes": {
+          "A": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "AB": [
+            0.0,
+            2.3964276228942914e-05,
+            0.0,
+            0.9999760357237715
+          ],
+          "B": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "C": [
+            0.0,
+            0.0,
+            0.0,
+            1.0000000000000009
+          ],
+          "CD": [
+            0.0,
+            0.0008067994545660456,
+            0.0,
+            0.9991932005454347
+          ],
+          "D": [
+            0.0,
+            0.0,
+            1.0000000000000009,
+            0.0
+          ],
+          "root": [
+            0.0,
+            0.0008147832880300771,
+            0.0,
+            0.9991852167119697
+          ]
+        },
+        "origin_prior": "declared_root_weight_and_unit_branch_opportunities_on_canonical_tree",
+        "origin_root_weight": 1.0,
+        "origins": [
+          {
+            "origins": {
+              "source_exon": "root"
+            },
+            "posterior_weight": 1.0
+          }
+        ],
+        "root_prior": "uniform_valid_exon_geometries_given_origin_opportunities",
+        "tree_normalization": {
+          "collapsed_unobserved_unary_nodes": [],
+          "foreground_children": [],
+          "normalized_edge_to_input_children": {
+            "A": [
+              "A"
+            ],
+            "AB": [
+              "AB"
+            ],
+            "B": [
+              "B"
+            ],
+            "C": [
+              "C"
+            ],
+            "CD": [
+              "CD"
+            ],
+            "D": [
+              "D"
+            ]
+          },
+          "origin_process": "finite_branch_opportunities_not_continuous_immigration",
+          "root_preserved": true
+        }
+      },
+      "family_id": "Example_gene",
+      "origin_prior_sensitivity": [
+        {
+          "conditional_sensitivity_not_model_selection": true,
+          "log_likelihood": -8.031806485309959,
+          "origin_root_weight": 0.25,
+          "root_probabilities": [
+            0.0,
+            0.0008147832880300771,
+            0.0,
+            0.9991852167119697
+          ]
+        },
+        {
+          "conditional_sensitivity_not_model_selection": true,
+          "log_likelihood": -5.729221392315913,
+          "origin_root_weight": 4.0,
+          "root_probabilities": [
+            0.0,
+            0.0008147832880300771,
+            0.0,
+            0.9991852167119697
+          ]
+        }
+      ],
+      "probability_conditions": {
+        "origin_prior": "declared_root_weight_and_unit_branch_opportunities_on_canonical_tree",
+        "origin_scenarios": [
+          {
+            "origins": {
+              "source_exon": "root"
+            },
+            "posterior_weight": 1.0
+          }
+        ],
+        "probability_status": "conditional_on_fixed_parameters_and_declared_catalogue",
+        "root_prior": "uniform_valid_exon_geometries_given_origin_opportunities"
+      },
+      "states": [
+        {
+          "exons": [],
+          "key": "empty|0",
+          "material": [
+            0
+          ],
+          "state_id": "C0000"
+        },
+        {
+          "exons": [],
+          "key": "empty|1",
+          "material": [
+            1
+          ],
+          "state_id": "C0001"
+        },
+        {
+          "exons": [],
+          "key": "empty|2",
+          "material": [
+            2
+          ],
+          "state_id": "C0002"
+        },
+        {
+          "exons": [
+            [
+              0,
+              180
+            ]
+          ],
+          "key": "0:180|1",
+          "material": [
+            1
+          ],
+          "state_id": "C0003"
+        }
+      ],
+      "unit_id": "deletion",
+      "views": {
+        "annotation": {
+          "events": [
+            {
+              "affected_spans": [
+                [
+                  0,
+                  180
+                ]
+              ],
+              "child": "D",
+              "consequences": [
+                "deleted_exons:1"
+              ],
+              "edit_key": "dna_deletion:0:180:source_exon",
+              "end": 180,
+              "maximum_count": 1,
+              "minimum_count": 1,
+              "molecular_mutation_count": "not_identified",
+              "observation_scenarios": 1,
+              "operation": "dna_deletion",
+              "parent": "CD",
+              "start": 0,
+              "support": "required"
+            }
+          ],
+          "histories": [
+            {
+              "events": [
+                {
+                  "affected_spans": [
+                    [
+                      0,
+                      180
+                    ]
+                  ],
+                  "child": "D",
+                  "consequences": [
+                    "deleted_exons:1"
+                  ],
+                  "edit_key": "dna_deletion:0:180:source_exon",
+                  "end": 180,
+                  "maximum_count": 1,
+                  "minimum_count": 1,
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "dna_deletion",
+                  "parent": "CD",
+                  "start": 0,
+                  "support": "required"
+                }
+              ],
+              "minimum_cost": 1.0,
+              "minimum_structural_edits": 1,
+              "nodes": {
+                "A": [
+                  3
+                ],
+                "AB": [
+                  3
+                ],
+                "B": [
+                  3
+                ],
+                "C": [
+                  3
+                ],
+                "CD": [
+                  3
+                ],
+                "D": [
+                  2
+                ],
+                "root": [
+                  3
+                ]
+              },
+              "observation_scenario": "single_structure",
+              "optimal_origin_scenarios": 1,
+              "pairs": [
+                {
+                  "child": "AB",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "A",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "B",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "CD",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "C",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "CD"
+                },
+                {
+                  "child": "D",
+                  "pairs": [
+                    [
+                      3,
+                      2
+                    ]
+                  ],
+                  "parent": "CD"
+                }
+              ],
+              "representative_edit_count": 1,
+              "representative_origins": {
+                "source_exon": "root"
+              },
+              "representative_states": {
+                "A": 3,
+                "AB": 3,
+                "B": 3,
+                "C": 3,
+                "CD": 3,
+                "D": 2,
+                "root": 3
+              },
+              "status": "conditional_on_catalogue_and_observation",
+              "witness": [
+                {
+                  "child": "D",
+                  "consequences": [
+                    "deleted_exons:1"
+                  ],
+                  "edit_key": "dna_deletion:0:180:source_exon",
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "dna_deletion",
+                  "order": 1,
+                  "parent": "CD",
+                  "source": 3,
+                  "target": 2
+                }
+              ]
+            }
+          ]
+        },
+        "evidence": {
+          "events": [
+            {
+              "affected_spans": [
+                [
+                  0,
+                  180
+                ]
+              ],
+              "child": "D",
+              "consequences": [
+                "deleted_exons:1"
+              ],
+              "edit_key": "dna_deletion:0:180:source_exon",
+              "end": 180,
+              "maximum_count": 1,
+              "minimum_count": 1,
+              "molecular_mutation_count": "not_identified",
+              "observation_scenarios": 1,
+              "operation": "dna_deletion",
+              "parent": "CD",
+              "start": 0,
+              "support": "required"
+            }
+          ],
+          "histories": [
+            {
+              "events": [
+                {
+                  "affected_spans": [
+                    [
+                      0,
+                      180
+                    ]
+                  ],
+                  "child": "D",
+                  "consequences": [
+                    "deleted_exons:1"
+                  ],
+                  "edit_key": "dna_deletion:0:180:source_exon",
+                  "end": 180,
+                  "maximum_count": 1,
+                  "minimum_count": 1,
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "dna_deletion",
+                  "parent": "CD",
+                  "start": 0,
+                  "support": "required"
+                }
+              ],
+              "minimum_cost": 1.0,
+              "minimum_structural_edits": 1,
+              "nodes": {
+                "A": [
+                  3
+                ],
+                "AB": [
+                  3
+                ],
+                "B": [
+                  3
+                ],
+                "C": [
+                  3
+                ],
+                "CD": [
+                  3
+                ],
+                "D": [
+                  2
+                ],
+                "root": [
+                  3
+                ]
+              },
+              "observation_scenario": "single_structure",
+              "optimal_origin_scenarios": 1,
+              "pairs": [
+                {
+                  "child": "AB",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "A",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "B",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "CD",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "C",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "CD"
+                },
+                {
+                  "child": "D",
+                  "pairs": [
+                    [
+                      3,
+                      2
+                    ]
+                  ],
+                  "parent": "CD"
+                }
+              ],
+              "representative_edit_count": 1,
+              "representative_origins": {
+                "source_exon": "root"
+              },
+              "representative_states": {
+                "A": 3,
+                "AB": 3,
+                "B": 3,
+                "C": 3,
+                "CD": 3,
+                "D": 2,
+                "root": 3
+              },
+              "status": "conditional_on_catalogue_and_observation",
+              "witness": [
+                {
+                  "child": "D",
+                  "consequences": [
+                    "deleted_exons:1"
+                  ],
+                  "edit_key": "dna_deletion:0:180:source_exon",
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "dna_deletion",
+                  "order": 1,
+                  "parent": "CD",
+                  "source": 3,
+                  "target": 2
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "catalogue": {
+        "alignment_offset": 0,
+        "boundary_candidates": [
+          {
+            "end": 180,
+            "start": 0
+          },
+          {
+            "end": 60,
+            "start": 0
+          },
+          {
+            "end": 180,
+            "start": 90
+          }
+        ],
+        "discovery": "annotation_discovered",
+        "exon_instances": [],
+        "family": "Annotation_control",
+        "insertion_payloads": [],
+        "junctions": [
+          [
+            60,
+            90
+          ]
+        ],
+        "length": 180,
+        "material": [],
+        "observations": [
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "A",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "B",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 180,
+                    "start": 0
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "observed",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "C",
+            "unknown_intervals": []
+          },
+          {
+            "alternative_exons": [],
+            "alternatives": [
+              {
+                "configuration": {
+                  "exons": [
+                    {
+                      "end": 180,
+                      "start": 0
+                    }
+                  ],
+                  "material": []
+                },
+                "evidence": "synthetic_identical_sequence",
+                "identity": 1.0,
+                "replaces_key": "0:60,90:180|",
+                "source_species": "A",
+                "source_transcript": "A_transcript"
+              }
+            ],
+            "configurations": [
+              {
+                "exons": [
+                  {
+                    "end": 60,
+                    "start": 0
+                  },
+                  {
+                    "end": 180,
+                    "start": 90
+                  }
+                ],
+                "material": []
+              }
+            ],
+            "kind": "partial",
+            "material_presence": [],
+            "native_exon_ids": [],
+            "reasons": [],
+            "species": "D",
+            "unknown_intervals": []
+          }
+        ],
+        "reasons": [],
+        "spans": [
+          {
+            "end": 180,
+            "start": 0
+          },
+          {
+            "end": 60,
+            "start": 0
+          },
+          {
+            "end": 180,
+            "start": 90
+          }
+        ],
+        "status": "qualified",
+        "unit": "uncertainty"
+      },
+      "ctmc": {
+        "branches": [
+          {
+            "child": "AB",
+            "endpoint_probabilities": [
+              [
+                1.2789648513670163e-05,
+                3.4060485757114003e-07,
+                8.650208561144548e-06,
+                0.0004076033043937664,
+                3.4060485757114003e-07
+              ],
+              [
+                3.7950828442434107e-07,
+                2.4775493628506593e-05,
+                7.945928678807134e-05,
+                0.0006876177531177479,
+                1.4958855594348946e-08
+              ],
+              [
+                1.1119137259342814e-06,
+                9.166821021439977e-06,
+                0.054994129597215426,
+                0.15873303191383473,
+                9.166821021439977e-06
+              ],
+              [
+                9.783730174175e-06,
+                1.4813013827874198e-05,
+                0.029640776016612882,
+                0.754558988786206,
+                1.4813013827874198e-05
+              ],
+              [
+                3.7950828442434107e-07,
+                1.4958855594348946e-08,
+                7.945928678807134e-05,
+                0.0006876177531177479,
+                2.4775493628506593e-05
+              ]
+            ],
+            "expected_acceptor_shift": 0.0011325659670605788,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0011325659670605793,
+            "expected_edits": 0.2958038679352231,
+            "expected_exon_inactivation": 0.0005279448370684613,
+            "expected_exonization": 0.00107906095194112,
+            "expected_fusion": 0.21051084946780865,
+            "expected_split": 0.08142088074428376,
+            "parent": "root",
+            "probability_at_least_one_edit": 0.23838244199621328,
+            "probability_different_endpoints": 0.19038454098080781
+          },
+          {
+            "child": "A",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                2.4444308982628063e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                4.911089219098623e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.08480247439596561,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.9150748595106701,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                4.911089219098623e-05,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0005526683901976198,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.00055266839019762,
+            "expected_edits": 0.1984025070025714,
+            "expected_exon_inactivation": 0.0003824369304291454,
+            "expected_exonization": 0.0003123218685524936,
+            "expected_fusion": 0.14065516322415042,
+            "expected_split": 0.05594724819904409,
+            "parent": "AB",
+            "probability_at_least_one_edit": 0.13923800366478867,
+            "probability_different_endpoints": 0.08492514048932986
+          },
+          {
+            "child": "B",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                2.4444308982628063e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                4.911089219098623e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.08480247439596561,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.9150748595106701,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                4.911089219098623e-05,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0005526683901976198,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.00055266839019762,
+            "expected_edits": 0.1984025070025714,
+            "expected_exon_inactivation": 0.0003824369304291454,
+            "expected_exonization": 0.0003123218685524936,
+            "expected_fusion": 0.14065516322415042,
+            "expected_split": 0.05594724819904409,
+            "parent": "AB",
+            "probability_at_least_one_edit": 0.13923800366478867,
+            "probability_different_endpoints": 0.08492514048932986
+          },
+          {
+            "child": "CD",
+            "endpoint_probabilities": [
+              [
+                1.0892232667548998e-05,
+                4.901350651778116e-07,
+                2.4883941118638284e-05,
+                0.0003929679272671808,
+                4.901350651778116e-07
+              ],
+              [
+                2.7607307425340276e-07,
+                3.045311643441997e-05,
+                0.00019524581750256646,
+                0.0005662536067934847,
+                1.8386869620883534e-08
+              ],
+              [
+                6.502836090875723e-07,
+                9.0585170091538e-06,
+                0.10863814335134452,
+                0.10508969639784699,
+                9.0585170091538e-06
+              ],
+              [
+                8.039631316346516e-06,
+                2.0567510646594614e-05,
+                0.08227265680014928,
+                0.7019173431078896,
+                2.0567510646594614e-05
+              ],
+              [
+                2.7607307425340276e-07,
+                1.8386869620883534e-08,
+                0.00019524581750256646,
+                0.0005662536067934847,
+                3.045311643441997e-05
+              ]
+            ],
+            "expected_acceptor_shift": 0.0010267777656833496,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0010267777656833498,
+            "expected_edits": 0.29478010241347846,
+            "expected_exon_inactivation": 0.0004675384569548898,
+            "expected_exonization": 0.0013241788225170693,
+            "expected_fusion": 0.15690115561498055,
+            "expected_split": 0.1340336739876593,
+            "parent": "root",
+            "probability_at_least_one_edit": 0.2373794718163187,
+            "probability_different_endpoints": 0.18937271507522946
+          },
+          {
+            "child": "C",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                0.0,
+                2.013429374148991e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                6.058766602496702e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.19132617572761756,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                0.8085325146465908,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.0,
+                6.058766602496702e-05,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0005950514474206774,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0005950514474206774,
+            "expected_edits": 0.29669230662070945,
+            "expected_exon_inactivation": 0.0005148199703028951,
+            "expected_exonization": 0.00030748611189495835,
+            "expected_fusion": 0.2428893026095692,
+            "expected_split": 0.05179059503410106,
+            "parent": "CD",
+            "probability_at_least_one_edit": 0.23945669124678548,
+            "probability_different_endpoints": 0.19146748535340918
+          },
+          {
+            "child": "D",
+            "endpoint_probabilities": [
+              [
+                0.0,
+                0.0,
+                3.123951923228745e-06,
+                1.7010341818261136e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                3.029383301248356e-05,
+                3.029383301248356e-05,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.1434723410106341,
+                0.04785383471698352,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                0.20512179630767025,
+                0.6034107183389205,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                3.029383301248356e-05,
+                3.029383301248356e-05,
+                0.0
+              ]
+            ],
+            "expected_acceptor_shift": 0.0005303698458355173,
+            "expected_dna_deletion": 0.0,
+            "expected_dna_insertion": 0.0,
+            "expected_donor_shift": 0.0005303698458355174,
+            "expected_edits": 0.35329208890170416,
+            "expected_exon_inactivation": 0.0003581220207667184,
+            "expected_exonization": 0.0006401243773349428,
+            "expected_fusion": 0.09708164883306167,
+            "expected_split": 0.2541514539788699,
+            "parent": "CD",
+            "probability_at_least_one_edit": 0.2973115889631268,
+            "probability_different_endpoints": 0.25311694065044543
+          }
+        ],
+        "kernel_cache": {
+          "hits": 5,
+          "limit_bytes": 134217728,
+          "misses": 1,
+          "retained_bytes": 2000
+        },
+        "log_likelihood": -3.0171678771758907,
+        "nodes": {
+          "A": [
+            0.0,
+            0.0,
+            0.0,
+            1.0000000000000004,
+            0.0
+          ],
+          "AB": [
+            2.4444308982628063e-05,
+            4.911089219098623e-05,
+            0.08480247439596561,
+            0.9150748595106697,
+            4.911089219098623e-05
+          ],
+          "B": [
+            0.0,
+            0.0,
+            0.0,
+            1.0000000000000004,
+            0.0
+          ],
+          "C": [
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "CD": [
+            2.013429374148991e-05,
+            6.058766602496702e-05,
+            0.19132617572761756,
+            0.8085325146465905,
+            6.058766602496702e-05
+          ],
+          "D": [
+            0.0,
+            0.0,
+            0.3486578489362524,
+            0.6513421510637472,
+            0.0
+          ],
+          "root": [
+            0.000429724371183725,
+            0.0007922470006743458,
+            0.21374660706681878,
+            0.7842391745606487,
+            0.0007922470006743458
+          ]
+        },
+        "origin_prior": "declared_root_weight_and_unit_branch_opportunities_on_canonical_tree",
+        "origin_root_weight": 1.0,
+        "origins": [
+          {
+            "origins": {},
+            "posterior_weight": 1.0
+          }
+        ],
+        "root_prior": "uniform_valid_exon_geometries_given_origin_opportunities",
+        "tree_normalization": {
+          "collapsed_unobserved_unary_nodes": [],
+          "foreground_children": [],
+          "normalized_edge_to_input_children": {
+            "A": [
+              "A"
+            ],
+            "AB": [
+              "AB"
+            ],
+            "B": [
+              "B"
+            ],
+            "C": [
+              "C"
+            ],
+            "CD": [
+              "CD"
+            ],
+            "D": [
+              "D"
+            ]
+          },
+          "origin_process": "finite_branch_opportunities_not_continuous_immigration",
+          "root_preserved": true
+        }
+      },
+      "family_id": "Annotation_control",
+      "origin_prior_sensitivity": [
+        {
+          "conditional_sensitivity_not_model_selection": true,
+          "log_likelihood": -3.0171678771758907,
+          "origin_root_weight": 0.25,
+          "root_probabilities": [
+            0.000429724371183725,
+            0.0007922470006743458,
+            0.21374660706681878,
+            0.7842391745606487,
+            0.0007922470006743458
+          ]
+        },
+        {
+          "conditional_sensitivity_not_model_selection": true,
+          "log_likelihood": -3.0171678771758907,
+          "origin_root_weight": 4.0,
+          "root_probabilities": [
+            0.000429724371183725,
+            0.0007922470006743458,
+            0.21374660706681878,
+            0.7842391745606487,
+            0.0007922470006743458
+          ]
+        }
+      ],
+      "probability_conditions": {
+        "origin_prior": "declared_root_weight_and_unit_branch_opportunities_on_canonical_tree",
+        "origin_scenarios": [
+          {
+            "origins": {},
+            "posterior_weight": 1.0
+          }
+        ],
+        "probability_status": "conditional_on_fixed_parameters_and_declared_catalogue",
+        "root_prior": "uniform_valid_exon_geometries_given_origin_opportunities"
+      },
+      "states": [
+        {
+          "exons": [],
+          "key": "empty|",
+          "material": [],
+          "state_id": "C0000"
+        },
+        {
+          "exons": [
+            [
+              0,
+              60
+            ]
+          ],
+          "key": "0:60|",
+          "material": [],
+          "state_id": "C0001"
+        },
+        {
+          "exons": [
+            [
+              0,
+              60
+            ],
+            [
+              90,
+              180
+            ]
+          ],
+          "key": "0:60,90:180|",
+          "material": [],
+          "state_id": "C0002"
+        },
+        {
+          "exons": [
+            [
+              0,
+              180
+            ]
+          ],
+          "key": "0:180|",
+          "material": [],
+          "state_id": "C0003"
+        },
+        {
+          "exons": [
+            [
+              90,
+              180
+            ]
+          ],
+          "key": "90:180|",
+          "material": [],
+          "state_id": "C0004"
+        }
+      ],
+      "unit_id": "uncertainty",
+      "views": {
+        "annotation": {
+          "events": [
+            {
+              "affected_spans": [
+                [
+                  0,
+                  180
+                ]
+              ],
+              "child": "D",
+              "consequences": [
+                "exon_count_plus_one"
+              ],
+              "edit_key": "split:60:90:",
+              "end": 90,
+              "maximum_count": 1,
+              "minimum_count": 1,
+              "molecular_mutation_count": "not_identified",
+              "observation_scenarios": 1,
+              "operation": "split",
+              "parent": "CD",
+              "start": 60,
+              "support": "required"
+            }
+          ],
+          "histories": [
+            {
+              "events": [
+                {
+                  "affected_spans": [
+                    [
+                      0,
+                      180
+                    ]
+                  ],
+                  "child": "D",
+                  "consequences": [
+                    "exon_count_plus_one"
+                  ],
+                  "edit_key": "split:60:90:",
+                  "end": 90,
+                  "maximum_count": 1,
+                  "minimum_count": 1,
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "split",
+                  "parent": "CD",
+                  "start": 60,
+                  "support": "required"
+                }
+              ],
+              "minimum_cost": 1.0,
+              "minimum_structural_edits": 1,
+              "nodes": {
+                "A": [
+                  3
+                ],
+                "AB": [
+                  3
+                ],
+                "B": [
+                  3
+                ],
+                "C": [
+                  3
+                ],
+                "CD": [
+                  3
+                ],
+                "D": [
+                  2
+                ],
+                "root": [
+                  3
+                ]
+              },
+              "observation_scenario": "single_structure",
+              "optimal_origin_scenarios": 1,
+              "pairs": [
+                {
+                  "child": "AB",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "A",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "B",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "CD",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "C",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "CD"
+                },
+                {
+                  "child": "D",
+                  "pairs": [
+                    [
+                      3,
+                      2
+                    ]
+                  ],
+                  "parent": "CD"
+                }
+              ],
+              "representative_edit_count": 1,
+              "representative_origins": {},
+              "representative_states": {
+                "A": 3,
+                "AB": 3,
+                "B": 3,
+                "C": 3,
+                "CD": 3,
+                "D": 2,
+                "root": 3
+              },
+              "status": "conditional_on_catalogue_and_observation",
+              "witness": [
+                {
+                  "child": "D",
+                  "consequences": [
+                    "exon_count_plus_one"
+                  ],
+                  "edit_key": "split:60:90:",
+                  "molecular_mutation_count": "not_identified",
+                  "operation": "split",
+                  "order": 1,
+                  "parent": "CD",
+                  "source": 3,
+                  "target": 2
+                }
+              ]
+            }
+          ]
+        },
+        "evidence": {
+          "events": [],
+          "histories": [
+            {
+              "events": [],
+              "minimum_cost": 0.0,
+              "minimum_structural_edits": 0,
+              "nodes": {
+                "A": [
+                  3
+                ],
+                "AB": [
+                  3
+                ],
+                "B": [
+                  3
+                ],
+                "C": [
+                  3
+                ],
+                "CD": [
+                  3
+                ],
+                "D": [
+                  3
+                ],
+                "root": [
+                  3
+                ]
+              },
+              "observation_scenario": "single_structure",
+              "optimal_origin_scenarios": 1,
+              "pairs": [
+                {
+                  "child": "AB",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "A",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "B",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "AB"
+                },
+                {
+                  "child": "CD",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "root"
+                },
+                {
+                  "child": "C",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "CD"
+                },
+                {
+                  "child": "D",
+                  "pairs": [
+                    [
+                      3,
+                      3
+                    ]
+                  ],
+                  "parent": "CD"
+                }
+              ],
+              "representative_edit_count": 0,
+              "representative_origins": {},
+              "representative_states": {
+                "A": 3,
+                "AB": 3,
+                "B": 3,
+                "C": 3,
+                "CD": 3,
+                "D": 3,
+                "root": 3
+              },
+              "status": "conditional_on_catalogue_and_observation",
+              "witness": []
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

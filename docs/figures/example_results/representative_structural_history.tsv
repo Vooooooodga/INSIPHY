@@ -1,0 +1,5 @@
+family_id	unit_id	conditional_scenario	parent	child	order	operation	representative_only	edit_key	source	target	consequences	molecular_mutation_count
+Example_gene	split	1	CD	D	1	split	True	split:60:90:	3	2	"[""exon_count_plus_one""]"	not_identified
+Example_gene	fusion	1	AB	B	1	fusion	True	fusion:60:90:	2	3	"[""exon_count_minus_one"",""intervening_DNA_retained""]"	not_identified
+Example_gene	boundary	1	CD	C	1	donor_shift	True	donor_shift:180:168:	2	1	[]	not_identified
+Example_gene	deletion	1	CD	D	1	dna_deletion	True	dna_deletion:0:180:source_exon	3	2	"[""deleted_exons:1""]"	not_identified

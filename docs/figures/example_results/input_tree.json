@@ -1,0 +1,44 @@
+[
+  {
+    "branch_length": "NA",
+    "label": "root",
+    "node_id": "root",
+    "parent_id": ""
+  },
+  {
+    "branch_length": "0.5",
+    "label": "AB",
+    "node_id": "AB",
+    "parent_id": "root"
+  },
+  {
+    "branch_length": "0.5",
+    "label": "CD",
+    "node_id": "CD",
+    "parent_id": "root"
+  },
+  {
+    "branch_length": "0.5",
+    "label": "A",
+    "node_id": "A",
+    "parent_id": "AB"
+  },
+  {
+    "branch_length": "0.5",
+    "label": "B",
+    "node_id": "B",
+    "parent_id": "AB"
+  },
+  {
+    "branch_length": "0.5",
+    "label": "C",
+    "node_id": "C",
+    "parent_id": "CD"
+  },
+  {
+    "branch_length": "0.5",
+    "label": "D",
+    "node_id": "D",
+    "parent_id": "CD"
+  }
+]

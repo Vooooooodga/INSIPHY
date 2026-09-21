@@ -91,7 +91,7 @@ class CommandTests(unittest.TestCase):
     def test_default_scope_is_all(self):
         args=build_parser().parse_args(['run','--input-dir','in','--output-dir','out'])
         self.assertEqual(args.analysis_range,'all')
-        self.assertEqual(args.model,'parsimony')
+        self.assertEqual(args.model,'exon-parsimony')
 
     def test_formal_bootstrap_not_silently_accepted(self):
         args=build_parser().parse_args(['run','--input-dir','in','--output-dir','out','--bootstrap-replicates','1'])

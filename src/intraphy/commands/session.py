@@ -10,7 +10,7 @@ from .environment import environment_report
 from .preflight import preflight
 
 GUARDED_COMMANDS = {"build-case", "run", "infer-phylogeny", "visualize", "import-orthofinder",
-                    "extract-loci", "normalize-annotation", "explain"}
+                    "extract-loci", "normalize-annotation", "explain", "analyze", "fit-exon-rates", "realign-exons"}
 OWNERS = {"execution.json", "run_result.json", "case_build_report.tsv", "case_provenance.tsv",
           "visualization_manifest.tsv", "target_manifest.tsv", "figure_manifest.json"}
 
@@ -29,7 +29,7 @@ def reserve_output(args):
     if target in {Path('/'), Path.home(), Path.cwd()}:
         raise ValueError("Use a dedicated output directory, not the filesystem root, home or working directory")
     for field in ("input_dir", "result_dir", "structural_site_matrix", "manifest", "species_tree",
-                  "fasta", "gff", "orthologs", "config"):
+                  "fasta", "gff", "orthologs", "config", "exon_configurations", "exon_rates", "profile_dir", "codon_matrix"):
         value = getattr(args, field, None)
         paths = value if isinstance(value, (list, tuple)) else [value]
         if any(item and Path(item).resolve().is_relative_to(target) for item in paths):
@@ -76,7 +76,7 @@ def command_session(args):
             print(f"IntraPhy: {args.command} -> {directory}", file=sys.stderr)
         if getattr(args, 'analysis_range', 'all') != 'all':
             logger.warning("Coverage subset requested; the threshold has no calibrated biological interpretation")
-        if getattr(args, 'model', 'parsimony') != 'parsimony':
+        if getattr(args, 'model', 'parsimony') in {'er-ard', 'foreground', 'exon-ctmc'}:
             logger.warning("CTMC results are conditional; finite-sample LRT calibration remains unassessed")
         yield
         state['status'] = 'completed'

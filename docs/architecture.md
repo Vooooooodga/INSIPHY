@@ -1,45 +1,37 @@
-# Software architecture
+# IntraPhy 0.19.1 architecture
 
-The package uses explicit imports and ordinary functions. There is no dynamic
-source loader, new workflow framework or runtime refactoring dependency.
-Production Python modules are kept at or below 500 physical lines; the release
-check fails on an oversized file.
+![Implementation ownership](figures/architecture.svg)
 
-| Responsibility | Owners |
+Ordinary functions and immutable domain objects, not a generic workflow framework.
+One exon or a dependent local exon configuration is the structural model object.
+
+| Responsibility | Owner |
 |---|---|
-| Annotation indexing and extraction | `preparation/` |
-| External tools, formats, pairwise/short alignments | `aligners/` |
-| Coding coordinates and protein correspondence | `coding/`, `coding_correspondence.py` |
-| Candidate context, chaining, local membership and reference coverage | `mapping/` |
-| Nucleotide search, protein projection and candidate classification | `evidence/` |
-| Observation semantics, character catalogue, masks and applicability | `observations/` |
-| Validated rooted topology | `topology.py` |
-| Sankoff, CTMC, fitting, profiles, diagnostics and posterior export | `inference/` |
-| Formal run dispatch | `phylogeny.py`, `parsimony.py`, `structural_phylogeny.py` |
-| Primary sequence-to-result order | `workflow.py` |
-| CLI parsing, validation, output ownership and provenance | `commands/`, `cli.py` |
-| Target figures and reporting | `reporting/` |
-| Explicitly nonformal multicopy code | `experimental/` |
-| Synthetic raw inputs and historical verification utilities | `verification/` |
+| Native FASTA/GFF coordinates and target selection | `inputs/`, `preparation/`, `structure/native.py` |
+| Full supplied-locus MSA and corroboration | `structure/alignment.py`, `corroboration.py` |
+| Whole-configuration annotation alternatives | `structure/alternatives.py` |
+| Candidate assembly and observation compatibility | `structure/build.py`, `observations.py` |
+| Coordinate-identity validation at every entry | `structure/validation.py`, called by `serialization.py` |
+| Immutable exons, source payloads and configurations | `structure/types.py`, `material.py` |
+| Elementary edits, consequences and opportunity weights | `structure/edits.py` |
+| Finite state catalogue and exact geometry preflight | `structure/space.py` |
+| Canonical branches and declared source opportunities | `structure/tree_context.py`, `origins.py` |
+| Sparse directed edit distances | `structure/paths.py` |
+| All-optimal parsimony | `inference/configuration_dp.py`, `configuration_history.py` |
+| Finite CTMC and bounded run-local kernels | `inference/configuration_ctmc.py`, `configuration_model.py`, `kernel_cache.py` |
+| Pooled scales and whole-gene resampling | `inference/exon_rates.py`, `exon_resampling.py` |
+| Read-only result diagrams | `reporting/exon_results.py`, `exon_drawing.py` |
+| Computed teaching examples and four current plates | `reporting/exon_guide*.py` |
 
-`workflow.run_all` performs initial correspondence, new sequence evidence,
-annotation-candidate classification, explicit final correspondence, and inference.
-The observation layer creates the matrix once. Numeric engines do not change
-homology, create absent tips or reinterpret free-text notes as scientific evidence.
+`analyze` prepares files and calls configuration inference. Explicit schema-2
+catalogues bypass alignment, not validation. Pure numerical functions never read
+GFF, repair annotation or generate figures. The renderer reads saved results;
+only the explicitly synthetic teaching-example generator runs inference.
 
-Important refactored owners include `evidence/sequence_search.py`,
-`mapping/ordered_chains.py`, `mapping/path_evaluation.py`,
-`mapping/chain_qualification.py`, `mapping/reference_coverage.py`,
-`inference/layer_fitting.py`, `inference/model_comparison.py`, and
-`inference/posterior_export.py`. Patch or modify a function at its implementation
-owner. Re-exporting a function does not make a private monkey-patch propagate to
-all modules.
+Legacy V18 P/R/J modules remain explicit baselines; they are not silently used by
+configuration inference. Current and legacy catalogue/model identifiers differ.
+One entry point cannot assign extra weight to the same coordinates by renaming a
+unit. A failure cannot authorize reuse of old successful probability output.
 
-The character catalogue, coordinate sidecar and frozen matrix preserve inference
-inputs. Correspondence alternatives are evidence, not posterior history samples.
-Ancestral consistency is audited without constructing a complete transcript.
-A failed execution is marked failed and cannot silently display a previous run.
-
-See the [methods figure](figure.md) for scientific data flow. The figure separates
-biological evidence, character construction and conditional reconstruction rather
-than presenting implementation files as biological stages.
+See [audit resolutions](v0191_audit_resolution.md), [model](exon_structure_model.md)
+and [validation](v0191_validation.md). Source modules remain under 500 lines.

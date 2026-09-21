@@ -15,7 +15,7 @@ intraphy inspect-aligners
 
 For editable development, use `python -m pip install -c requirements-ci.txt -e .`.
 The distribution, console command and import are named `intraphy`. Uninstall any
-separately installed older distribution from the environment; v18 does not
+separately installed older distribution from the environment; V19 does not
 provide a forwarding package or old console alias.
 
 ## External tools
@@ -26,11 +26,13 @@ standard raw-input example. On Ubuntu, install `mafft` and `minimap2` with apt.
 The baseline CI image pins Ubuntu 24.04 package versions and records both package
 and executable versions. External-tool changes require a new integration test.
 
-miniprot is optional for protein-to-genome candidate projection. Install its real
+The explicit V18 legacy pipeline supports optional miniprot protein-to-genome candidate projection. Install its real
 executable on PATH before selecting `--evidence-aligner miniprot`; minimap2 remains
 required for the separate nucleotide channel. LASTZ is optional and must be
 installed when explicitly selected. Optional backends are not claimed validated
 by tests that only run MAFFT and minimap2.
+
+The V19 primary pipeline uses MAFFT and minimap2; the legacy `--evidence-aligner` alternatives are not silently substituted.
 
 `intraphy inspect-aligners` reports resolved paths and executable versions.
 `environment.json` also records Python and numeric-library versions for primary

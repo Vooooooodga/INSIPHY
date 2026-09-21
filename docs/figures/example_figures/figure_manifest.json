@@ -1,0 +1,82 @@
+[
+  {
+    "family": "Example_gene",
+    "unit": "split",
+    "svg": "exon_structure_00001.svg",
+    "mode": "parsimony",
+    "computed_from": "exon_history.json; structural_history.tsv",
+    "inference_performed_by_renderer": false
+  },
+  {
+    "family": "Example_gene",
+    "unit": "split",
+    "svg": "exon_structure_00001_ctmc.svg",
+    "mode": "ctmc",
+    "computed_from": "exon_history.json; structural_history.tsv",
+    "inference_performed_by_renderer": false
+  },
+  {
+    "family": "Example_gene",
+    "unit": "fusion",
+    "svg": "exon_structure_00002.svg",
+    "mode": "parsimony",
+    "computed_from": "exon_history.json; structural_history.tsv",
+    "inference_performed_by_renderer": false
+  },
+  {
+    "family": "Example_gene",
+    "unit": "fusion",
+    "svg": "exon_structure_00002_ctmc.svg",
+    "mode": "ctmc",
+    "computed_from": "exon_history.json; structural_history.tsv",
+    "inference_performed_by_renderer": false
+  },
+  {
+    "family": "Example_gene",
+    "unit": "boundary",
+    "svg": "exon_structure_00003.svg",
+    "mode": "parsimony",
+    "computed_from": "exon_history.json; structural_history.tsv",
+    "inference_performed_by_renderer": false
+  },
+  {
+    "family": "Example_gene",
+    "unit": "boundary",
+    "svg": "exon_structure_00003_ctmc.svg",
+    "mode": "ctmc",
+    "computed_from": "exon_history.json; structural_history.tsv",
+    "inference_performed_by_renderer": false
+  },
+  {
+    "family": "Example_gene",
+    "unit": "deletion",
+    "svg": "exon_structure_00004.svg",
+    "mode": "parsimony",
+    "computed_from": "exon_history.json; structural_history.tsv",
+    "inference_performed_by_renderer": false
+  },
+  {
+    "family": "Example_gene",
+    "unit": "deletion",
+    "svg": "exon_structure_00004_ctmc.svg",
+    "mode": "ctmc",
+    "computed_from": "exon_history.json; structural_history.tsv",
+    "inference_performed_by_renderer": false
+  },
+  {
+    "family": "Annotation_control",
+    "unit": "uncertainty",
+    "svg": "exon_structure_00005.svg",
+    "mode": "parsimony",
+    "computed_from": "exon_history.json; structural_history.tsv",
+    "inference_performed_by_renderer": false
+  },
+  {
+    "family": "Annotation_control",
+    "unit": "uncertainty",
+    "svg": "exon_structure_00005_ctmc.svg",
+    "mode": "ctmc",
+    "computed_from": "exon_history.json; structural_history.tsv",
+    "inference_performed_by_renderer": false
+  }
+]

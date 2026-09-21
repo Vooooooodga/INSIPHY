@@ -4,11 +4,14 @@ from intraphy import __version__
 from intraphy.verification.calibration import DEFAULT_SCENARIOS
 def build_parser():
     parser = argparse.ArgumentParser(
-        prog="intraphy", description="Compare local gene structure and infer character changes on a supplied rooted tree.",
-        epilog="Primary workflow: build-case -> run -> visualize. See docs/quickstart.md.",
+        prog="intraphy", description="Reconstruct exon structural changes from genomic FASTA, GFF and a rooted species tree.",
+        epilog="V19 workflow: analyze -> visualize; build-case -> run remains available. See docs/quickstart.md.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    from .exons import add_exon_commands, add_configuration_options
+    add_exon_commands(sub)
 
     example = sub.add_parser("example", help="Write a small synthetic raw FASTA/GFF3 dataset.")
     example.add_argument("--output-dir", required=True)
@@ -18,6 +21,7 @@ def build_parser():
 
     explain = sub.add_parser("explain", help="Render the synthetic structure/tree methods guide (no input data).")
     explain.add_argument("--output-dir", required=True)
+    explain.add_argument("--legacy-v18", action="store_true", help="Render the previous three-layer teaching guide, explicitly as legacy.")
     explain.add_argument("--png", action="store_true", help="Also render PNG previews using optional CairoSVG.")
 
     extract = sub.add_parser("extract-gene")
@@ -228,7 +232,9 @@ def build_parser():
             choices=["single-copy", "experimental-multicopy"],
             default="single-copy",
         )
-        cmd.add_argument("--model", choices=["parsimony", "er-ard", "foreground"], default="parsimony")
+        cmd.add_argument("--model", choices=["exon-parsimony", "exon-ctmc", "parsimony", "er-ard", "foreground"],
+                         default="exon-parsimony", help="V19 exon configurations by default; parsimony/er-ard/foreground are explicit legacy V18 baselines.")
+        add_configuration_options(cmd)
         cmd.add_argument("--branch-length-mode", choices=["supplied", "unit"], default="supplied")
         cmd.add_argument(
             "--ascertainment",
@@ -293,7 +299,7 @@ def build_parser():
         command.formatter_class = argparse.ArgumentDefaultsHelpFormatter
         command.add_argument("--quiet", action="store_true", help="Suppress console progress; retain logs.")
         command.add_argument("--debug", action="store_true", help="Show a Python traceback on errors.")
-    for name in ("build-case", "run", "infer-phylogeny", "visualize", "import-orthofinder", "extract-loci", "normalize-annotation", "explain"):
+    for name in ("build-case", "run", "infer-phylogeny", "visualize", "import-orthofinder", "extract-loci", "normalize-annotation", "explain", "analyze", "fit-exon-rates"):
         sub.choices[name].add_argument("--force", action="store_true",
             help="Preserve an existing IntraPhy output directory as a backup, then rerun. Never overwrites inputs.")
     return parser

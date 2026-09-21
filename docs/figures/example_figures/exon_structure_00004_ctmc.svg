@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1605" height="813" viewBox="0 0 1605 813" data-model="exon_configuration_v2:ctmc"><title>Example_gene / deletion — conditional CTMC</title><rect width="100%" height="100%" fill="white"/><g font-family="Arial, sans-serif" fill="#20313D"><text x="30.00" y="32.00" font-size="22" text-anchor="start" >Example_gene / deletion — conditional CTMC</text>
+<text x="30.00" y="58.00" font-size="14" text-anchor="start" >Observation conditions: evidence. Each box is an exon, not an independent alignment fragment.</text>
+<text x="30.00" y="81.00" font-size="13" text-anchor="start" >Gene structures use homologous coordinates; ribbons show paired bases only. Branch lengths are drawn schematically.</text>
+<text x="30.00" y="105.00" font-size="12" text-anchor="start" >Most probable local ancestor shown; bar = its probability, grey = all other states. No joint ancestor is implied.</text>
+<line x1="155.00" y1="325.00" x2="155.00" y2="225.00" stroke="#647583" stroke-width="1.5" stroke-dasharray=""/>
+<line x1="155.00" y1="225.00" x2="285.00" y2="225.00" stroke="#647583" stroke-width="1.5" stroke-dasharray=""/>
+<text x="220.00" y="243.00" font-size="10" text-anchor="middle" data-branch="AB" data-any-edit-probability="0.0010066047936514444">p=0.001</text>
+<line x1="285.00" y1="225.00" x2="285.00" y2="175.00" stroke="#647583" stroke-width="1.5" stroke-dasharray=""/>
+<line x1="285.00" y1="175.00" x2="415.00" y2="175.00" stroke="#647583" stroke-width="1.5" stroke-dasharray=""/>
+<text x="350.00" y="193.00" font-size="10" text-anchor="middle" data-branch="A" data-any-edit-probability="0.00022392615625999035">p=0.000</text>
+<line x1="285.00" y1="225.00" x2="285.00" y2="275.00" stroke="#647583" stroke-width="1.5" stroke-dasharray=""/>
+<line x1="285.00" y1="275.00" x2="415.00" y2="275.00" stroke="#647583" stroke-width="1.5" stroke-dasharray=""/>
+<text x="350.00" y="293.00" font-size="10" text-anchor="middle" data-branch="B" data-any-edit-probability="0.00022392615625999035">p=0.000</text>
+<line x1="155.00" y1="325.00" x2="155.00" y2="425.00" stroke="#647583" stroke-width="1.5" stroke-dasharray=""/>
+<line x1="155.00" y1="425.00" x2="285.00" y2="425.00" stroke="#647583" stroke-width="1.5" stroke-dasharray=""/>
+<text x="220.00" y="443.00" font-size="10" text-anchor="middle" data-branch="CD" data-any-edit-probability="0.0010066047936518885">p=0.001</text>
+<line x1="285.00" y1="425.00" x2="285.00" y2="375.00" stroke="#647583" stroke-width="1.5" stroke-dasharray=""/>
+<line x1="285.00" y1="375.00" x2="415.00" y2="375.00" stroke="#647583" stroke-width="1.5" stroke-dasharray=""/>
+<text x="350.00" y="393.00" font-size="10" text-anchor="middle" data-branch="C" data-any-edit-probability="0.0010066047936513334">p=0.001</text>
+<line x1="285.00" y1="425.00" x2="285.00" y2="475.00" stroke="#647583" stroke-width="1.5" stroke-dasharray=""/>
+<line x1="285.00" y1="475.00" x2="415.00" y2="475.00" stroke="#647583" stroke-width="1.5" stroke-dasharray=""/>
+<text x="350.00" y="493.00" font-size="10" text-anchor="middle" data-branch="D" data-any-edit-probability="1">p=1.000</text>
+<circle cx="155" cy="325.0" r="3" fill="#20313D"/>
+<text x="161.00" y="337.00" font-size="10" text-anchor="start" >root</text>
+<g data-node="root" data-state-index="3" data-probability="0.99918521671196969">
+<rect x="27.00" y="261.00" width="116.00" height="57.00" fill="white" stroke="#294353" stroke-dasharray="" />
+<line x1="33.00" y1="291.00" x2="117.00" y2="291.00" stroke="#A5B0B8" stroke-width="1.5" stroke-dasharray=""/>
+<rect x="33.00" y="285.50" width="84.00" height="11.00" fill="#427788" stroke="#294353" stroke-dasharray="" />
+<text x="33.00" y="276.00" font-size="10" text-anchor="start" >C0003  P=0.999</text>
+<rect x="33.00" y="307.00" width="84.00" height="4.00" fill="#E1E6E8" stroke="#294353" stroke-dasharray="" />
+<rect x="33.00" y="307.00" width="83.93" height="4.00" fill="#427788" stroke="#294353" stroke-dasharray="" />
+</g>
+<circle cx="285" cy="225.0" r="3" fill="#20313D"/>
+<text x="291.00" y="237.00" font-size="10" text-anchor="start" >AB</text>
+<g data-node="AB" data-state-index="3" data-probability="0.99997603572377147">
+<rect x="157.00" y="161.00" width="116.00" height="57.00" fill="white" stroke="#294353" stroke-dasharray="" />
+<line x1="163.00" y1="191.00" x2="247.00" y2="191.00" stroke="#A5B0B8" stroke-width="1.5" stroke-dasharray=""/>
+<rect x="163.00" y="185.50" width="84.00" height="11.00" fill="#427788" stroke="#294353" stroke-dasharray="" />
+<text x="163.00" y="176.00" font-size="10" text-anchor="start" >C0003  P=1.000</text>
+<rect x="163.00" y="207.00" width="84.00" height="4.00" fill="#E1E6E8" stroke="#294353" stroke-dasharray="" />
+<rect x="163.00" y="207.00" width="84.00" height="4.00" fill="#427788" stroke="#294353" stroke-dasharray="" />
+</g>
+<circle cx="285" cy="425.0" r="3" fill="#20313D"/>
+<text x="291.00" y="437.00" font-size="10" text-anchor="start" >CD</text>
+<g data-node="CD" data-state-index="3" data-probability="0.9991932005454347">
+<rect x="157.00" y="361.00" width="116.00" height="57.00" fill="white" stroke="#294353" stroke-dasharray="" />
+<line x1="163.00" y1="391.00" x2="247.00" y2="391.00" stroke="#A5B0B8" stroke-width="1.5" stroke-dasharray=""/>
+<rect x="163.00" y="385.50" width="84.00" height="11.00" fill="#427788" stroke="#294353" stroke-dasharray="" />
+<text x="163.00" y="376.00" font-size="10" text-anchor="start" >C0003  P=0.999</text>
+<rect x="163.00" y="407.00" width="84.00" height="4.00" fill="#E1E6E8" stroke="#294353" stroke-dasharray="" />
+<rect x="163.00" y="407.00" width="83.93" height="4.00" fill="#427788" stroke="#294353" stroke-dasharray="" />
+</g>
+<text x="445.00" y="180.00" font-size="14" text-anchor="start" >A</text>
+<text x="445.00" y="199.00" font-size="11" text-anchor="start" >observed</text>
+<line x1="655.00" y1="175.00" x2="1575.00" y2="175.00" stroke="#A5B0B8" stroke-width="1.5" stroke-dasharray=""/>
+<rect x="655.00" y="167.00" width="920.00" height="16.00" fill="#427788" stroke="#294353" stroke-dasharray="" />
+<text x="445.00" y="280.00" font-size="14" text-anchor="start" >B</text>
+<text x="445.00" y="299.00" font-size="11" text-anchor="start" >observed</text>
+<line x1="655.00" y1="275.00" x2="1575.00" y2="275.00" stroke="#A5B0B8" stroke-width="1.5" stroke-dasharray=""/>
+<rect x="655.00" y="267.00" width="920.00" height="16.00" fill="#427788" stroke="#294353" stroke-dasharray="" />
+<text x="445.00" y="380.00" font-size="14" text-anchor="start" >C</text>
+<text x="445.00" y="399.00" font-size="11" text-anchor="start" >observed</text>
+<line x1="655.00" y1="375.00" x2="1575.00" y2="375.00" stroke="#A5B0B8" stroke-width="1.5" stroke-dasharray=""/>
+<rect x="655.00" y="367.00" width="920.00" height="16.00" fill="#427788" stroke="#294353" stroke-dasharray="" />
+<text x="445.00" y="480.00" font-size="14" text-anchor="start" >D</text>
+<text x="445.00" y="499.00" font-size="11" text-anchor="start" >observed</text>
+<line x1="655.00" y1="475.00" x2="1575.00" y2="475.00" stroke="#A5B0B8" stroke-width="1.5" stroke-dasharray=""/>
+<text x="663.00" y="461.00" font-size="12" text-anchor="start" >DNA tract absent: see genomic evidence</text>
+<rect x="655.00" y="470.00" width="920.00" height="10.00" fill="white" stroke="#294353" stroke-dasharray="2,2" />
+<text x="1115.00" y="479.00" font-size="10" text-anchor="middle" >//</text>
+<text x="30.00" y="583.00" font-size="14" text-anchor="start" >Branch p = probability of at least one edit; not the probability of different endpoints.</text>
+<text x="30.00" y="610.00" font-size="12" text-anchor="start" >root → AB: P(different endpoints)=0.0008; P(at least one edit)=0.0010; expected edits=0.0012</text>
+<text x="30.00" y="633.00" font-size="12" text-anchor="start" >AB → A: P(different endpoints)=0.0000; P(at least one edit)=0.0002; expected edits=0.0004</text>
+<text x="30.00" y="656.00" font-size="12" text-anchor="start" >AB → B: P(different endpoints)=0.0000; P(at least one edit)=0.0002; expected edits=0.0004</text>
+<text x="30.00" y="679.00" font-size="12" text-anchor="start" >root → CD: P(different endpoints)=0.0008; P(at least one edit)=0.0010; expected edits=0.0012</text>
+<text x="30.00" y="702.00" font-size="12" text-anchor="start" >CD → C: P(different endpoints)=0.0008; P(at least one edit)=0.0010; expected edits=0.0012</text>
+<text x="30.00" y="725.00" font-size="12" text-anchor="start" >CD → D: P(different endpoints)=1.0000; P(at least one edit)=1.0000; expected edits=1.0100</text>
+<text x="30.00" y="753.00" font-size="12" text-anchor="start" >Fixed rates, root/origin prior, tree, candidate catalogue and correspondence are conditions, not jointly validated truth.</text></g></svg>

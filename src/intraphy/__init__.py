@@ -3,4 +3,4 @@
 The historical import namespace ``intraphy`` is retained for compatibility.
 """
 
-__version__ = "0.18.0"
+__version__ = "0.19.1"

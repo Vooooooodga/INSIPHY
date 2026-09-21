@@ -1,29 +1,46 @@
 [
   {
-    "figure": "method_overview",
-    "svg": "method_overview.svg",
-    "title": "Overview: homologous regions to ancestral changes",
-    "purpose": "synthetic_teaching_schematic",
+    "algorithm_version": "0.19.1",
+    "caption": "Scope, inputs and structural inference",
+    "computed_from": "illustrative_model.json",
     "data_result": false,
-    "source_module": "intraphy.reporting.methods.overview",
-    "caption": "The same four-species gene family is followed throughout. Teal marks a homologous DNA segment; purple marks exonic sequence around a separate intron position. Dashed exons are annotation candidates, not confirmed transcription. Branch labels illustrate minimum-change placements of two different characters. Optional likelihood inference estimates ancestral states and rates when its assumptions and diagnostics permit. No complete ancestral transcript or physical mutation mechanism is inferred."
+    "inference_performed_by_renderer": false,
+    "model": "exon_configuration_v2",
+    "png": "method_overview.png",
+    "purpose": "synthetic_teaching_schematic",
+    "svg": "method_overview.svg"
   },
   {
-    "figure": "homology_inference",
-    "svg": "homology_inference.svg",
-    "title": "Algorithm: alignments, genomic context and incomplete annotation",
-    "purpose": "synthetic_teaching_schematic",
+    "algorithm_version": "0.19.1",
+    "caption": "Whole exons, paired sequence and atomic annotation alternatives",
+    "computed_from": "illustrative_model.json",
     "data_result": false,
-    "source_module": "intraphy.reporting.methods.homology",
-    "caption": "Protein alignments are projected through coding coordinates; genomic alignments search DNA beyond existing exon annotations. Ordered-chain dynamic programming distinguishes complementary interval coverage from competing copies. Flank-bounded short alignments are evaluated with affine gaps. A DNA match without an informative transcript annotation is coded present for DNA but unknown for exonic status. A covering annotated transcript can instead support a non-exonic state, conditional on that annotation. Supported deletion, unresolved alignment and assembly gaps are not interchangeable. Illustrations explain rules rather than calibrated detection performance."
+    "inference_performed_by_renderer": false,
+    "model": "exon_configuration_v2",
+    "png": "homology_inference.png",
+    "purpose": "synthetic_teaching_schematic",
+    "svg": "homology_inference.svg"
   },
   {
-    "figure": "phylogenetic_model",
-    "svg": "phylogenetic_model.svg",
-    "title": "Model: character coding and ancestral-state probabilities",
-    "purpose": "synthetic_teaching_schematic",
+    "algorithm_version": "0.19.1",
+    "caption": "Configurations, elementary edits and calculated ancestral probabilities",
+    "computed_from": "illustrative_model.json",
     "data_result": false,
-    "source_module": "intraphy.reporting.methods.model",
-    "caption": "Rows are species; columns refer to the highlighted DNA interval, its exonic status, and the purple intron position. The tree is an input phylogeny, not an inferred gene tree. The probability example conditions on fixed rates and branch lengths and uses the intron column only. Pie fractions are computed by summing ancestral-state assignments and cross-checked against the production pruning algorithm; they are not arbitrary percentages or fitted biological results. Unknown and inapplicable observations have distinct meanings, though each is marginalized by the separate binary model. Rate fitting, AIC and posteriors are unavailable for known dependent included characters; small-sample calibration remains unassessed."
+    "inference_performed_by_renderer": false,
+    "model": "exon_configuration_v2",
+    "png": "phylogenetic_model.png",
+    "purpose": "synthetic_teaching_schematic",
+    "svg": "phylogenetic_model.svg"
+  },
+  {
+    "algorithm_version": "0.19.1",
+    "caption": "Implemented data flow and code ownership",
+    "computed_from": "illustrative_model.json",
+    "data_result": false,
+    "inference_performed_by_renderer": false,
+    "model": "exon_configuration_v2",
+    "png": "architecture.png",
+    "purpose": "synthetic_teaching_schematic",
+    "svg": "architecture.svg"
   }
 ]

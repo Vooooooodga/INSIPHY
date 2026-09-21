@@ -1,3 +1,8 @@
+> **V18 legacy documentation / retained reference.** The default V19 model and
+> commands are described in [the README](../README.md) and
+> [exon_structure_model.md](exon_structure_model.md). Do not interpret the old
+> independent-layer analyses as exon configuration inference.
+
 # Method
 
 ## Question and inputs

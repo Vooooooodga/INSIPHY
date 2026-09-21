@@ -1,0 +1,26 @@
+{
+  "collapsed_unobserved_unary_nodes": [],
+  "foreground_children": [],
+  "normalized_edge_to_input_children": {
+    "A": [
+      "A"
+    ],
+    "AB": [
+      "AB"
+    ],
+    "B": [
+      "B"
+    ],
+    "C": [
+      "C"
+    ],
+    "CD": [
+      "CD"
+    ],
+    "D": [
+      "D"
+    ]
+  },
+  "origin_process": "finite_branch_opportunities_not_continuous_immigration",
+  "root_preserved": true
+}
