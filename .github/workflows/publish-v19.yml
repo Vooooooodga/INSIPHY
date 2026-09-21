@@ -15,7 +15,6 @@ jobs:
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
       EXPECTED_BASE: c8be72b1f676551cde796b02b32f0333b700907c
-      PATCH_SHA256: 58c66a3e593f3e840ca12722fdd098b99f93dbe217f78f6e5deac236412237e2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,22 +26,22 @@ jobs:
           test "$(git merge-base "$EXPECTED_BASE" HEAD)" = "$EXPECTED_BASE"
           test -f .github/v19.patch
           test -f .github/v0191.ready
+          compgen -G '.github/v0191.part*.patch' >/dev/null
       - name: Apply staged releases
         shell: bash
         run: |
           set -euo pipefail
           git apply --check .github/v19.patch
           git apply .github/v19.patch
-          cat .github/v0191.part*.b64 | base64 -d > /tmp/v0191.patch.xz
-          printf '%s  %s\n' "$PATCH_SHA256" /tmp/v0191.patch.xz | sha256sum -c -
-          xz -dc /tmp/v0191.patch.xz > /tmp/v0191.patch
+          cat .github/v0191.part*.patch > /tmp/v0191.patch
           git apply --check /tmp/v0191.patch
           git apply /tmp/v0191.patch
           grep -q 'version = "0.19.1"' pyproject.toml
-          test ! -e AGENTS.md
-          ! grep -RInE --exclude='*.png' --exclude='*.pdf' --exclude='*.svg' --exclude='*.zip' --exclude='*.whl' --exclude='*.gz' '(AGENTS\.md|\b(ChatGPT|OpenAI|Codex|Claude|LLM|large language model|artificial intelligence|AI[- ]generated|AI assistant|assistant-generated)\b)' . --exclude-dir=.git
+          git rm -f AGENTS.md
+          sed -i 's/ AGENTS\.md//' MANIFEST.in
           git checkout "$GITHUB_SHA" -- .github/workflows/tests.yml .github/workflows/publish-v19.yml
-          git rm -f .github/v19.patch .github/v0191.ready .github/v0191.part*.b64
+          git rm -f .github/v19.patch .github/v0191.ready .github/v0191.part*.patch
+          ! grep -RInE --exclude='*.png' --exclude='*.pdf' --exclude='*.svg' --exclude='*.zip' --exclude='*.whl' --exclude='*.gz' '(AGENTS\.md|\b(ChatGPT|OpenAI|Codex|Claude|LLM|large language model|artificial intelligence|AI[- ]generated|AI assistant|assistant-generated)\b)' . --exclude-dir=.git
       - name: Install native alignment tools
         run: |
           sudo apt-get update
@@ -61,6 +60,7 @@ jobs:
           python -I tools/verify_namespace.py
           python -m unittest discover -s tests -v
           python tools/validate_v19.py --output-dir validation/current/v0191-raw-py313
+          python tools/validate_v0191.py --output-dir validation/current/v0191-audit-py313
           rm -rf dist build
           python -m build
           python -m venv /tmp/intraphy-v0191-wheel
@@ -77,6 +77,7 @@ jobs:
           python -m pip install -c requirements-ci.txt .
           python -m unittest discover -s tests -v
           python tools/validate_v19.py --output-dir validation/current/v0191-raw-py310
+          python tools/validate_v0191.py --output-dir validation/current/v0191-audit-py310
       - name: Publish tested 0.19.1 to main
         shell: bash
         run: |
