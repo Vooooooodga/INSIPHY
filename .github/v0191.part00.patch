@@ -31,7 +31,8 @@ index 24c4c04..a87f2c3 100644
 +
  # 0.19.0 — exon configurations and elementary edits (2026-09-21)
  
- - New native exon configuration schema; biological units are not P/R/J columns.diff --git a/CITATION.cff b/CITATION.cff
+ - New native exon configuration schema; biological units are not P/R/J columns.
+diff --git a/CITATION.cff b/CITATION.cff
 index 834ff16..4ce565b 100644
 --- a/CITATION.cff
 +++ b/CITATION.cff
@@ -43,7 +44,8 @@ index 834ff16..4ce565b 100644
 +version: 0.19.1
  authors:
    - name: "IntraPhy contributors"
- date-released: 2026-09-21diff --git a/MANIFEST.in b/MANIFEST.in
+ date-released: 2026-09-21
+diff --git a/MANIFEST.in b/MANIFEST.in
 new file mode 100644
 index 0000000..578dc6d
 --- /dev/null
@@ -56,7 +58,8 @@ index 0000000..578dc6d
 +recursive-include demo_results *
 +recursive-include tests *.py
 +recursive-include tools *.py
-+recursive-exclude * __pycache__ *.pyc *.pyodiff --git a/README.md b/README.md
++recursive-exclude * __pycache__ *.pyc *.pyo
+diff --git a/README.md b/README.md
 index ffba63e..d9525d5 100644
 --- a/README.md
 +++ b/README.md
@@ -174,7 +177,8 @@ index ffba63e..d9525d5 100644
 +Mere appearance of several exons does not qualify them as one inserted module.
 +
 +Files in this local distribution are not evidence of a GitHub release. Installation
-+from the supplied source/wheel does not require pushing or modifying a repository.diff --git a/ROADMAP.md b/ROADMAP.md
++from the supplied source/wheel does not require pushing or modifying a repository.
+diff --git a/ROADMAP.md b/ROADMAP.md
 index cfa8a69..622a4dc 100644
 --- a/ROADMAP.md
 +++ b/ROADMAP.md
@@ -208,7 +212,8 @@ index cfa8a69..622a4dc 100644
 +
 +Not part of this release: exon usage, PSI, transcriptome inputs, selection or
 +repair-enzyme inference, full ancestral transcript repertoires, arbitrary exon
-+copy genealogies, inversions and shuffling, or unbounded extinct-ancestor states.diff --git a/docs/architecture.md b/docs/architecture.md
++copy genealogies, inversions and shuffling, or unbounded extinct-ancestor states.
+diff --git a/docs/architecture.md b/docs/architecture.md
 index b9aacab..6fed241 100644
 --- a/docs/architecture.md
 +++ b/docs/architecture.md
@@ -283,7 +288,8 @@ index b9aacab..6fed241 100644
 -See [the model specification](exon_structure_model.md) and
 -[implementation/limitations map](v19_implementation_map.md).
 +See [audit resolutions](v0191_audit_resolution.md), [model](exon_structure_model.md)
-+and [validation](v0191_validation.md). Source modules remain under 500 lines.diff --git a/docs/exon_structure_model.md b/docs/exon_structure_model.md
++and [validation](v0191_validation.md). Source modules remain under 500 lines.
+diff --git a/docs/exon_structure_model.md b/docs/exon_structure_model.md
 index ceee140..8c4c983 100644
 --- a/docs/exon_structure_model.md
 +++ b/docs/exon_structure_model.md
@@ -469,7 +475,8 @@ index ceee140..8c4c983 100644
 +as input information but rejected by the current configuration probability engine
 +and simulator. They are not silently collapsed, and their extra boundary cannot
 +change the prior between a null and alternative model. Uniform regimes across
-+redundant segments are merged and remapped normally.diff --git a/docs/legacy/exon_structure_model_0190.md b/docs/legacy/exon_structure_model_0190.md
++redundant segments are merged and remapped normally.
+diff --git a/docs/legacy/exon_structure_model_0190.md b/docs/legacy/exon_structure_model_0190.md
 new file mode 100644
 index 0000000..ceee140
 --- /dev/null
@@ -719,7 +726,8 @@ index 0000000..ceee140
 +doi:10.1101/gr.274696.120). They motivate coordinate, boundary and exon correspondence
 +choices, not validation of this specific new configuration model. No third-party algorithm
 +source was copied. Matrix exponentials/optimization use SciPy. The proposed finite model,
-+opportunity rules and observation qualification must be evaluated on their own merits.diff --git a/docs/method_guide.md b/docs/method_guide.md
++opportunity rules and observation qualification must be evaluated on their own merits.
+diff --git a/docs/method_guide.md b/docs/method_guide.md
 new file mode 100644
 index 0000000..e160bac
 --- /dev/null
@@ -775,7 +783,8 @@ index 0000000..e160bac
 +coordinates. Missing DNA is not filled with a fictitious homologous intron.
 +
 +The old binary-model plates are archived under `figures/legacy_v018/` and remain
-+available only through the explicitly legacy guide. They do not explain V19.diff --git a/docs/v0191_audit_resolution.md b/docs/v0191_audit_resolution.md
++available only through the explicitly legacy guide. They do not explain V19.
+diff --git a/docs/v0191_audit_resolution.md b/docs/v0191_audit_resolution.md
 new file mode 100644
 index 0000000..596cbe9
 --- /dev/null
@@ -853,7 +862,8 @@ index 0000000..596cbe9
 +as input information but rejected by the current configuration probability engine
 +and simulator. They are not silently collapsed, and their extra boundary cannot
 +change the prior between a null and alternative model. Uniform regimes across
-+redundant segments are merged and remapped normally.diff --git a/docs/v0191_validation.md b/docs/v0191_validation.md
++redundant segments are merged and remapped normally.
+diff --git a/docs/v0191_validation.md b/docs/v0191_validation.md
 new file mode 100644
 index 0000000..f0e4023
 --- /dev/null
@@ -939,7 +949,8 @@ index 0000000..f0e4023
 +The local delivery includes machine-readable summary, complete logs, raw inputs,
 +separate generating truth, actual inference outputs and source-patch verification.
 +The 20+9 raw cases overlap with the unit suite and must not be counted as separate
-+independent biological validations.diff --git a/docs/v19_validation.md b/docs/v19_validation.md
++independent biological validations.
+diff --git a/docs/v19_validation.md b/docs/v19_validation.md
 index 1418af2..39d59c4 100644
 --- a/docs/v19_validation.md
 +++ b/docs/v19_validation.md
@@ -948,7 +959,8 @@ index 1418af2..39d59c4 100644
 +
  # V19 implementation validation
  
- This record distinguishes implementation checks from biological accuracy anddiff --git a/pyproject.toml b/pyproject.toml
+ This record distinguishes implementation checks from biological accuracy and
+diff --git a/pyproject.toml b/pyproject.toml
 index 75833eb..9a5ccdb 100644
 --- a/pyproject.toml
 +++ b/pyproject.toml
@@ -959,7 +971,8 @@ index 75833eb..9a5ccdb 100644
 +version = "0.19.1"
  description = "Exon configuration evolution from genomic sequence, annotation and a species tree"
  requires-python = ">=3.10"
- dependencies = [diff --git a/src/intraphy/__init__.py b/src/intraphy/__init__.py
+ dependencies = [
+diff --git a/src/intraphy/__init__.py b/src/intraphy/__init__.py
 index a1f58cf..5fb2e9f 100644
 --- a/src/intraphy/__init__.py
 +++ b/src/intraphy/__init__.py
@@ -968,7 +981,8 @@ index a1f58cf..5fb2e9f 100644
  """
  
 -__version__ = "0.19.0"
-+__version__ = "0.19.1"diff --git a/src/intraphy/commands/exon_statistics.py b/src/intraphy/commands/exon_statistics.py
++__version__ = "0.19.1"
+diff --git a/src/intraphy/commands/exon_statistics.py b/src/intraphy/commands/exon_statistics.py
 index cdd9a4b..6a36183 100644
 --- a/src/intraphy/commands/exon_statistics.py
 +++ b/src/intraphy/commands/exon_statistics.py
@@ -989,7 +1003,8 @@ index cdd9a4b..6a36183 100644
 +            "scale": fit["scale"], "origin_root_weight": base.origin_root_weight, "provenance": "conditional pooled scale fit; see rate_fit.json",
              "gene_collection": sorted({u.family for u in units})})
      if args.gene_bootstrap:
-         write_json(out/"gene_bootstrap.json", gene_bootstrap(units, base, args.gene_bootstrap, args.seed))diff --git a/src/intraphy/commands/exons.py b/src/intraphy/commands/exons.py
+         write_json(out/"gene_bootstrap.json", gene_bootstrap(units, base, args.gene_bootstrap, args.seed))
+diff --git a/src/intraphy/commands/exons.py b/src/intraphy/commands/exons.py
 index e59d50f..cd607da 100644
 --- a/src/intraphy/commands/exons.py
 +++ b/src/intraphy/commands/exons.py
@@ -1018,7 +1033,8 @@ index e59d50f..cd607da 100644
 +            "origin_root_sensitivity": args.origin_root_sensitivity,
              "alignment_timeout": args.alignment_timeout, "max_locus_bases": args.max_locus_bases,
              "exon_identity": args.exon_identity, "anchor_bases": args.anchor_bases, "anchor_identity": args.anchor_identity}
- diff --git a/src/intraphy/inference/configuration_history.py b/src/intraphy/inference/configuration_history.py
+ 
+diff --git a/src/intraphy/inference/configuration_history.py b/src/intraphy/inference/configuration_history.py
 index c636447..8c58865 100644
 --- a/src/intraphy/inference/configuration_history.py
 +++ b/src/intraphy/inference/configuration_history.py
@@ -1041,7 +1057,8 @@ index c636447..8c58865 100644
 +        graphs = {}
          for _, child in tree.edges():
              signature = tuple(sorted(k for k, v in origins.items() if v == child))
-             if signature not in cache:diff --git a/src/intraphy/inference/configuration_model.py b/src/intraphy/inference/configuration_model.py
+             if signature not in cache:
+diff --git a/src/intraphy/inference/configuration_model.py b/src/intraphy/inference/configuration_model.py
 index a34cb09..f6c7926 100644
 --- a/src/intraphy/inference/configuration_model.py
 +++ b/src/intraphy/inference/configuration_model.py
@@ -1203,7 +1220,8 @@ index a34cb09..f6c7926 100644
 -            "endpoint_probabilities": endpoint,
 -            **(branch_values[edge] if counts else {})})
 +            "endpoint_probabilities": endpoint, **branch_values[edge]})
-     return outdiff --git a/src/intraphy/inference/configuration_run.py b/src/intraphy/inference/configuration_run.py
+     return out
+diff --git a/src/intraphy/inference/configuration_run.py b/src/intraphy/inference/configuration_run.py
 index b10d398..80e9978 100644
 --- a/src/intraphy/inference/configuration_run.py
 +++ b/src/intraphy/inference/configuration_run.py
@@ -1357,7 +1375,8 @@ index b10d398..80e9978 100644
 +            "origin_root_sensitivity_weights": list(origin_root_sensitivity),
              "deletion_reversible": False, "transcript_usage_modelled": False,
              "preparation": preparation_reports, "units": diagnostic_units})
-         for path in staging.iterdir():diff --git a/src/intraphy/inference/exon_rates.py b/src/intraphy/inference/exon_rates.py
+         for path in staging.iterdir():
+diff --git a/src/intraphy/inference/exon_rates.py b/src/intraphy/inference/exon_rates.py
 index 4b232a8..8f6a948 100644
 --- a/src/intraphy/inference/exon_rates.py
 +++ b/src/intraphy/inference/exon_rates.py
@@ -1484,7 +1503,8 @@ index 4b232a8..8f6a948 100644
 +        raise ValueError("The original gene collection must contain at least two genes")
      rng = np.random.default_rng(seed)
      draws = []
-     for draw in range(replicates):diff --git a/src/intraphy/inference/exon_resampling.py b/src/intraphy/inference/exon_resampling.py
+     for draw in range(replicates):
+diff --git a/src/intraphy/inference/exon_resampling.py b/src/intraphy/inference/exon_resampling.py
 index dd786e2..ebdce67 100644
 --- a/src/intraphy/inference/exon_resampling.py
 +++ b/src/intraphy/inference/exon_resampling.py
@@ -1572,7 +1592,8 @@ index dd786e2..ebdce67 100644
 +    a, n = alternative.get("log_likelihood"), null.get("log_likelihood")
 +    if a is None or n is None or not np.isfinite([a, n]).all() or a < n-tolerance:
 +        return None
-+    return max(0., 2*(a-n))diff --git a/src/intraphy/inference/kernel_cache.py b/src/intraphy/inference/kernel_cache.py
++    return max(0., 2*(a-n))
+diff --git a/src/intraphy/inference/kernel_cache.py b/src/intraphy/inference/kernel_cache.py
 new file mode 100644
 index 0000000..c299bc1
 --- /dev/null
@@ -1622,7 +1643,8 @@ index 0000000..c299bc1
 +                self.bytes -= previous
 +            self.entries[key] = value, size
 +            self.bytes += size
-+        return valuediff --git a/src/intraphy/reporting/exon_drawing.py b/src/intraphy/reporting/exon_drawing.py
++        return value
+diff --git a/src/intraphy/reporting/exon_drawing.py b/src/intraphy/reporting/exon_drawing.py
 new file mode 100644
 index 0000000..0ec8b67
 --- /dev/null
@@ -1668,7 +1690,8 @@ index 0000000..0ec8b67
 +    return (f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
 +            f'width="{width}" height="{height}" viewBox="0 0 {width} {height}" data-model="{escape(model, quote=True)}">'
 +            f'<title>{escape(title)}</title><rect width="100%" height="100%" fill="white"/>'
-+            f'<g font-family="Arial, sans-serif" fill="{INK}">'+"\n".join(body)+"</g></svg>\n")diff --git a/src/intraphy/reporting/exon_guide.py b/src/intraphy/reporting/exon_guide.py
++            f'<g font-family="Arial, sans-serif" fill="{INK}">'+"\n".join(body)+"</g></svg>\n")
+diff --git a/src/intraphy/reporting/exon_guide.py b/src/intraphy/reporting/exon_guide.py
 index bebb52e..cc430a2 100644
 --- a/src/intraphy/reporting/exon_guide.py
 +++ b/src/intraphy/reporting/exon_guide.py
@@ -1770,7 +1793,8 @@ index bebb52e..cc430a2 100644
 +        'sequence correspondence, annotation and tree. It does not reconstruct copy genealogies, inversions, '
 +        'exon shuffling, all extinct exons, complete transcript repertoires or molecular repair mechanisms. '
 +        'A candidate is not confirmed by a simpler evolutionary history.</p></html>\n')
-     return recordsdiff --git a/src/intraphy/reporting/exon_guide_examples.py b/src/intraphy/reporting/exon_guide_examples.py
+     return records
+diff --git a/src/intraphy/reporting/exon_guide_examples.py b/src/intraphy/reporting/exon_guide_examples.py
 new file mode 100644
 index 0000000..e07d9a0
 --- /dev/null
@@ -1827,7 +1851,8 @@ index 0000000..e07d9a0
 +    data["summary"] = summary
 +    data["biological_accuracy_validation"] = False
 +    write_json(out/"illustrative_model.json", data)
-+    return datadiff --git a/src/intraphy/reporting/exon_guide_plates.py b/src/intraphy/reporting/exon_guide_plates.py
++    return data
+diff --git a/src/intraphy/reporting/exon_guide_plates.py b/src/intraphy/reporting/exon_guide_plates.py
 new file mode 100644
 index 0000000..33f1e83
 --- /dev/null
@@ -2018,7 +2043,8 @@ index 0000000..33f1e83
 +PLATES={"method_overview": (overview,"Scope, inputs and structural inference"),
 +        "homology_inference": (homology,"Whole exons, paired sequence and atomic annotation alternatives"),
 +        "phylogenetic_model": (probability_model,"Configurations, elementary edits and calculated ancestral probabilities"),
-+        "architecture": (architecture,"Implemented data flow and code ownership")}diff --git a/src/intraphy/reporting/exon_results.py b/src/intraphy/reporting/exon_results.py
++        "architecture": (architecture,"Implemented data flow and code ownership")}
+diff --git a/src/intraphy/reporting/exon_results.py b/src/intraphy/reporting/exon_results.py
 index 7caa64b..cf8a8b1 100644
 --- a/src/intraphy/reporting/exon_results.py
 +++ b/src/intraphy/reporting/exon_results.py
@@ -2355,7 +2381,8 @@ index 7caa64b..cf8a8b1 100644
 +        '<p>Parsimony and CTMC are separate views. Full probabilities: <a href="exon_ancestral_states.tsv">ancestral states</a>; '
 +        '<a href="exon_branch_posteriors.tsv">branches</a>. Read <a href="model_diagnostics.json">diagnostics</a> before interpreting missing events.</p>'
          +''.join(sections)+'</html>\n')
-     return figuresdiff --git a/src/intraphy/structure/__init__.py b/src/intraphy/structure/__init__.py
+     return figures
+diff --git a/src/intraphy/structure/__init__.py b/src/intraphy/structure/__init__.py
 index 537de23..34b9539 100644
 --- a/src/intraphy/structure/__init__.py
 +++ b/src/intraphy/structure/__init__.py
@@ -2367,7 +2394,8 @@ index 537de23..34b9539 100644
 -SCHEMA_VERSION = "intraphy.exon-configurations/1"
 +MODEL_VERSION = "exon_configuration_v2"
 +SCHEMA_VERSION = "intraphy.exon-configurations/2"
- __all__ = ["ExonConfiguration", "ExonSpan", "Material", "ObservationEvidence"]diff --git a/src/intraphy/structure/alignment.py b/src/intraphy/structure/alignment.py
+ __all__ = ["ExonConfiguration", "ExonSpan", "Material", "ObservationEvidence"]
+diff --git a/src/intraphy/structure/alignment.py b/src/intraphy/structure/alignment.py
 index 4898e84..8e033a6 100644
 --- a/src/intraphy/structure/alignment.py
 +++ b/src/intraphy/structure/alignment.py
@@ -2435,7 +2463,8 @@ index 4898e84..8e033a6 100644
 +    write_tsv(directory / "search_windows.tsv", window_rows, list(window_rows[0]))
      rows = {ids[k]: v.upper() for k, v in aligned.items()}
      columns = {s: tuple(i for i, b in enumerate(seq) if b != "-") for s, seq in rows.items()}
-     spans = {}diff --git a/src/intraphy/structure/alternatives.py b/src/intraphy/structure/alternatives.py
+     spans = {}
+diff --git a/src/intraphy/structure/alternatives.py b/src/intraphy/structure/alternatives.py
 new file mode 100644
 index 0000000..74005de
 --- /dev/null
@@ -2527,7 +2556,8 @@ index 0000000..74005de
 +                    accepted.append(ConfigurationAlternative(candidate, native.key, source, tx,
 +                        "paired_sequence_flanks_and_preserved_boundary_context", identity))
 +    unique = {(a.replaces_key, a.configuration.key, a.source_species, a.source_transcript): a for a in accepted}
-+    return tuple(unique[k] for k in sorted(unique)), tracediff --git a/src/intraphy/structure/build.py b/src/intraphy/structure/build.py
++    return tuple(unique[k] for k in sorted(unique)), trace
+diff --git a/src/intraphy/structure/build.py b/src/intraphy/structure/build.py
 index b77b021..1c5b9fc 100644
 --- a/src/intraphy/structure/build.py
 +++ b/src/intraphy/structure/build.py
@@ -2612,7 +2642,8 @@ index b77b021..1c5b9fc 100644
 +                tuple(sorted(set(local_reasons))), positive, presence, unknown, tuple(sorted(alternatives)), atomic))
              counts = [len(exons) for _, exons in observed_native[species]]
              relation = "coexisting" if len(set(counts)) > 1 else str(max(counts, default=0))
-             for eid in positive:diff --git a/src/intraphy/structure/edits.py b/src/intraphy/structure/edits.py
+             for eid in positive:
+diff --git a/src/intraphy/structure/edits.py b/src/intraphy/structure/edits.py
 index c6e232a..c450632 100644
 --- a/src/intraphy/structure/edits.py
 +++ b/src/intraphy/structure/edits.py
@@ -2633,7 +2664,8 @@ index c6e232a..c450632 100644
 +                    f"introduced_exons:{len(payload.exons)}"), mid=m.id)
      opportunity_counts: dict[tuple[str, str], int] = defaultdict(int)
      for edit in candidates.values():
-         opportunity_counts[(edit.kind, edit.opportunity)] += 1diff --git a/src/intraphy/structure/observations.py b/src/intraphy/structure/observations.py
+         opportunity_counts[(edit.kind, edit.opportunity)] += 1
+diff --git a/src/intraphy/structure/observations.py b/src/intraphy/structure/observations.py
 index ea6681d..233b059 100644
 --- a/src/intraphy/structure/observations.py
 +++ b/src/intraphy/structure/observations.py
@@ -2656,7 +2688,8 @@ index ea6681d..233b059 100644
 +        for native in candidates:
              # Observed absence never selects unintroduced versus subsequently lost.
              native_exons = normalize_exons(space.catalogue, state.material, native.exons)
-             if _outside(state.exons, windows) == _outside(native_exons, windows):diff --git a/src/intraphy/structure/origins.py b/src/intraphy/structure/origins.py
+             if _outside(state.exons, windows) == _outside(native_exons, windows):
+diff --git a/src/intraphy/structure/origins.py b/src/intraphy/structure/origins.py
 index aa00e60..98c32f8 100644
 --- a/src/intraphy/structure/origins.py
 +++ b/src/intraphy/structure/origins.py
@@ -2686,7 +2719,8 @@ index aa00e60..98c32f8 100644
 +        log_prior -= len(candidates)*math.log(denominator)
          origins = dict(zip((m.id for m in space.catalogue.material), choices))
          required = tuple(1 if origins[m.id] == tree.root else 0 for m in space.catalogue.material)
-         root = np.array([s.material == required for s in space.states], dtype=bool)diff --git a/src/intraphy/structure/paths.py b/src/intraphy/structure/paths.py
+         root = np.array([s.material == required for s in space.states], dtype=bool)
+diff --git a/src/intraphy/structure/paths.py b/src/intraphy/structure/paths.py
 index 0e24cec..1b8db42 100644
 --- a/src/intraphy/structure/paths.py
 +++ b/src/intraphy/structure/paths.py
@@ -2727,7 +2761,8 @@ index 0e24cec..1b8db42 100644
 +        rows.append(i); cols.append(j); values.append(value)
 +    adjacency = csr_matrix((values, (rows, cols)), shape=(n, n))
 +    distances = dijkstra(adjacency, directed=True, return_predecessors=False)
-     return EditGraph(n, edges, distances, outgoing)diff --git a/src/intraphy/structure/prepare.py b/src/intraphy/structure/prepare.py
+     return EditGraph(n, edges, distances, outgoing)
+diff --git a/src/intraphy/structure/prepare.py b/src/intraphy/structure/prepare.py
 index 4af086c..c74a9cf 100644
 --- a/src/intraphy/structure/prepare.py
 +++ b/src/intraphy/structure/prepare.py
@@ -2748,7 +2783,8 @@ index 4af086c..c74a9cf 100644
 +        "boundary_context_is_splice_function_evidence": False,
          "copy_and_orientation_audit": "minimap2 plus exact short-exon search",
          "discovery": "annotation_discovered", "reference_is_ancestor": False,
-         "required_inputs": "genomic sequence, exon annotations and species tree; no RNA measurements"})diff --git a/src/intraphy/structure/serialization.py b/src/intraphy/structure/serialization.py
+         "required_inputs": "genomic sequence, exon annotations and species tree; no RNA measurements"})
+diff --git a/src/intraphy/structure/serialization.py b/src/intraphy/structure/serialization.py
 index fca67b8..07ba617 100644
 --- a/src/intraphy/structure/serialization.py
 +++ b/src/intraphy/structure/serialization.py
@@ -2809,7 +2845,8 @@ index fca67b8..07ba617 100644
 -        raise ValueError("Configuration collection must be nonempty with unique family/unit identifiers")
 -    return tuple(records)
 +    from .validation import validate_collection
-+    return validate_collection(tuple(records))diff --git a/src/intraphy/structure/space.py b/src/intraphy/structure/space.py
++    return validate_collection(tuple(records))
+diff --git a/src/intraphy/structure/space.py b/src/intraphy/structure/space.py
 index ca6419b..8d4e30e 100644
 --- a/src/intraphy/structure/space.py
 +++ b/src/intraphy/structure/space.py
@@ -2926,7 +2963,8 @@ index ca6419b..8d4e30e 100644
 +        return failure(c, "state_space_incomplete: transition leaves catalogue")
 +    diagnostics.update(actual_state_count=len(ordered), elementary_edges=len(edits),
 +                       dense_matrix_bytes=8*len(ordered)**2)
-+    return StateSpace(c, ordered, edits, True, "candidate_catalogue_closed", max_states, diagnostics)diff --git a/src/intraphy/structure/tree_context.py b/src/intraphy/structure/tree_context.py
++    return StateSpace(c, ordered, edits, True, "candidate_catalogue_closed", max_states, diagnostics)
+diff --git a/src/intraphy/structure/tree_context.py b/src/intraphy/structure/tree_context.py
 new file mode 100644
 index 0000000..22933f1
 --- /dev/null
@@ -2993,7 +3031,8 @@ index 0000000..22933f1
 +             "branch_length": length[n]} for n in tree.preorder() if n in parent]
 +    result = SpeciesTree(rows)
 +    return TreeContext(result, frozenset(n for n, flag in flags.items() if flag),
-+                       tuple(sorted(collapsed)), paths)diff --git a/src/intraphy/structure/types.py b/src/intraphy/structure/types.py
++                       tuple(sorted(collapsed)), paths)
+diff --git a/src/intraphy/structure/types.py b/src/intraphy/structure/types.py
 index 3047d3b..7f53079 100644
 --- a/src/intraphy/structure/types.py
 +++ b/src/intraphy/structure/types.py
@@ -3075,7 +3114,8 @@ index 3047d3b..7f53079 100644
 +
  
  
- def canonical_exons(exons: Iterable[ExonSpan]) -> tuple[ExonSpan, ...]:diff --git a/src/intraphy/structure/validation.py b/src/intraphy/structure/validation.py
+ def canonical_exons(exons: Iterable[ExonSpan]) -> tuple[ExonSpan, ...]:
+diff --git a/src/intraphy/structure/validation.py b/src/intraphy/structure/validation.py
 new file mode 100644
 index 0000000..be13bb0
 --- /dev/null
@@ -3119,7 +3159,8 @@ index 0000000..be13bb0
 +        _check_disjoint(intervals, f"family {family}'s common coordinate axis")
 +    for position, intervals in native.items():
 +        _check_disjoint(intervals, f"native genome {position}")
-+    return cataloguesdiff --git a/src/intraphy/verification/exon_audit_cases.py b/src/intraphy/verification/exon_audit_cases.py
++    return catalogues
+diff --git a/src/intraphy/verification/exon_audit_cases.py b/src/intraphy/verification/exon_audit_cases.py
 new file mode 100644
 index 0000000..da95ef5
 --- /dev/null
@@ -3203,7 +3244,8 @@ index 0000000..da95ef5
 +        rows=parse_fasta(Path(result_dir)/"alignment_evidence/family_00001/genomic_loci.fa")
 +        assert {len(v) for v in rows.values()} == {1140},(name,"available locus DNA was cropped")
 +    return {"minimum_evidence_edits":total,"minimum_annotation_edits":annotation,
-+            "required_evidence_edits":len(events),"annotation_only":not genomic_mutation}diff --git a/tests/test_audit_model_v0191.py b/tests/test_audit_model_v0191.py
++            "required_evidence_edits":len(events),"annotation_only":not genomic_mutation}
+diff --git a/tests/test_audit_model_v0191.py b/tests/test_audit_model_v0191.py
 new file mode 100644
 index 0000000..9568445
 --- /dev/null
@@ -3422,7 +3464,8 @@ index 0000000..9568445
 +        again = cache.get_or_compute("a", lambda: np.arange(4, dtype=float))
 +        self.assertLessEqual(cache.bytes, 32)
 +        np.testing.assert_array_equal(a, again)
-+        self.assertEqual(cache.misses, 3)diff --git a/tests/test_audit_raw_v0191.py b/tests/test_audit_raw_v0191.py
++        self.assertEqual(cache.misses, 3)
+diff --git a/tests/test_audit_raw_v0191.py b/tests/test_audit_raw_v0191.py
 new file mode 100644
 index 0000000..4e5b910
 --- /dev/null
@@ -3475,7 +3518,8 @@ index 0000000..4e5b910
 +        self.assertEqual({r["selected_bases"] for r in windows},{"1140"})
 +        self.assertTrue(all(r["unsearched_available_bases"]=="1140" for r in windows))
 +        # Selected and actually executed are explicitly different in the budget diagnostic.
-+        self.assertFalse((out/"alignment_evidence/family_00001/genomic_alignment.fa").exists())diff --git a/tests/test_exon_contracts_v019.py b/tests/test_exon_contracts_v019.py
++        self.assertFalse((out/"alignment_evidence/family_00001/genomic_alignment.fa").exists())
+diff --git a/tests/test_exon_contracts_v019.py b/tests/test_exon_contracts_v019.py
 index 326f45c..1d6be7d 100644
 --- a/tests/test_exon_contracts_v019.py
 +++ b/tests/test_exon_contracts_v019.py
@@ -3487,7 +3531,8 @@ index 326f45c..1d6be7d 100644
 +            self.assertEqual(data["model"], "exon_configuration_v2")
              self.assertIn("V19 exon configuration", (out/"index.html").read_text())
              self.assertEqual(main(["explain", "--output-dir", str(out)]), 2)
- diff --git a/tests/test_exon_figures_v0191.py b/tests/test_exon_figures_v0191.py
+ 
+diff --git a/tests/test_exon_figures_v0191.py b/tests/test_exon_figures_v0191.py
 new file mode 100644
 index 0000000..406b2c5
 --- /dev/null
@@ -3611,7 +3656,8 @@ index 0000000..406b2c5
 +        self.assertTrue(self.data["synthetic"])
 +        self.assertEqual(self.data["engine"],"exon-ctmc")
 +        self.assertFalse(self.data["biological_accuracy_validation"])
-+        self.assertTrue((self.root/"example_inputs/catalogue.jsonl").exists())diff --git a/tests/test_exon_raw_v019.py b/tests/test_exon_raw_v019.py
++        self.assertTrue((self.root/"example_inputs/catalogue.jsonl").exists())
+diff --git a/tests/test_exon_raw_v019.py b/tests/test_exon_raw_v019.py
 index a2ccfa9..4b5c9cb 100644
 --- a/tests/test_exon_raw_v019.py
 +++ b/tests/test_exon_raw_v019.py
@@ -3636,7 +3682,8 @@ index a2ccfa9..4b5c9cb 100644
 +                          if e["support"] == "required"], ["split"])
  
      def assert_fusion(self, phase):
-         rows, details, out = self.run_case("fusion_phase"+str(phase))diff --git a/tests/test_exon_statistics_v019.py b/tests/test_exon_statistics_v019.py
+         rows, details, out = self.run_case("fusion_phase"+str(phase))
+diff --git a/tests/test_exon_statistics_v019.py b/tests/test_exon_statistics_v019.py
 index 6bca2c8..a878a5c 100644
 --- a/tests/test_exon_statistics_v019.py
 +++ b/tests/test_exon_statistics_v019.py
@@ -3655,7 +3702,8 @@ index 6bca2c8..a878a5c 100644
 +                write_catalogues(p, (first, replace(first, unit="other")))
  
      def test_partial_observation_is_not_exact_parametric_validation(self):
-         units, base = fixture()diff --git a/tools/render_method_figures.py b/tools/render_method_figures.py
+         units, base = fixture()
+diff --git a/tools/render_method_figures.py b/tools/render_method_figures.py
 index 2b03f85..c98c079 100644
 --- a/tools/render_method_figures.py
 +++ b/tools/render_method_figures.py
@@ -3667,7 +3715,8 @@ index 2b03f85..c98c079 100644
 +                        default=Path(__file__).resolve().parents[1] / 'docs/figures')
      parser.add_argument('--png', action='store_true', help='Also render PNG previews; requires CairoSVG.')
      args = parser.parse_args()
-     for row in render_guide(args.output_dir, png=args.png):diff --git a/tools/smoke_validate.py b/tools/smoke_validate.py
+     for row in render_guide(args.output_dir, png=args.png):
+diff --git a/tools/smoke_validate.py b/tools/smoke_validate.py
 index 288158c..85083d2 100644
 --- a/tools/smoke_validate.py
 +++ b/tools/smoke_validate.py
@@ -3679,7 +3728,8 @@ index 288158c..85083d2 100644
 +    assert data["model"] == "exon_configuration_v2"
      edits = [e for u in data["units"] for e in u["views"]["evidence"]["events"] if e["support"] == "required"]
      assert len(edits) == 1 and edits[0]["operation"] == "dna_insertion", edits
-     assert "exon_split" in edits[0]["consequences"]diff --git a/tools/validate_v0191.py b/tools/validate_v0191.py
+     assert "exon_split" in edits[0]["consequences"]
+diff --git a/tools/validate_v0191.py b/tools/validate_v0191.py
 new file mode 100644
 index 0000000..fe99b3e
 --- /dev/null
@@ -3726,7 +3776,8 @@ index 0000000..fe99b3e
 +    return int(any(r["status"]!="passed" for r in results))
 +
 +
-+if __name__=="__main__": raise SystemExit(main())diff --git a/tools/validate_v19.py b/tools/validate_v19.py
++if __name__=="__main__": raise SystemExit(main())
+diff --git a/tools/validate_v19.py b/tools/validate_v19.py
 index af6891a..e70255e 100644
 --- a/tools/validate_v19.py
 +++ b/tools/validate_v19.py
@@ -3748,7 +3799,8 @@ index af6891a..e70255e 100644
 +        assert any(e["operation"] == "split" and e["support"] == "required" for e in annotation)
      if name == "multi_exon_deletion":
          assert "deleted_exons:2" in required[0]["consequences"]
-     if name.startswith("fusion_phase"):diff --git a/tools/verify_namespace.py b/tools/verify_namespace.py
+     if name.startswith("fusion_phase"):
+diff --git a/tools/verify_namespace.py b/tools/verify_namespace.py
 index 2918708..f2de8d7 100644
 --- a/tools/verify_namespace.py
 +++ b/tools/verify_namespace.py
