@@ -7,7 +7,9 @@ GFF3/GTF and a rooted species tree. It reconstructs local exon structures and
 possible histories of their changes. It does **not** require RNA-seq and does not
 estimate exon usage, PSI, differential splicing, expression or selection.
 
-![Exon structural evolution](docs/figures/method_overview.svg)
+![Exon structural evolution](docs/figures/publication/method_scheme.svg)
+
+See the [method schematics gallery](docs/method_schematics.md) for the full figure set and descriptions.
 
 **0.19.1 fixes the V19 audit regressions.** Whole-structure annotation alternatives,
 full available locus searches, shared physical-region validation, canonical tree
